@@ -1,3 +1,19 @@
 bin/
 obj/
 .vs/git rm -r --cached PlatformGame/obj
+# C# build output
+bin/
+obj/
+
+# compiled files
+*.dll
+*.pdb
+*.exe
+*.dylib
+*.so
+
+# VS Code
+.vscode/
+
+# Mac files
+.DS_Store
