@@ -372,7 +372,7 @@ namespace OpenWorldRPG
             new NPC(
             new Vector2(700,450),
             "Bank Manager",
-            "Welcome to Waikato Bank."
+            "Chur maori. Welcome to Waikato Bank."
     )
 ));
 
@@ -381,11 +381,11 @@ namespace OpenWorldRPG
             Color.DarkBlue,
             new Color(50,60,90,255),
             new Vector2(1800,650),
-            "TAVERN",
+            "DBar",
             new NPC(
             new Vector2(600,420),
-            "Tavern Owner",
-            "Grab a drink and relax."
+            "Dbar Owner",
+            "Grab a woodys and relax at Dbar."
     )
 ));
 
@@ -398,7 +398,7 @@ namespace OpenWorldRPG
             new NPC(
             new Vector2(500,420),
             "Store Clerk",
-            "Need supplies for fishing?"
+            "Need supplies for fishing? Show me the moolack"
     )
 ));
 
