@@ -1,0 +1,616 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Platform Game</title>
+
+  <style>
+    body {
+      margin: 0;
+      background: #11131c;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+      font-family: Arial, sans-serif;
+      color: white;
+    }
+
+    .game-wrapper {
+      text-align: center;
+    }
+
+    canvas {
+      background: #191c2b;
+      border: 4px solid #ffffff;
+      border-radius: 12px;
+    }
+
+    p {
+      margin-top: 12px;
+      color: #d6d6d6;
+    }
+  </style>
+</head>
+
+<body>
+  <div class="game-wrapper">
+    <canvas id="gameCanvas" width="1000" height="600"></canvas>
+    <p>Move: A/D or Arrow Keys | Jump: Space/W/Up | R: Restart | N: Next Level</p>
+  </div>
+
+  <script>
+    const canvas = document.getElementById("gameCanvas");
+    const ctx = canvas.getContext("2d");
+
+
+    const screenWidth = canvas.width;
+    const screenHeight = canvas.height;
+
+    const keys = {};
+
+    let currentLevel = 1;
+    let score = 0;
+    let gameWon = false;
+    let gameOver = false;
+
+    window.addEventListener("keydown", (e) => {
+      keys[e.key.toLowerCase()] = true;
+
+      if (e.key === " ") {
+        e.preventDefault();
+      }
+
+      if ((gameWon || gameOver) && e.key.toLowerCase() === "r") {
+        restartLevel();
+      }
+
+      if (gameWon && e.key.toLowerCase() === "n") {
+        if (currentLevel < 3) {
+          currentLevel++;
+          loadCurrentLevel();
+        }
+      }
+    });
+
+    window.addEventListener("keyup", (e) => {
+      keys[e.key.toLowerCase()] = false;
+    });
+
+    class Player {
+      constructor(x, y) {
+        this.x = x;
+        this.y = y;
+        this.width = 38;
+        this.height = 52;
+        this.velocityX = 0;
+        this.velocityY = 0;
+        this.speed = 280;
+        this.jumpForce = -620;
+        this.gravity = 1500;
+        this.onGround = false;
+        this.facingRight = true;
+      }
+
+      get bounds() {
+        return {
+          x: this.x,
+          y: this.y,
+          width: this.width,
+          height: this.height
+        };
+      }
+
+      update(dt, platforms) {
+        let move = 0;
+
+        if (keys["a"] || keys["arrowleft"]) {
+          move = -1;
+          this.facingRight = false;
+        }
+
+        if (keys["d"] || keys["arrowright"]) {
+          move = 1;
+          this.facingRight = true;
+        }
+
+        this.velocityX = move * this.speed;
+
+        const jumpPressed = keys[" "] || keys["w"] || keys["arrowup"];
+
+        if (jumpPressed && this.onGround) {
+          this.velocityY = this.jumpForce;
+          this.onGround = false;
+        }
+
+        this.velocityY += this.gravity * dt;
+
+        this.x += this.velocityX * dt;
+        this.handleHorizontalCollisions(platforms);
+
+        this.y += this.velocityY * dt;
+        this.handleVerticalCollisions(platforms);
+
+        if (this.x < 0) this.x = 0;
+        if (this.x + this.width > screenWidth) {
+          this.x = screenWidth - this.width;
+        }
+      }
+
+      handleHorizontalCollisions(platforms) {
+        for (const platform of platforms) {
+          if (isColliding(this.bounds, platform)) {
+            if (this.velocityX > 0) {
+              this.x = platform.x - this.width;
+            } else if (this.velocityX < 0) {
+              this.x = platform.x + platform.width;
+            }
+
+            this.velocityX = 0;
+          }
+        }
+      }
+
+      handleVerticalCollisions(platforms) {
+        this.onGround = false;
+
+        for (const platform of platforms) {
+          if (isColliding(this.bounds, platform)) {
+            if (this.velocityY > 0) {
+              this.y = platform.y - this.height;
+              this.velocityY = 0;
+              this.onGround = true;
+            } else if (this.velocityY < 0) {
+              this.y = platform.y + platform.height;
+              this.velocityY = 0;
+            }
+          }
+        }
+      }
+
+      draw() {
+        ctx.fillStyle = "#50b4ff";
+        roundRect(ctx, this.x, this.y, this.width, this.height, 10);
+        ctx.fill();
+
+        ctx.fillStyle = "#ffe1aa";
+        roundRect(ctx, this.x + 8, this.y + 8, 22, 18, 6);
+        ctx.fill();
+
+        ctx.fillStyle = "black";
+
+        if (this.facingRight) {
+          ctx.beginPath();
+          ctx.arc(this.x + 24, this.y + 17, 3, 0, Math.PI * 2);
+          ctx.fill();
+        } else {
+          ctx.beginPath();
+          ctx.arc(this.x + 14, this.y + 17, 3, 0, Math.PI * 2);
+          ctx.fill();
+        }
+
+        if (this.onGround) {
+          ctx.fillStyle = "#001a80";
+          ctx.fillRect(this.x + 6, this.y + 50, 10, 8);
+          ctx.fillRect(this.x + 22, this.y + 50, 10, 8);
+        }
+      }
+    }
+
+    class Coin {
+      constructor(x, y) {
+        this.x = x;
+        this.y = y;
+        this.width = 24;
+        this.height = 24;
+        this.collected = false;
+      }
+
+      get bounds() {
+        return {
+          x: this.x,
+          y: this.y,
+          width: this.width,
+          height: this.height
+        };
+      }
+
+      draw() {
+        if (this.collected) return;
+
+        ctx.fillStyle = "gold";
+        ctx.beginPath();
+        ctx.arc(this.x + 12, this.y + 12, 12, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.strokeStyle = "orange";
+        ctx.lineWidth = 2;
+        ctx.stroke();
+
+        ctx.fillStyle = "brown";
+        ctx.font = "20px Arial";
+        ctx.fillText("$", this.x + 7, this.y + 20);
+      }
+    }
+
+    class Enemy {
+      constructor(x, y, leftLimit, rightLimit, speed) {
+        this.x = x;
+        this.y = y;
+        this.width = 38;
+        this.height = 25;
+        this.leftLimit = leftLimit;
+        this.rightLimit = rightLimit;
+        this.speed = speed;
+        this.direction = 1;
+      }
+
+      get bounds() {
+        return {
+          x: this.x,
+          y: this.y,
+          width: this.width,
+          height: this.height
+        };
+      }
+
+      update(dt) {
+        this.x += this.speed * this.direction * dt;
+
+        if (this.x < this.leftLimit) {
+          this.x = this.leftLimit;
+          this.direction = 1;
+        }
+
+        if (this.x > this.rightLimit) {
+          this.x = this.rightLimit;
+          this.direction = -1;
+        }
+      }
+
+      draw() {
+        ctx.fillStyle = "#dc4646";
+        roundRect(ctx, this.x, this.y, this.width, this.height, 8);
+        ctx.fill();
+
+        ctx.fillStyle = "black";
+        ctx.beginPath();
+        ctx.arc(this.x + 10, this.y + 9, 3, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.beginPath();
+        ctx.arc(this.x + 28, this.y + 9, 3, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.fillRect(this.x + 12, this.y + 17, 14, 3);
+      }
+    }
+
+    let player;
+    let platforms = [];
+    let coins = [];
+    let enemies = [];
+    let goal = {};
+
+    function loadLevel(levelNumber) {
+      if (levelNumber === 1) {
+        return {
+          playerStart: { x: 80, y: 420 },
+
+          platforms: [
+            rect(0, 560, 1000, 40),
+            rect(160, 470, 160, 20),
+            rect(390, 400, 170, 20),
+            rect(650, 330, 180, 20),
+            rect(230, 270, 130, 20),
+            rect(520, 210, 160, 20),
+            rect(780, 150, 140, 20)
+          ],
+
+          coins: [
+            new Coin(210, 430),
+            new Coin(450, 360),
+            new Coin(710, 290),
+            new Coin(270, 230),
+            new Coin(580, 170),
+            new Coin(840, 110)
+          ],
+
+          enemies: [
+            new Enemy(400, 535, 320, 600, 130),
+            new Enemy(680, 305, 650, 810, 130)
+          ],
+
+          goal: rect(900, 90, 45, 60)
+        };
+      }
+
+      if (levelNumber === 2) {
+        return {
+          playerStart: { x: 50, y: 500 },
+
+          platforms: [
+            rect(0, 560, 1000, 40),
+            rect(130, 485, 120, 20),
+            rect(320, 425, 110, 20),
+            rect(520, 360, 100, 20),
+            rect(720, 300, 100, 20),
+            rect(560, 240, 90, 20),
+            rect(350, 190, 90, 20),
+            rect(160, 140, 90, 20),
+            rect(790, 130, 130, 20)
+          ],
+
+          coins: [
+            new Coin(170, 445),
+            new Coin(350, 385),
+            new Coin(550, 320),
+            new Coin(750, 260),
+            new Coin(590, 200),
+            new Coin(380, 150),
+            new Coin(190, 100),
+            new Coin(840, 70)
+          ],
+
+          enemies: [
+            new Enemy(300, 535, 260, 480, 160),
+            new Enemy(600, 535, 560, 850, 170),
+            new Enemy(730, 275, 720, 810, 140)
+          ],
+
+          goal: rect(885, 50, 45, 60)
+        };
+      }
+
+      return {
+        playerStart: { x: 40, y: 500 },
+
+        platforms: [
+          rect(0, 560, 1000, 40),
+          rect(120, 500, 85, 18),
+          rect(260, 445, 80, 18),
+          rect(410, 390, 75, 18),
+          rect(570, 335, 70, 18),
+          rect(760, 285, 70, 18),
+          rect(610, 225, 65, 18),
+          rect(440, 170, 65, 18),
+          rect(250, 115, 65, 18),
+          rect(780, 115, 130, 18)
+        ],
+
+        coins: [
+          new Coin(145, 460),
+          new Coin(285, 405),
+          new Coin(430, 350),
+          new Coin(590, 295),
+          new Coin(780, 245),
+          new Coin(630, 185),
+          new Coin(460, 130),
+          new Coin(270, 75),
+          new Coin(835, 55)
+        ],
+
+        enemies: [
+          new Enemy(220, 535, 200, 390, 190),
+          new Enemy(500, 535, 480, 690, 210),
+          new Enemy(760, 535, 730, 930, 220),
+          new Enemy(570, 310, 570, 640, 160),
+          new Enemy(760, 260, 760, 830, 170)
+        ],
+
+        goal: rect(875, 35, 45, 60)
+      };
+    }
+
+    function loadCurrentLevel() {
+      const level = loadLevel(currentLevel);
+
+      player = new Player(level.playerStart.x, level.playerStart.y);
+      platforms = level.platforms;
+      coins = level.coins;
+      enemies = level.enemies;
+      goal = level.goal;
+
+      gameWon = false;
+      gameOver = false;
+    }
+
+    function restartLevel() {
+      loadCurrentLevel();
+    }
+
+    function update(dt) {
+      if (gameWon || gameOver) return;
+
+      player.update(dt, platforms);
+
+      for (const enemy of enemies) {
+        enemy.update(dt);
+
+        if (isColliding(player.bounds, enemy.bounds)) {
+          gameOver = true;
+        }
+      }
+
+      for (const coin of coins) {
+        if (!coin.collected && isColliding(player.bounds, coin.bounds)) {
+          coin.collected = true;
+          score += 10;
+        }
+      }
+
+      if (isColliding(player.bounds, goal)) {
+        gameWon = true;
+      }
+
+      if (player.y > screenHeight + 200) {
+        gameOver = true;
+      }
+    }
+
+    function draw() {
+      ctx.clearRect(0, 0, screenWidth, screenHeight);
+
+      drawBackground();
+
+      for (const platform of platforms) {
+        ctx.fillStyle = "#5f462d";
+        ctx.fillRect(platform.x, platform.y, platform.width, platform.height);
+
+        ctx.fillStyle = "#46aa5a";
+        ctx.fillRect(platform.x, platform.y, platform.width, 5);
+      }
+
+      for (const coin of coins) {
+        coin.draw();
+      }
+
+      for (const enemy of enemies) {
+        enemy.draw();
+      }
+
+      ctx.fillStyle = "#5abeff";
+      ctx.fillRect(goal.x, goal.y, goal.width, goal.height);
+
+      ctx.strokeStyle = "white";
+      ctx.lineWidth = 3;
+      ctx.strokeRect(goal.x, goal.y, goal.width, goal.height);
+
+      ctx.fillStyle = "white";
+      ctx.font = "18px Arial";
+      ctx.fillText("GOAL", goal.x - 5, goal.y - 10);
+
+      player.draw();
+
+      ctx.fillStyle = "white";
+      ctx.font = "28px Arial";
+      ctx.fillText(`Level: ${currentLevel}`, 20, 35);
+      ctx.fillText(`Score: ${score}`, 20, 70);
+
+      ctx.font = "20px Arial";
+      ctx.fillStyle = "#d3d3d3";
+      ctx.fillText("Move: A/D or Arrows | Jump: Space/W/Up", 20, 105);
+
+      if (gameWon) {
+        drawOverlay();
+
+        if (currentLevel < 3) {
+          ctx.fillStyle = "gold";
+          ctx.font = "45px Arial";
+          ctx.fillText(`LEVEL ${currentLevel} COMPLETE!`, 270, 250);
+
+          ctx.fillStyle = "white";
+          ctx.font = "28px Arial";
+          ctx.fillText("Press N for next level", 350, 310);
+
+          ctx.fillStyle = "#d3d3d3";
+          ctx.font = "24px Arial";
+          ctx.fillText("Press R to replay level", 350, 350);
+        } else {
+          ctx.fillStyle = "gold";
+          ctx.font = "48px Arial";
+          ctx.fillText("YOU BEAT THE GAME!", 250, 250);
+
+          ctx.fillStyle = "white";
+          ctx.font = "30px Arial";
+          ctx.fillText(`Final Score: ${score}`, 390, 310);
+
+          ctx.fillStyle = "#d3d3d3";
+          ctx.font = "24px Arial";
+          ctx.fillText("Press R to replay Level 3", 345, 355);
+        }
+      }
+
+      if (gameOver) {
+        drawOverlay();
+
+        ctx.fillStyle = "red";
+        ctx.font = "55px Arial";
+        ctx.fillText("GAME OVER", 350, 250);
+
+        ctx.fillStyle = "white";
+        ctx.font = "28px Arial";
+        ctx.fillText("Press R to restart level", 350, 320);
+      }
+    }
+
+    function drawBackground() {
+      ctx.fillStyle = "#191c2b";
+      ctx.fillRect(0, 0, screenWidth, screenHeight);
+
+      ctx.fillStyle = "#ffdc78";
+      ctx.beginPath();
+      ctx.arc(850, 90, 45, 0, Math.PI * 2);
+      ctx.fill();
+
+      for (let i = 0; i < 6; i++) {
+        const x = i * 180 + 40;
+        const y = 120 + (i % 2) * 40;
+
+        ctx.fillStyle = "#3c4155";
+        ctx.beginPath();
+        ctx.arc(x, y, 25, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.beginPath();
+        ctx.arc(x + 30, y + 5, 30, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.beginPath();
+        ctx.arc(x + 65, y, 25, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.fillRect(x, y, 65, 25);
+      }
+    }
+
+    function drawOverlay() {
+      ctx.fillStyle = "rgba(0, 0, 0, 0.7)";
+      ctx.fillRect(0, 0, screenWidth, screenHeight);
+    }
+
+    function isColliding(a, b) {
+      return (
+        a.x < b.x + b.width &&
+        a.x + a.width > b.x &&
+        a.y < b.y + b.height &&
+        a.y + a.height > b.y
+      );
+    }
+
+    function rect(x, y, width, height) {
+      return { x, y, width, height };
+    }
+
+    function roundRect(ctx, x, y, width, height, radius) {
+      ctx.beginPath();
+      ctx.moveTo(x + radius, y);
+      ctx.lineTo(x + width - radius, y);
+      ctx.quadraticCurveTo(x + width, y, x + width, y + radius);
+      ctx.lineTo(x + width, y + height - radius);
+      ctx.quadraticCurveTo(x + width, y + height, x + width - radius, y + height);
+      ctx.lineTo(x + radius, y + height);
+      ctx.quadraticCurveTo(x, y + height, x, y + height - radius);
+      ctx.lineTo(x, y + radius);
+      ctx.quadraticCurveTo(x, y, x + radius, y);
+      ctx.closePath();
+    }
+
+    let lastTime = 0;
+
+    function gameLoop(timestamp) {
+      const dt = (timestamp - lastTime) / 1000;
+      lastTime = timestamp;
+
+      update(dt);
+      draw();
+
+      requestAnimationFrame(gameLoop);
+    }
+
+    loadCurrentLevel();
+    requestAnimationFrame(gameLoop);
+  </script>
+</body>
+</html>

@@ -1,0 +1,21 @@
+{
+  "name": "universal-arcade-hub",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node scripts/prepare-games.js --watch & vite --host 0.0.0.0",
+    "build": "node scripts/prepare-games.js && vite build",
+    "preview": "vite preview --host 0.0.0.0",
+    "prepare-games": "node scripts/prepare-games.js"
+  },
+  "dependencies": {
+    "@vitejs/plugin-react": "latest",
+    "vite": "latest",
+    "typescript": "latest",
+    "react": "latest",
+    "react-dom": "latest",
+    "lucide-react": "latest"
+  },
+  "devDependencies": {}
+}

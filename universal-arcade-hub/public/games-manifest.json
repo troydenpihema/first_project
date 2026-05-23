@@ -1,0 +1,37 @@
+{
+  "generatedAt": "2026-05-23T23:05:38.903Z",
+  "games": [
+    {
+      "id": "coin-game",
+      "title": "Coin Game",
+      "description": "Playable arcade game.",
+      "type": "browser",
+      "playUrl": "/games/coin-game/index.html",
+      "thumbnail": null
+    },
+    {
+      "id": "crashgame",
+      "title": "Crashgame",
+      "description": "Playable arcade game.",
+      "type": "browser",
+      "playUrl": "/games/crashgame/index.html",
+      "thumbnail": null
+    },
+    {
+      "id": "flappy-arcade-game",
+      "title": "Flappy Arcade Game",
+      "description": "Playable arcade game.",
+      "type": "browser",
+      "playUrl": "/games/flappy-arcade-game/index.html",
+      "thumbnail": null
+    },
+    {
+      "id": "snake-game",
+      "title": "Snake Game",
+      "description": "Playable arcade game.",
+      "type": "browser",
+      "playUrl": "/games/snake-game/index.html",
+      "thumbnail": null
+    }
+  ]
+}
