@@ -1,0 +1,16 @@
+{
+  "name": "jungle-dash-relic-run-combined-fixed",
+  "version": "2.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 0.0.0.0",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "vite": "^7.2.4",
+    "phaser": "^3.90.0"
+  },
+  "devDependencies": {}
+}
