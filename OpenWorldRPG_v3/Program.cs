@@ -54,6 +54,10 @@ namespace OpenWorldRPG
 
         static void Update(float dt)
         {
+            if (Raylib.IsKeyPressed(KeyboardKey.Tab))
+            {
+            player.InventoryOpen = !player.InventoryOpen;
+            }
             switch(currentScene)
             {
                 case SceneState.MainMenu:
@@ -104,6 +108,7 @@ namespace OpenWorldRPG
                                     {
                                         tree.Chopped = true;
                                         player.AddWoodcuttingXP(25);
+                                        player.Logs += Raylib.GetRandomValue(1, 3);
                                     }
                                 }
                             }
@@ -117,6 +122,7 @@ namespace OpenWorldRPG
                             if (Raylib.IsKeyPressed(KeyboardKey.R))
                             {
                                 player.AddFishingXP(20);
+                                player.Fish += 1;
                             }
                         }
                     }
@@ -285,6 +291,65 @@ namespace OpenWorldRPG
 
             Raylib.DrawText($"Wood XP: {player.WoodcuttingXP}",20,85,22,Color.LightGray);
             Raylib.DrawText($"Fishing XP: {player.FishingXP}",20,110,22,Color.LightGray);
+           
+           Raylib.DrawText(
+            "SPACE = Chop Tree | R = Fish | TAB = Inventory",
+                20,
+                150,
+                22,
+                Color.White
+                );
+           
+            if (player.InventoryOpen)
+{
+    Raylib.DrawRectangle(
+        420,
+        120,
+        440,
+        420,
+        new Color(0,0,0,220)
+    );
+
+    Raylib.DrawText(
+        "INVENTORY",
+        540,
+        150,
+        40,
+        Color.Gold
+    );
+
+    Raylib.DrawText(
+        $"Logs: {player.Logs}",
+        500,
+        240,
+        32,
+        Color.White
+    );
+
+    Raylib.DrawText(
+        $"Fish: {player.Fish}",
+        500,
+        290,
+        32,
+        Color.White
+    );
+
+    Raylib.DrawText(
+        $"Money: ${player.Money}",
+        500,
+        340,
+        32,
+        Color.White
+    );
+
+    Raylib.DrawText(
+        "TAB = Close Inventory",
+        470,
+        470,
+        24,
+        Color.LightGray
+    );
+}
         }
 
         static void GenerateWorld()
@@ -368,6 +433,12 @@ namespace OpenWorldRPG
 
         public int WoodcuttingXP = 0;
         public int FishingXP = 0;
+
+        public int Logs = 0;
+        public int Fish = 0;
+        public int Money = 0;
+
+        public bool InventoryOpen = false;
 
         public Rectangle Bounds =>
             new Rectangle(Position.X, Position.Y, 40, 60);
