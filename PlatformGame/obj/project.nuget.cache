@@ -1,10 +1,10 @@
 {
   "version": 2,
-  "dgSpecHash": "HHptmRWOzjw=",
+  "dgSpecHash": "kwEOh00zWwY=",
   "success": true,
-  "projectFilePath": "C:\\Users\\Josh_\\Desktop\\first_project\\PlatformGame\\PlatformGame.csproj",
+  "projectFilePath": "/Users/troydenpihema/codingprojects/first_project/PlatformGame/PlatformGame.csproj",
   "expectedPackageFiles": [
-    "C:\\Users\\Josh_\\.nuget\\packages\\raylib-cs\\7.0.2\\raylib-cs.7.0.2.nupkg.sha512"
+    "/Users/troydenpihema/.nuget/packages/raylib-cs/7.0.2/raylib-cs.7.0.2.nupkg.sha512"
   ],
   "logs": []
 }
