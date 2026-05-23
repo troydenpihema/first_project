@@ -1,17 +1,17 @@
 {
   "format": 1,
   "restore": {
-    "C:\\Users\\Josh_\\Desktop\\first_project\\SnakeGame\\SnakeGame.csproj": {}
+    "c:\\Users\\Josh_\\Desktop\\first_project\\SnakeGame\\SnakeGame.csproj": {}
   },
   "projects": {
-    "C:\\Users\\Josh_\\Desktop\\first_project\\SnakeGame\\SnakeGame.csproj": {
+    "c:\\Users\\Josh_\\Desktop\\first_project\\SnakeGame\\SnakeGame.csproj": {
       "version": "1.0.0",
       "restore": {
-        "projectUniqueName": "C:\\Users\\Josh_\\Desktop\\first_project\\SnakeGame\\SnakeGame.csproj",
+        "projectUniqueName": "c:\\Users\\Josh_\\Desktop\\first_project\\SnakeGame\\SnakeGame.csproj",
         "projectName": "SnakeGame",
-        "projectPath": "C:\\Users\\Josh_\\Desktop\\first_project\\SnakeGame\\SnakeGame.csproj",
+        "projectPath": "c:\\Users\\Josh_\\Desktop\\first_project\\SnakeGame\\SnakeGame.csproj",
         "packagesPath": "C:\\Users\\Josh_\\.nuget\\packages\\",
-        "outputPath": "C:\\Users\\Josh_\\Desktop\\first_project\\SnakeGame\\obj\\",
+        "outputPath": "c:\\Users\\Josh_\\Desktop\\first_project\\SnakeGame\\obj\\",
         "projectStyle": "PackageReference",
         "configFilePaths": [
           "C:\\Users\\Josh_\\AppData\\Roaming\\NuGet\\NuGet.Config"
