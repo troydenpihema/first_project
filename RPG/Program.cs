@@ -16,14 +16,26 @@ Player player = new Player();
 List<TreeObject> trees = new();
 List<LakeObject> lakes = new();
 List<NPC> npcs = new();
+List<CityNPC> cityNPCs = new();
 List<Building> buildings = new();
 List<Vehicle> vehicles = new();
+List<Road> roads = new();
 
 GenerateWorld();
 
 Vehicle? currentVehicle = null;
 
+roads.Add(new Road(new Rectangle(-5000, 520, 10000, 120)));
+
+roads.Add(new Road(new Rectangle(
+    3300,
+    0,
+    120,
+    2000
+)));
+
 bool insideBuilding = false;
+Building? currentInterior = null;
 string currentDialogue = "";
 
 while (!Raylib.WindowShouldClose())
@@ -108,16 +120,17 @@ while (!Raylib.WindowShouldClose())
         }
     }
 
-    foreach (Building building in buildings)
+   foreach (Building building in buildings)
+{
+    if (Raylib.CheckCollisionRecs(player.Bounds, building.Bounds))
     {
-        if (Raylib.CheckCollisionRecs(player.Bounds, building.Bounds))
+        if (Raylib.IsKeyPressed(KeyboardKey.E))
         {
-            if (Raylib.IsKeyPressed(KeyboardKey.E))
-            {
-                insideBuilding = !insideBuilding;
-            }
+            insideBuilding = true;
+            currentInterior = building;
         }
     }
+}
 
     Raylib.BeginDrawing();
 
@@ -127,10 +140,16 @@ while (!Raylib.WindowShouldClose())
 
     DrawWorld();
 
+   foreach (Road road in roads)
+{
+    road.Draw();
+}
+
     foreach (TreeObject tree in trees)
     {
         tree.Draw();
     }
+
 
     foreach (LakeObject lake in lakes)
     {
@@ -139,6 +158,12 @@ while (!Raylib.WindowShouldClose())
 
     foreach (NPC npc in npcs)
     {
+        npc.Draw();
+    }
+
+    foreach (CityNPC npc in cityNPCs)
+    {
+        npc.Update(dt);
         npc.Draw();
     }
 
@@ -152,25 +177,68 @@ while (!Raylib.WindowShouldClose())
         vehicle.Draw();
     }
 
-    player.Draw();
+    if (currentVehicle == null)
+    {
+        player.Draw();
+    }
 
     Raylib.EndMode2D();
 
     DrawUI();
 
+    if (insideBuilding &&
+    Raylib.IsKeyPressed(KeyboardKey.Q))
+{
+    insideBuilding = false;
+    currentInterior = null;
+}
+
     if (insideBuilding)
-    {
-        Raylib.DrawRectangle(250, 120, 780, 480, new Color(30, 30, 30, 240));
+{
+    Raylib.DrawRectangle(
+        120,
+        60,
+        1040,
+        600,
+        new Color(40, 40, 40, 255)
+    );
 
-        Raylib.DrawText("Inside Building", 470, 180, 40, Color.White);
-        Raylib.DrawText("Press E to leave", 480, 260, 28, Color.LightGray);
-    }
+    // Floor
+    Raylib.DrawRectangle(
+        160,
+        100,
+        960,
+        520,
+        new Color(90, 80, 70, 255)
+    );
 
-    if (currentDialogue != "")
-    {
-        Raylib.DrawRectangle(100, 560, 1080, 120, new Color(0, 0, 0, 220));
-        Raylib.DrawText(currentDialogue, 130, 610, 28, Color.White);
-    }
+    // Walls
+    Raylib.DrawRectangle(200, 140, 20, 380, Color.DarkBrown);
+    Raylib.DrawRectangle(500, 140, 20, 380, Color.DarkBrown);
+    Raylib.DrawRectangle(800, 140, 20, 380, Color.DarkBrown);
+
+    // Furniture
+    Raylib.DrawRectangle(250, 180, 120, 60, Color.Brown);
+    Raylib.DrawRectangle(580, 260, 150, 70, Color.DarkBlue);
+    Raylib.DrawRectangle(870, 180, 120, 120, Color.DarkGreen);
+
+    // Text
+    Raylib.DrawText(
+        "BUILDING INTERIOR",
+        390,
+        80,
+        32,
+        Color.White
+    );
+
+    Raylib.DrawText(
+        "Press Q to exit building",
+        400,
+        620,
+        24,
+        Color.LightGray
+    );
+}
 
     Raylib.EndDrawing();
 }
@@ -220,15 +288,43 @@ void GenerateWorld()
     npcs.Add(new NPC(new Vector2(500, 440), "Welcome to the village traveler."));
     npcs.Add(new NPC(new Vector2(1700, 440), "Fishing helps you earn money later."));
 
+    // Rural Buildings
     buildings.Add(new Building(new Vector2(700, 320)));
     buildings.Add(new Building(new Vector2(1900, 320)));
     buildings.Add(new Building(new Vector2(-1200, -300)));
-    buildings.Add(new Building(new Vector2(2800, 900)));
+
+    // Metro Area
+    for (int i = 0; i < 12; i++)
+    {
+        buildings.Add(
+            new Building(
+                new Vector2(
+                    3000 + (i % 4) * 260,
+                    400 + (i / 4) * 260
+                )
+            )
+        );
+    }
+
+    // City NPCs
+    for (int i = 0; i < 20; i++)
+    {
+        cityNPCs.Add(
+            new CityNPC(
+                new Vector2(
+                    3000 + random.Next(0, 900),
+                    350 + random.Next(0, 700)
+                )
+            )
+        );
+    }
 
     vehicles.Add(new Vehicle(new Vector2(1000, 450)));
     vehicles.Add(new Vehicle(new Vector2(-800, -200)));
     vehicles.Add(new Vehicle(new Vector2(2200, 700)));
+    vehicles.Add(new Vehicle(new Vector2(3400, 600)));
 }
+
 
 class Player
 {
@@ -374,6 +470,55 @@ class LakeObject
     }
 }
 
+class CityNPC
+{
+    public Vector2 Position;
+
+    Vector2 direction = new Vector2(1, 0);
+
+    float moveTimer = 0;
+
+    public CityNPC(Vector2 position)
+    {
+        Position = position;
+    }
+
+    public void Update(float dt)
+    {
+        moveTimer -= dt;
+
+        if (moveTimer <= 0)
+        {
+            Random random = new Random(Guid.NewGuid().GetHashCode());
+
+            direction = new Vector2(
+                random.Next(-1, 2),
+                random.Next(-1, 2)
+            );
+
+            if (direction != Vector2.Zero)
+            {
+                direction = Vector2.Normalize(direction);
+            }
+
+            moveTimer = 2.5f;
+        }
+
+        Position += direction * 70 * dt;
+    }
+
+    public void Draw()
+    {
+        Raylib.DrawRectangle(
+            (int)Position.X,
+            (int)Position.Y,
+            35,
+            60,
+            Color.Orange
+        );
+    }
+}
+
 class NPC
 {
     public Vector2 Position;
@@ -498,6 +643,32 @@ class Vehicle
     }
 }
 
+class Road
+{
+    public Rectangle Bounds;
+
+    public Road(Rectangle bounds)
+    {
+        Bounds = bounds;
+    }
+
+    public void Draw()
+    {
+        Raylib.DrawRectangleRec(Bounds, Color.DarkGray);
+
+        // optional lane markings
+        for (int i = 0; i < Bounds.Width; i += 80)
+        {
+            Raylib.DrawRectangle(
+                (int)Bounds.X + i,
+                (int)Bounds.Y + (int)(Bounds.Height / 2),
+                40,
+                6,
+                Color.Yellow
+            );
+        }
+    }
+}
 class Building
 {
     public Vector2 Position;
