@@ -69,19 +69,19 @@
     ]
   },
   "packageFolders": {
-    "C:\\Users\\Josh_\\.nuget\\packages\\": {}
+    "/Users/troydenpihema/.nuget/packages/": {}
   },
   "project": {
     "version": "1.0.0",
     "restore": {
-      "projectUniqueName": "c:\\Users\\Josh_\\Desktop\\first_project\\SnakeGame\\SnakeGame.csproj",
+      "projectUniqueName": "/Users/troydenpihema/codingprojects/first_project/SnakeGame/SnakeGame.csproj",
       "projectName": "SnakeGame",
-      "projectPath": "c:\\Users\\Josh_\\Desktop\\first_project\\SnakeGame\\SnakeGame.csproj",
-      "packagesPath": "C:\\Users\\Josh_\\.nuget\\packages\\",
-      "outputPath": "c:\\Users\\Josh_\\Desktop\\first_project\\SnakeGame\\obj\\",
+      "projectPath": "/Users/troydenpihema/codingprojects/first_project/SnakeGame/SnakeGame.csproj",
+      "packagesPath": "/Users/troydenpihema/.nuget/packages/",
+      "outputPath": "/Users/troydenpihema/codingprojects/first_project/SnakeGame/obj/",
       "projectStyle": "PackageReference",
       "configFilePaths": [
-        "C:\\Users\\Josh_\\AppData\\Roaming\\NuGet\\NuGet.Config"
+        "/Users/troydenpihema/.nuget/NuGet/NuGet.Config"
       ],
       "originalTargetFrameworks": [
         "net10.0"
@@ -134,7 +134,7 @@
             "privateAssets": "all"
           }
         },
-        "runtimeIdentifierGraphPath": "C:\\Program Files\\dotnet\\sdk\\10.0.300/PortableRuntimeIdentifierGraph.json",
+        "runtimeIdentifierGraphPath": "/usr/local/share/dotnet/sdk/10.0.300/PortableRuntimeIdentifierGraph.json",
         "packagesToPrune": {
           "Microsoft.CSharp": "(,4.7.32767]",
           "Microsoft.VisualBasic": "(,10.4.32767]",
