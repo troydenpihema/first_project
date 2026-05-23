@@ -1,0 +1,10 @@
+{
+  "version": 2,
+  "dgSpecHash": "mHOQGe2399Q=",
+  "success": true,
+  "projectFilePath": "C:\\Users\\Josh_\\Desktop\\first_project\\SnakeGame\\SnakeGame.csproj",
+  "expectedPackageFiles": [
+    "C:\\Users\\Josh_\\.nuget\\packages\\raylib-cs\\7.0.2\\raylib-cs.7.0.2.nupkg.sha512"
+  ],
+  "logs": []
+}
