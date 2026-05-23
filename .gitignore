@@ -1,0 +1,3 @@
+bin/
+obj/
+.vs/git rm -r --cached PlatformGame/obj
