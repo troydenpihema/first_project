@@ -1,5 +1,6 @@
 
 using Raylib_cs;
+using System;
 using System.Numerics;
 using System.Collections.Generic;
 
@@ -29,7 +30,12 @@ namespace OpenWorldRPG
         static List<Vehicle> vehicles = new();
         static List<Building> buildings = new();
 
+        static List<FloatingText> floatingTexts = new();
+
         static Building currentBuilding = null;
+        static float shakeDuration = 0f;
+        static float shakeMagnitude = 6f;
+        static void TriggerShake(float duration) => shakeDuration = duration;
 
         static void Main()
         {
@@ -71,6 +77,16 @@ namespace OpenWorldRPG
 
                 case SceneState.World:
 
+                    if (shakeDuration > 0) shakeDuration -= dt;
+                    for (int i = floatingTexts.Count - 1; i >= 0; i--)
+                    {
+                        var ft = floatingTexts[i];
+                        ft.Timer -= dt;
+                        ft.Position.Y -= 40f * dt;
+                        floatingTexts[i] = ft;
+                        if (ft.Timer <= 0) floatingTexts.RemoveAt(i);
+}
+
                     player.Update(dt, buildings, trees);
 
                     foreach (Vehicle vehicle in vehicles)
@@ -109,6 +125,13 @@ namespace OpenWorldRPG
                                         tree.Chopped = true;
                                         player.AddWoodcuttingXP(25);
                                         player.Logs += Raylib.GetRandomValue(1, 3);
+                                        TriggerShake(0.15f);
+                                        floatingTexts.Add(new FloatingText {   // 👈 add this
+                                        Position = player.Position - new Vector2(0, 20),
+                                        Text = "+25 WC XP",
+                                        Timer = 1.2f,
+                                        TextColor = Color.Yellow
+                                    });
                                     }
                                 }
                             }
@@ -117,6 +140,7 @@ namespace OpenWorldRPG
 
                     foreach (Lake lake in lakes)
                     {
+                        lake.Update(dt);
                         if (Vector2.Distance(player.Position, lake.Position) < 120)
                         {
                             if (Raylib.IsKeyPressed(KeyboardKey.R))
@@ -184,21 +208,47 @@ namespace OpenWorldRPG
 
         static void DrawMenu()
         {
-            Raylib.ClearBackground(new Color(20,20,30,255));
+             Raylib.ClearBackground(new Color(20, 20, 30, 255));
 
-            Raylib.DrawText("OPEN WORLD RPG", 320, 180, 64, Color.White);
-            Raylib.DrawText("PRESS ENTER TO START", 400, 360, 34, Color.LightGray);
+    // Subtle animated background pulse
+    float pulse = MathF.Sin((float)Raylib.GetTime() * 1.5f) * 10f;
+
+            Raylib.DrawRectangle(0, 0, ScreenWidth, ScreenHeight, new Color(10, 10, 20, 255));
+    Raylib.DrawText("OPEN WORLD RPG", 310, 180, 64, Color.Gold);
+    Raylib.DrawText("OPEN WORLD RPG", 312, 182, 64, new Color(255,200,0,80)); // shadow
+
+    // Blinking "press enter"
+    if ((int)(Raylib.GetTime() * 2) % 2 == 0)
+        Raylib.DrawText("PRESS ENTER TO START", 390, 360, 34, Color.White);
         }
 
         static void DrawWorld()
         {
             Raylib.ClearBackground(new Color(100,180,100,255));
 
+            if (shakeDuration > 0)
+        {
+        camera.Offset = new Vector2(
+        ScreenWidth / 2 + Raylib.GetRandomValue(-1, 1) * shakeMagnitude,
+        ScreenHeight / 2 + Raylib.GetRandomValue(-1, 1) * shakeMagnitude
+            );
+        }
+        else
+        {
+            camera.Offset = new Vector2(ScreenWidth / 2, ScreenHeight / 2);
+        }
             Raylib.BeginMode2D(camera);
 
             Raylib.DrawRectangle(-5000, -5000, 10000, 10000, new Color(90,170,90,255));
 
             Raylib.DrawRectangle(-4000, 550, 8000, 180, Color.DarkGray);
+
+            foreach (var ft in floatingTexts)
+            {
+            byte alpha = (byte)(255 * (ft.Timer / 1.2f));
+            Raylib.DrawText(ft.Text, (int)ft.Position.X, (int)ft.Position.Y, 22,
+                new Color(ft.TextColor.R, ft.TextColor.G, ft.TextColor.B, alpha));
+            }
 
             foreach (Building building in buildings)
             {
@@ -419,7 +469,13 @@ namespace OpenWorldRPG
             vehicles.Add(new Vehicle(new Vector2(-400,650), Color.DarkBlue, 500));
         }
     }
-
+    struct FloatingText
+    {
+    public Vector2 Position;
+    public string Text;
+    public float Timer;
+    public Color TextColor;
+    }
     class Player
     {
         public Vector2 Position;
@@ -639,6 +695,8 @@ namespace OpenWorldRPG
     class Lake
     {
         public Vector2 Position;
+        float rippleTimer = 0f;
+        public void Update(float dt) => rippleTimer += dt;
 
         public Lake(Vector2 pos)
         {
@@ -647,7 +705,11 @@ namespace OpenWorldRPG
 
         public void Draw()
         {
-            Raylib.DrawCircle((int)Position.X,(int)Position.Y,120,Color.Blue);
+            Raylib.DrawCircle((int)Position.X, (int)Position.Y, 120, new Color(30, 100, 200, 255));
+
+            float ripple = MathF.Sin(rippleTimer * 2f) * 6f;
+            Raylib.DrawCircleLines((int)Position.X, (int)Position.Y, (int)(90 + ripple), Color.SkyBlue);
+            Raylib.DrawCircleLines((int)Position.X, (int)Position.Y, (int)(60 + ripple * 0.5f), Color.SkyBlue);
         }
     }
 
@@ -721,6 +783,7 @@ public NPC(Vector2 pos)
         float speed;
 
         Color color;
+        Vector2 velocity = Vector2.Zero;
 
         public Rectangle Bounds =>
             new Rectangle(Position.X, Position.Y, 100, 50);
@@ -753,7 +816,9 @@ public NPC(Vector2 pos)
             if (move != Vector2.Zero)
                 move = Vector2.Normalize(move);
 
-            Position += move * speed * dt;
+            Vector2 targetVelocity = move * speed;
+            velocity = Vector2.Lerp(velocity, targetVelocity, dt * 5f);
+            Position += velocity * dt;
         }
 
         public void Draw()
