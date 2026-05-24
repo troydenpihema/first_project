@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-05-24T02:16:42.605Z",
+  "generatedAt": "2026-05-24T03:27:22.505Z",
   "games": [
     {
       "id": "brick-breaker-deluxe",
@@ -55,6 +55,14 @@
       "description": "Playable arcade game.",
       "type": "browser",
       "playUrl": "/games/fruitslicer/index.html",
+      "thumbnail": null
+    },
+    {
+      "id": "jungle_dash_tuuezy_unlock",
+      "title": "Jungle Dash Tuuezy Unlock",
+      "description": "Playable arcade game.",
+      "type": "browser",
+      "playUrl": "/games/jungle_dash_tuuezy_unlock/index.html",
       "thumbnail": null
     },
     {
