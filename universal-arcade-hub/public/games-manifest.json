@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-05-24T04:06:51.831Z",
+  "generatedAt": "2026-05-24T04:14:07.129Z",
   "games": [
     {
       "id": "brick-breaker-deluxe",
@@ -15,14 +15,6 @@
       "description": "Playable arcade game.",
       "type": "browser",
       "playUrl": "/games/coin-game/index.html",
-      "thumbnail": null
-    },
-    {
-      "id": "crashgame",
-      "title": "Crashgame",
-      "description": "Playable arcade game.",
-      "type": "browser",
-      "playUrl": "/games/crashgame/index.html",
       "thumbnail": null
     },
     {
