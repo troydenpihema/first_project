@@ -16,4 +16,5 @@ obj/
 .vscode/
 
 # Mac files
-.DS_Store
+.DS_Storenode_modules/
+package-lock.json
