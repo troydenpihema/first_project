@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Neon Hover Run</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div id="gameShell">
+    <canvas id="gameCanvas"></canvas>
+
+    <div id="hud">
+      <div class="hud-card">Score <strong id="scoreText">0</strong></div>
+      <div class="hud-card">Gems <strong id="gemText">0</strong></div>
+      <div class="hud-card">Shield <strong id="shieldText">100%</strong></div>
+      <div class="hud-card">Best <strong id="bestText">0</strong></div>
+    </div>
+
+    <div id="touchControls">
+      <button class="touch-btn" data-action="left">◀</button>
+      <button class="touch-btn" data-action="right">▶</button>
+      <button class="touch-btn" data-action="boost">BOOST</button>
+    </div>
+
+    <div id="menu" class="overlay">
+      <div class="panel">
+        <p class="eyebrow">THREE.JS ARCADE DEMO</p>
+        <h1>Neon Hover Run</h1>
+        <p class="sub">Pilot a hover craft through a glowing cyber tunnel. Dodge gates, collect energy gems, and survive the speed ramp.</p>
+        <div class="info-grid">
+          <div><span>Move</span>A/D or ←/→</div>
+          <div><span>Boost</span>W / ↑ / Space</div>
+          <div><span>Goal</span>Collect gems</div>
+          <div><span>Survive</span>Avoid red barriers</div>
+        </div>
+        <button id="startBtn">Start Run</button>
+      </div>
+    </div>
+
+    <div id="gameOver" class="overlay hidden">
+      <div class="panel">
+        <p class="eyebrow">RUN ENDED</p>
+        <h1>System Crash</h1>
+        <p id="finalText" class="sub">Score: 0</p>
+        <button id="restartBtn">Run Again</button>
+      </div>
+    </div>
+  </div>
+
+  <script type="module" src="game.js"></script>
+</body>
+</html>

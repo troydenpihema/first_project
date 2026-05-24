@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Meteor Miner</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div class="game-shell">
+    <canvas id="game"></canvas>
+
+    <div class="hud">
+      <div class="hud-card">Ore <span id="ore">0</span></div>
+      <div class="hud-card">Hull <span id="hull">100</span>%</div>
+      <div class="hud-card">Depth <span id="depth">0</span>m</div>
+      <div class="hud-card">Best <span id="best">0</span></div>
+    </div>
+
+    <div class="touch-controls" aria-hidden="true">
+      <div class="touch-row">
+        <button data-key="ArrowLeft">←</button>
+        <button data-key="ArrowRight">→</button>
+      </div>
+      <button class="wide" data-key="Space">DRILL</button>
+    </div>
+
+    <section class="overlay" id="startOverlay">
+      <div class="panel">
+        <p class="eyebrow">Arcade Hub</p>
+        <h1>Meteor Miner</h1>
+        <p class="intro">Pilot your mining pod through a collapsing asteroid. Drill glowing ore, dodge rocks, and go deeper before your hull gives out.</p>
+        <div class="howto">
+          <div><strong>Move</strong><span>Arrow keys / A D</span></div>
+          <div><strong>Drill</strong><span>Spacebar / touch button</span></div>
+          <div><strong>Goal</strong><span>Mine ore and survive</span></div>
+        </div>
+        <button id="startBtn" class="primary">Start Mining</button>
+      </div>
+    </section>
+
+    <section class="overlay hidden" id="gameOverOverlay">
+      <div class="panel">
+        <p class="eyebrow">Run Complete</p>
+        <h1>Pod Crushed</h1>
+        <p class="intro" id="resultText">You mined 0 ore.</p>
+        <button id="restartBtn" class="primary">Run Again</button>
+      </div>
+    </section>
+  </div>
+
+  <script src="game.js"></script>
+</body>
+</html>

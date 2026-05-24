@@ -1,0 +1,1022 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Jungle Dash Platformer</title>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      background: radial-gradient(circle at top, #1f6f4a, #07120d 70%);
+      font-family: Arial, Helvetica, sans-serif;
+      color: white;
+      overflow: hidden;
+    }
+
+    .game-wrap {
+      width: min(100vw, 1120px);
+      padding: 14px;
+    }
+
+    .top-bar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 10px;
+      font-weight: 800;
+      text-shadow: 0 3px 0 rgba(0,0,0,0.3);
+    }
+
+    .title {
+      font-size: clamp(20px, 3vw, 34px);
+      letter-spacing: 1px;
+    }
+
+    .hud {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+      font-size: clamp(13px, 2vw, 18px);
+    }
+
+    .pill {
+      padding: 8px 12px;
+      border: 2px solid rgba(255,255,255,0.35);
+      border-radius: 999px;
+      background: rgba(0,0,0,0.25);
+      box-shadow: inset 0 1px rgba(255,255,255,0.2), 0 6px 18px rgba(0,0,0,0.2);
+    }
+
+    canvas {
+      width: 100%;
+      aspect-ratio: 16 / 9;
+      display: block;
+      border: 5px solid #f4cf62;
+      border-radius: 22px;
+      background: #6dd7ff;
+      box-shadow: 0 28px 80px rgba(0,0,0,0.45);
+      image-rendering: pixelated;
+    }
+
+    .controls {
+      margin-top: 10px;
+      opacity: 0.9;
+      font-size: 14px;
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    kbd {
+      padding: 3px 7px;
+      border-radius: 6px;
+      background: rgba(255,255,255,0.15);
+      border: 1px solid rgba(255,255,255,0.25);
+      box-shadow: inset 0 -2px rgba(0,0,0,0.25);
+    }
+  </style>
+</head>
+<body>
+  <div class="game-wrap">
+    <div class="top-bar">
+      <div class="title">Jungle Dash</div>
+      <div class="hud">
+        <div class="pill">🍊 Fruit: <span id="fruit">0</span></div>
+        <div class="pill">📦 Crates: <span id="crates">0</span>/<span id="crateTotal">0</span></div>
+        <div class="pill">❤️ Lives: <span id="lives">3</span></div>
+        <div class="pill">⭐ Level: <span id="level">1</span></div>
+      </div>
+    </div>
+
+    <canvas id="game" width="960" height="540"></canvas>
+
+    <div class="controls">
+      <div><kbd>A</kbd>/<kbd>D</kbd> or <kbd>←</kbd>/<kbd>→</kbd> move · <kbd>W</kbd>/<kbd>↑</kbd>/<kbd>Space</kbd> jump · <kbd>J</kbd>/<kbd>K</kbd> spin</div>
+      <div><kbd>R</kbd> restart · Collect fruit, smash crates, avoid pits.</div>
+    </div>
+  </div>
+
+  <script>
+    const canvas = document.getElementById("game");
+    const ctx = canvas.getContext("2d");
+
+    const fruitEl = document.getElementById("fruit");
+    const cratesEl = document.getElementById("crates");
+    const crateTotalEl = document.getElementById("crateTotal");
+    const livesEl = document.getElementById("lives");
+    const levelEl = document.getElementById("level");
+
+    const W = canvas.width;
+    const H = canvas.height;
+    const GRAVITY = 0.72;
+    const FRICTION = 0.82;
+    const keys = new Set();
+
+    const colors = {
+      skyTop: "#69dbff",
+      skyBottom: "#e7fbff",
+      ground: "#2f8f46",
+      dirt: "#8a532b",
+      darkDirt: "#5f351b",
+      leaf: "#1d6b33",
+      leaf2: "#2faa56",
+      player: "#f36b21",
+      playerDark: "#b83b16",
+      playerLight: "#ffb64d",
+      crate: "#bf7a32",
+      crateDark: "#6c3b1d",
+      fruit: "#ff9f1c",
+      fruitLeaf: "#28a745",
+      enemy: "#7146c7",
+      enemyDark: "#402071",
+      sign: "#f7d078"
+    };
+
+    function clamp(v, min, max) {
+      return Math.max(min, Math.min(max, v));
+    }
+
+    function rectsOverlap(a, b) {
+      return a.x < b.x + b.w &&
+        a.x + a.w > b.x &&
+        a.y < b.y + b.h &&
+        a.y + a.h > b.y;
+    }
+
+    function roundRect(c, x, y, w, h, r) {
+      c.beginPath();
+      c.moveTo(x + r, y);
+      c.arcTo(x + w, y, x + w, y + h, r);
+      c.arcTo(x + w, y + h, x, y + h, r);
+      c.arcTo(x, y + h, x, y, r);
+      c.arcTo(x, y, x + w, y, r);
+      c.closePath();
+    }
+
+    function drawTextCentered(text, y, size = 46, color = "white") {
+      ctx.save();
+      ctx.font = `900 ${size}px Arial`;
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.lineWidth = 7;
+      ctx.strokeStyle = "rgba(0,0,0,0.45)";
+      ctx.strokeText(text, W / 2, y);
+      ctx.fillStyle = color;
+      ctx.fillText(text, W / 2, y);
+      ctx.restore();
+    }
+
+    class Player {
+      constructor(x, y) {
+        this.startX = x;
+        this.startY = y;
+        this.x = x;
+        this.y = y;
+        this.w = 42;
+        this.h = 58;
+        this.vx = 0;
+        this.vy = 0;
+        this.speed = 0.78;
+        this.maxSpeed = 5.2;
+        this.jumpPower = 16;
+        this.grounded = false;
+        this.facing = 1;
+        this.spinTimer = 0;
+        this.invincible = 0;
+        this.deadTimer = 0;
+        this.squash = 0;
+      }
+
+      reset() {
+        this.x = this.startX;
+        this.y = this.startY;
+        this.vx = 0;
+        this.vy = 0;
+        this.spinTimer = 0;
+        this.invincible = 90;
+        this.deadTimer = 0;
+      }
+
+      get bounds() {
+        return { x: this.x, y: this.y, w: this.w, h: this.h };
+      }
+
+      get spinBounds() {
+        return {
+          x: this.x - 18,
+          y: this.y + 5,
+          w: this.w + 36,
+          h: this.h - 8
+        };
+      }
+
+      update(level) {
+        if (this.deadTimer > 0) {
+          this.deadTimer--;
+          this.vy += GRAVITY;
+          this.y += this.vy;
+          return;
+        }
+
+        const left = keys.has("ArrowLeft") || keys.has("a");
+        const right = keys.has("ArrowRight") || keys.has("d");
+        const jump = keys.has("ArrowUp") || keys.has("w") || keys.has(" ");
+        const spin = keys.has("j") || keys.has("k");
+
+        if (left) {
+          this.vx -= this.speed;
+          this.facing = -1;
+        }
+        if (right) {
+          this.vx += this.speed;
+          this.facing = 1;
+        }
+        if (!left && !right) this.vx *= FRICTION;
+
+        this.vx = clamp(this.vx, -this.maxSpeed, this.maxSpeed);
+
+        if (jump && this.grounded) {
+          this.vy = -this.jumpPower;
+          this.grounded = false;
+          this.squash = 8;
+        }
+
+        if (spin && this.spinTimer <= 0) {
+          this.spinTimer = 22;
+        }
+
+        if (this.spinTimer > 0) this.spinTimer--;
+        if (this.invincible > 0) this.invincible--;
+        if (this.squash > 0) this.squash--;
+
+        this.vy += GRAVITY;
+        this.x += this.vx;
+        this.collidePlatforms(level.platforms, "x");
+        this.y += this.vy;
+        this.grounded = false;
+        this.collidePlatforms(level.platforms, "y");
+
+        this.x = clamp(this.x, 0, level.width - this.w);
+      }
+
+      collidePlatforms(platforms, axis) {
+        for (const p of platforms) {
+          if (!rectsOverlap(this.bounds, p)) continue;
+
+          if (axis === "x") {
+            if (this.vx > 0) this.x = p.x - this.w;
+            if (this.vx < 0) this.x = p.x + p.w;
+            this.vx = 0;
+          } else {
+            if (this.vy > 0) {
+              this.y = p.y - this.h;
+              this.vy = 0;
+              this.grounded = true;
+            } else if (this.vy < 0) {
+              this.y = p.y + p.h;
+              this.vy = 0;
+            }
+          }
+        }
+      }
+
+      hurt() {
+        if (this.invincible > 0 || this.deadTimer > 0) return false;
+        this.invincible = 120;
+        this.vx = -this.facing * 9;
+        this.vy = -9;
+        return true;
+      }
+
+      die() {
+        this.deadTimer = 70;
+        this.vy = -14;
+      }
+
+      draw(camX, t) {
+        const x = Math.round(this.x - camX);
+        const y = Math.round(this.y);
+        const blink = this.invincible > 0 && Math.floor(t / 5) % 2 === 0;
+        if (blink) return;
+
+        ctx.save();
+        ctx.translate(x + this.w / 2, y + this.h / 2);
+
+        if (this.spinTimer > 0) {
+          ctx.rotate(t * 0.45 * this.facing);
+          ctx.globalAlpha = 0.9;
+          ctx.fillStyle = "rgba(255,255,255,0.28)";
+          roundRect(ctx, -42, -25, 84, 50, 25);
+          ctx.fill();
+        }
+
+        const squashY = this.squash > 0 ? 0.88 : 1;
+        const squashX = this.squash > 0 ? 1.12 : 1;
+        ctx.scale(squashX, squashY);
+
+        ctx.fillStyle = colors.playerDark;
+        roundRect(ctx, -19, -20, 38, 48, 13);
+        ctx.fill();
+
+        ctx.fillStyle = colors.player;
+        roundRect(ctx, -22, -24, 44, 48, 14);
+        ctx.fill();
+
+        ctx.fillStyle = colors.playerLight;
+        roundRect(ctx, -15, -17, 30, 24, 9);
+        ctx.fill();
+
+        ctx.fillStyle = "#fff7dc";
+        ctx.beginPath();
+        ctx.arc(7 * this.facing, -8, 6, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.fillStyle = "#151515";
+        ctx.beginPath();
+        ctx.arc(9 * this.facing, -8, 2.5, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.fillStyle = "#46240d";
+        ctx.beginPath();
+        ctx.moveTo(-13, -29);
+        ctx.lineTo(-3, -47);
+        ctx.lineTo(4, -27);
+        ctx.lineTo(14, -45);
+        ctx.lineTo(15, -24);
+        ctx.closePath();
+        ctx.fill();
+
+        ctx.fillStyle = "#27343d";
+        roundRect(ctx, -22, 22, 17, 12, 5);
+        ctx.fill();
+        roundRect(ctx, 5, 22, 17, 12, 5);
+        ctx.fill();
+
+        ctx.restore();
+      }
+    }
+
+    class Enemy {
+      constructor(x, y, minX, maxX) {
+        this.x = x;
+        this.y = y;
+        this.w = 44;
+        this.h = 34;
+        this.minX = minX;
+        this.maxX = maxX;
+        this.vx = 1.8;
+        this.alive = true;
+        this.pop = 0;
+      }
+
+      get bounds() {
+        return { x: this.x, y: this.y, w: this.w, h: this.h };
+      }
+
+      update() {
+        if (!this.alive) {
+          this.pop++;
+          return;
+        }
+        this.x += this.vx;
+        if (this.x < this.minX || this.x + this.w > this.maxX) {
+          this.vx *= -1;
+        }
+      }
+
+      draw(camX, t) {
+        if (!this.alive && this.pop > 22) return;
+        const x = this.x - camX;
+        const y = this.y;
+        ctx.save();
+        if (!this.alive) {
+          ctx.globalAlpha = 1 - this.pop / 22;
+          ctx.translate(x + this.w / 2, y + this.h / 2);
+          ctx.scale(1 + this.pop / 12, 1 + this.pop / 12);
+          ctx.translate(-(x + this.w / 2), -(y + this.h / 2));
+        }
+        ctx.fillStyle = colors.enemyDark;
+        roundRect(ctx, x + 2, y + 5, this.w, this.h, 15);
+        ctx.fill();
+        ctx.fillStyle = colors.enemy;
+        roundRect(ctx, x, y, this.w, this.h, 15);
+        ctx.fill();
+        ctx.fillStyle = "#fff";
+        ctx.beginPath();
+        ctx.arc(x + 14, y + 13, 5, 0, Math.PI * 2);
+        ctx.arc(x + 30, y + 13, 5, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = "#111";
+        ctx.beginPath();
+        ctx.arc(x + 15 + Math.sign(this.vx), y + 13, 2, 0, Math.PI * 2);
+        ctx.arc(x + 31 + Math.sign(this.vx), y + 13, 2, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = "#251446";
+        ctx.fillRect(x + 11, y + 25, 22, 4);
+        ctx.restore();
+      }
+    }
+
+    class Crate {
+      constructor(x, y, type = "normal") {
+        this.x = x;
+        this.y = y;
+        this.w = 42;
+        this.h = 42;
+        this.type = type;
+        this.broken = false;
+        this.pop = 0;
+      }
+
+      get bounds() {
+        return { x: this.x, y: this.y, w: this.w, h: this.h };
+      }
+
+      break(level) {
+        if (this.broken) return;
+        this.broken = true;
+        this.pop = 1;
+        level.cratesBroken++;
+        const count = this.type === "bonus" ? 5 : 2;
+        for (let i = 0; i < count; i++) {
+          level.fruits.push(new Fruit(
+            this.x + 8 + Math.random() * 26,
+            this.y - 8 - Math.random() * 28,
+            Math.random() * 5 - 2.5,
+            -6 - Math.random() * 4
+          ));
+        }
+      }
+
+      update() {
+        if (this.broken) this.pop++;
+      }
+
+      draw(camX) {
+        if (this.broken && this.pop > 18) return;
+        const x = this.x - camX;
+        const y = this.y;
+        ctx.save();
+        if (this.broken) {
+          ctx.globalAlpha = 1 - this.pop / 18;
+          ctx.translate(x + this.w / 2, y + this.h / 2);
+          ctx.rotate(this.pop * 0.15);
+          ctx.scale(1 + this.pop / 9, 1 + this.pop / 9);
+          ctx.translate(-(x + this.w / 2), -(y + this.h / 2));
+        }
+        ctx.fillStyle = colors.crateDark;
+        ctx.fillRect(x + 3, y + 5, this.w, this.h);
+        ctx.fillStyle = this.type === "bonus" ? "#dba23a" : colors.crate;
+        ctx.fillRect(x, y, this.w, this.h);
+        ctx.strokeStyle = colors.crateDark;
+        ctx.lineWidth = 4;
+        ctx.strokeRect(x + 3, y + 3, this.w - 6, this.h - 6);
+        ctx.beginPath();
+        ctx.moveTo(x + 5, y + 5);
+        ctx.lineTo(x + this.w - 5, y + this.h - 5);
+        ctx.moveTo(x + this.w - 5, y + 5);
+        ctx.lineTo(x + 5, y + this.h - 5);
+        ctx.stroke();
+        ctx.fillStyle = "rgba(255,255,255,0.24)";
+        ctx.fillRect(x + 8, y + 7, 12, 5);
+        ctx.restore();
+      }
+    }
+
+    class Fruit {
+      constructor(x, y, vx = 0, vy = 0) {
+        this.x = x;
+        this.y = y;
+        this.w = 22;
+        this.h = 22;
+        this.vx = vx;
+        this.vy = vy;
+        this.collected = false;
+        this.pop = 0;
+        this.float = Math.random() * 100;
+      }
+
+      get bounds() {
+        return { x: this.x, y: this.y, w: this.w, h: this.h };
+      }
+
+      collect(game) {
+        if (this.collected) return;
+        this.collected = true;
+        this.pop = 1;
+        game.fruit++;
+        if (game.fruit > 0 && game.fruit % 25 === 0) game.lives++;
+      }
+
+      update(level) {
+        if (this.collected) {
+          this.pop++;
+          return;
+        }
+        if (this.vx || this.vy) {
+          this.vy += 0.32;
+          this.x += this.vx;
+          this.y += this.vy;
+          for (const p of level.platforms) {
+            if (rectsOverlap(this.bounds, p) && this.vy > 0) {
+              this.y = p.y - this.h;
+              this.vx *= 0.75;
+              this.vy *= -0.32;
+              if (Math.abs(this.vy) < 1.5) this.vy = 0;
+            }
+          }
+        }
+      }
+
+      draw(camX, t) {
+        if (this.collected && this.pop > 18) return;
+        const bob = Math.sin((t + this.float) / 16) * 4;
+        const x = this.x - camX + this.w / 2;
+        const y = this.y + this.h / 2 + bob;
+        ctx.save();
+        if (this.collected) {
+          ctx.globalAlpha = 1 - this.pop / 18;
+          ctx.scale(1 + this.pop / 20, 1 + this.pop / 20);
+        }
+        ctx.fillStyle = colors.fruit;
+        ctx.beginPath();
+        ctx.ellipse(x, y, 10, 12, 0.25, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = "#ffd27a";
+        ctx.beginPath();
+        ctx.ellipse(x - 3, y - 4, 3, 5, 0.4, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = colors.fruitLeaf;
+        ctx.beginPath();
+        ctx.ellipse(x + 5, y - 13, 7, 3, -0.45, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      }
+    }
+
+    class Level {
+      constructor(index, data) {
+        this.index = index;
+        this.width = data.width;
+        this.spawn = data.spawn;
+        this.finish = data.finish;
+        this.platforms = data.platforms.map(p => ({ ...p }));
+        this.crates = data.crates.map(c => new Crate(c.x, c.y, c.type));
+        this.enemies = data.enemies.map(e => new Enemy(e.x, e.y, e.minX, e.maxX));
+        this.fruits = data.fruits.map(f => new Fruit(f.x, f.y));
+        this.cratesBroken = 0;
+        this.finished = false;
+      }
+
+      get crateTotal() {
+        return this.crates.length;
+      }
+    }
+
+    const levelData = [
+      {
+        width: 2850,
+        spawn: { x: 70, y: 350 },
+        finish: { x: 2700, y: 300, w: 48, h: 120 },
+        platforms: [
+          { x: 0, y: 450, w: 420, h: 90 },
+          { x: 500, y: 420, w: 280, h: 120 },
+          { x: 860, y: 385, w: 240, h: 155 },
+          { x: 1180, y: 450, w: 420, h: 90 },
+          { x: 1710, y: 410, w: 260, h: 130 },
+          { x: 2060, y: 370, w: 220, h: 170 },
+          { x: 2360, y: 450, w: 490, h: 90 },
+          { x: 650, y: 300, w: 120, h: 28 },
+          { x: 1360, y: 310, w: 140, h: 28 },
+          { x: 1850, y: 260, w: 150, h: 28 }
+        ],
+        crates: [
+          { x: 300, y: 408 },
+          { x: 640, y: 258, type: "bonus" },
+          { x: 920, y: 343 },
+          { x: 1240, y: 408 },
+          { x: 1290, y: 408 },
+          { x: 1840, y: 218, type: "bonus" },
+          { x: 2140, y: 328 },
+          { x: 2460, y: 408 }
+        ],
+        enemies: [
+          { x: 575, y: 386, minX: 520, maxX: 780 },
+          { x: 1240, y: 416, minX: 1190, maxX: 1585 },
+          { x: 2400, y: 416, minX: 2370, maxX: 2820 }
+        ],
+        fruits: [
+          { x: 160, y: 385 }, { x: 205, y: 370 }, { x: 250, y: 385 },
+          { x: 555, y: 350 }, { x: 605, y: 335 }, { x: 655, y: 335 }, { x: 705, y: 350 },
+          { x: 905, y: 310 }, { x: 955, y: 300 }, { x: 1005, y: 310 },
+          { x: 1730, y: 335 }, { x: 1780, y: 318 }, { x: 1830, y: 302 },
+          { x: 2085, y: 300 }, { x: 2135, y: 288 }, { x: 2185, y: 300 },
+          { x: 2500, y: 385 }, { x: 2550, y: 370 }, { x: 2600, y: 385 }
+        ]
+      },
+      {
+        width: 3400,
+        spawn: { x: 70, y: 300 },
+        finish: { x: 3230, y: 270, w: 48, h: 150 },
+        platforms: [
+          { x: 0, y: 430, w: 330, h: 110 },
+          { x: 430, y: 390, w: 180, h: 150 },
+          { x: 720, y: 350, w: 190, h: 190 },
+          { x: 1030, y: 420, w: 360, h: 120 },
+          { x: 1510, y: 380, w: 170, h: 160 },
+          { x: 1840, y: 340, w: 220, h: 200 },
+          { x: 2180, y: 405, w: 330, h: 135 },
+          { x: 2640, y: 360, w: 250, h: 180 },
+          { x: 3020, y: 420, w: 380, h: 120 },
+          { x: 1110, y: 275, w: 130, h: 28 },
+          { x: 1920, y: 235, w: 140, h: 28 },
+          { x: 2720, y: 245, w: 145, h: 28 }
+        ],
+        crates: [
+          { x: 470, y: 348 },
+          { x: 520, y: 348 },
+          { x: 1115, y: 233, type: "bonus" },
+          { x: 1270, y: 378 },
+          { x: 1920, y: 193, type: "bonus" },
+          { x: 2250, y: 363 },
+          { x: 2300, y: 363 },
+          { x: 2755, y: 203, type: "bonus" },
+          { x: 3090, y: 378 }
+        ],
+        enemies: [
+          { x: 745, y: 316, minX: 725, maxX: 900 },
+          { x: 1085, y: 386, minX: 1040, maxX: 1380 },
+          { x: 2210, y: 371, minX: 2190, maxX: 2495 },
+          { x: 3050, y: 386, minX: 3030, maxX: 3380 }
+        ],
+        fruits: [
+          { x: 110, y: 365 }, { x: 155, y: 345 }, { x: 200, y: 365 },
+          { x: 445, y: 320 }, { x: 490, y: 305 }, { x: 535, y: 320 },
+          { x: 740, y: 270 }, { x: 790, y: 250 }, { x: 840, y: 270 },
+          { x: 1160, y: 205 }, { x: 1210, y: 205 },
+          { x: 1870, y: 270 }, { x: 1920, y: 250 }, { x: 1970, y: 270 },
+          { x: 2665, y: 290 }, { x: 2715, y: 275 }, { x: 2765, y: 275 }, { x: 2815, y: 290 },
+          { x: 3140, y: 355 }, { x: 3190, y: 340 }, { x: 3240, y: 355 }
+        ]
+      }
+    ];
+
+    const game = {
+      levelIndex: 0,
+      level: null,
+      player: null,
+      cameraX: 0,
+      fruit: 0,
+      lives: 3,
+      state: "playing",
+      messageTimer: 0,
+      time: 0
+    };
+
+    function loadLevel(index) {
+      game.levelIndex = index;
+      game.level = new Level(index, levelData[index]);
+      game.player = new Player(game.level.spawn.x, game.level.spawn.y);
+      game.cameraX = 0;
+      game.state = "playing";
+      game.messageTimer = 90;
+      updateHud();
+    }
+
+    function restartGame() {
+      game.levelIndex = 0;
+      game.fruit = 0;
+      game.lives = 3;
+      loadLevel(0);
+    }
+
+    function nextLevel() {
+      if (game.levelIndex + 1 >= levelData.length) {
+        game.state = "won";
+      } else {
+        loadLevel(game.levelIndex + 1);
+      }
+    }
+
+    function updateHud() {
+      fruitEl.textContent = game.fruit;
+      cratesEl.textContent = game.level ? game.level.cratesBroken : 0;
+      crateTotalEl.textContent = game.level ? game.level.crateTotal : 0;
+      livesEl.textContent = game.lives;
+      levelEl.textContent = game.levelIndex + 1;
+    }
+
+    function loseLife() {
+      if (game.state !== "playing") return;
+      game.lives--;
+      updateHud();
+      if (game.lives <= 0) {
+        game.state = "gameover";
+        game.player.die();
+      } else {
+        game.player.reset();
+      }
+    }
+
+    function update() {
+      game.time++;
+      if (game.state === "won" || game.state === "gameover") return;
+
+      const level = game.level;
+      const player = game.player;
+      player.update(level);
+
+      for (const enemy of level.enemies) enemy.update();
+      for (const crate of level.crates) crate.update();
+      for (const fruit of level.fruits) fruit.update(level);
+
+      for (const fruit of level.fruits) {
+        if (!fruit.collected && rectsOverlap(player.bounds, fruit.bounds)) {
+          fruit.collect(game);
+        }
+      }
+
+      for (const crate of level.crates) {
+        if (crate.broken) continue;
+
+        if (player.spinTimer > 0 && rectsOverlap(player.spinBounds, crate.bounds)) {
+          crate.break(level);
+          player.vx += player.facing * 2.4;
+          continue;
+        }
+
+        if (rectsOverlap(player.bounds, crate.bounds)) {
+          const prevBottom = player.y + player.h - player.vy;
+          const prevTop = player.y - player.vy;
+
+          if (player.vy > 0 && prevBottom <= crate.y + 12) {
+            player.y = crate.y - player.h;
+            player.vy = -9;
+            player.grounded = true;
+          } else if (player.vy < 0 && prevTop >= crate.y + crate.h - 10) {
+            crate.break(level);
+            player.vy = 4;
+          } else {
+            if (player.x + player.w / 2 < crate.x + crate.w / 2) player.x = crate.x - player.w;
+            else player.x = crate.x + crate.w;
+            player.vx = 0;
+          }
+        }
+      }
+
+      for (const enemy of level.enemies) {
+        if (!enemy.alive) continue;
+        if (player.spinTimer > 0 && rectsOverlap(player.spinBounds, enemy.bounds)) {
+          enemy.alive = false;
+          game.fruit += 3;
+          player.vx = -player.facing * 4;
+          updateHud();
+          continue;
+        }
+
+        if (rectsOverlap(player.bounds, enemy.bounds)) {
+          const stomp = player.vy > 2 && player.y + player.h - player.vy <= enemy.y + 10;
+          if (stomp) {
+            enemy.alive = false;
+            player.vy = -11;
+            game.fruit += 3;
+            updateHud();
+          } else if (player.hurt()) {
+            game.lives--;
+            updateHud();
+            if (game.lives <= 0) {
+              game.state = "gameover";
+              player.die();
+            }
+          }
+        }
+      }
+
+      if (player.y > H + 200) loseLife();
+
+      if (rectsOverlap(player.bounds, level.finish)) {
+        level.finished = true;
+        game.state = "levelclear";
+        game.messageTimer = 105;
+      }
+
+      if (game.state === "levelclear") {
+        game.messageTimer--;
+        if (game.messageTimer <= 0) nextLevel();
+      }
+
+      game.cameraX = clamp(player.x - W * 0.38, 0, level.width - W);
+      updateHud();
+    }
+
+    function drawBackground(camX, levelWidth, t) {
+      const sky = ctx.createLinearGradient(0, 0, 0, H);
+      sky.addColorStop(0, colors.skyTop);
+      sky.addColorStop(0.72, colors.skyBottom);
+      sky.addColorStop(1, "#a5ef89");
+      ctx.fillStyle = sky;
+      ctx.fillRect(0, 0, W, H);
+
+      ctx.fillStyle = "rgba(255,255,255,0.5)";
+      for (let i = 0; i < 8; i++) {
+        const x = ((i * 260 - camX * 0.18) % (W + 260)) - 120;
+        const y = 55 + (i % 3) * 35;
+        ctx.beginPath();
+        ctx.ellipse(x, y, 42, 15, 0, 0, Math.PI * 2);
+        ctx.ellipse(x + 35, y + 3, 35, 13, 0, 0, Math.PI * 2);
+        ctx.ellipse(x - 35, y + 5, 30, 12, 0, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      for (let layer = 0; layer < 3; layer++) {
+        const par = [0.12, 0.22, 0.35][layer];
+        const baseY = [360, 390, 430][layer];
+        ctx.fillStyle = ["#24633c", "#1f7a3d", "#199548"][layer];
+        ctx.beginPath();
+        ctx.moveTo(0, H);
+        for (let x = -80; x <= W + 160; x += 120) {
+          const worldX = x + camX * par;
+          const y = baseY + Math.sin(worldX / 95 + layer * 2) * 20;
+          ctx.lineTo(x, y);
+          ctx.lineTo(x + 60, y - 75 - layer * 18);
+          ctx.lineTo(x + 120, y);
+        }
+        ctx.lineTo(W, H);
+        ctx.closePath();
+        ctx.fill();
+      }
+
+      // Decorative trees in foreground parallax.
+      for (let i = 0; i < 28; i++) {
+        const worldX = i * 150 + 40;
+        const x = worldX - camX * 0.55;
+        if (x < -100 || x > W + 100) continue;
+        const y = 330 + Math.sin(i) * 18;
+        ctx.fillStyle = "#633718";
+        ctx.fillRect(x + 26, y + 52, 16, 110);
+        ctx.fillStyle = i % 2 ? colors.leaf : colors.leaf2;
+        ctx.beginPath();
+        ctx.ellipse(x + 35, y + 42, 45, 28, 0, 0, Math.PI * 2);
+        ctx.ellipse(x + 15, y + 65, 35, 25, 0.4, 0, Math.PI * 2);
+        ctx.ellipse(x + 58, y + 65, 38, 24, -0.4, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+
+    function drawPlatform(p, camX) {
+      const x = Math.round(p.x - camX);
+      const y = Math.round(p.y);
+      ctx.fillStyle = colors.dirt;
+      ctx.fillRect(x, y, p.w, p.h);
+
+      ctx.fillStyle = colors.darkDirt;
+      for (let i = 0; i < p.w; i += 34) {
+        ctx.fillRect(x + i, y + 30 + ((i / 34) % 2) * 12, 18, 6);
+        ctx.fillRect(x + i + 10, y + 68, 24, 7);
+      }
+
+      ctx.fillStyle = colors.ground;
+      roundRect(ctx, x - 3, y - 10, p.w + 6, 28, 10);
+      ctx.fill();
+
+      ctx.fillStyle = "#63c95e";
+      for (let i = 8; i < p.w; i += 32) {
+        ctx.beginPath();
+        ctx.moveTo(x + i, y - 10);
+        ctx.lineTo(x + i + 10, y - 24);
+        ctx.lineTo(x + i + 20, y - 10);
+        ctx.fill();
+      }
+    }
+
+    function drawFinish(finish, camX, t) {
+      const x = finish.x - camX;
+      const y = finish.y;
+      ctx.fillStyle = "#3e2412";
+      ctx.fillRect(x + 20, y + 28, 8, finish.h);
+      ctx.fillStyle = colors.sign;
+      roundRect(ctx, x - 15, y, 78, 48, 8);
+      ctx.fill();
+      ctx.strokeStyle = "#5d3414";
+      ctx.lineWidth = 4;
+      ctx.stroke();
+      ctx.fillStyle = "#47240d";
+      ctx.font = "900 18px Arial";
+      ctx.textAlign = "center";
+      ctx.fillText("EXIT", x + 24, y + 30);
+      ctx.fillStyle = "#ff4242";
+      ctx.beginPath();
+      ctx.moveTo(x + 28, y - 5);
+      ctx.lineTo(x + 75, y + 10 + Math.sin(t / 10) * 4);
+      ctx.lineTo(x + 28, y + 26);
+      ctx.closePath();
+      ctx.fill();
+    }
+
+    function draw() {
+      const level = game.level;
+      const camX = game.cameraX;
+      const t = game.time;
+
+      drawBackground(camX, level.width, t);
+
+      for (const p of level.platforms) drawPlatform(p, camX);
+      drawFinish(level.finish, camX, t);
+
+      for (const fruit of level.fruits) fruit.draw(camX, t);
+      for (const crate of level.crates) crate.draw(camX);
+      for (const enemy of level.enemies) enemy.draw(camX, t);
+      game.player.draw(camX, t);
+
+      // Vignette
+      const vignette = ctx.createRadialGradient(W / 2, H / 2, 120, W / 2, H / 2, 620);
+      vignette.addColorStop(0, "rgba(0,0,0,0)");
+      vignette.addColorStop(1, "rgba(0,0,0,0.25)");
+      ctx.fillStyle = vignette;
+      ctx.fillRect(0, 0, W, H);
+
+      if (game.messageTimer > 0 && game.state === "playing") {
+        drawTextCentered(`Level ${game.levelIndex + 1}`, 120, 42, "#ffe66d");
+      }
+
+      if (game.state === "levelclear") {
+        ctx.fillStyle = "rgba(0,0,0,0.35)";
+        ctx.fillRect(0, 0, W, H);
+        drawTextCentered("LEVEL CLEAR!", 220, 58, "#ffe66d");
+        drawTextCentered(`Crates ${level.cratesBroken}/${level.crateTotal}`, 285, 32, "white");
+      }
+
+      if (game.state === "won") {
+        ctx.fillStyle = "rgba(0,0,0,0.58)";
+        ctx.fillRect(0, 0, W, H);
+        drawTextCentered("YOU WON!", 205, 66, "#ffe66d");
+        drawTextCentered(`Fruit collected: ${game.fruit}`, 280, 34, "white");
+        drawTextCentered("Press R to play again", 340, 28, "#d7fff1");
+      }
+
+      if (game.state === "gameover") {
+        ctx.fillStyle = "rgba(0,0,0,0.62)";
+        ctx.fillRect(0, 0, W, H);
+        drawTextCentered("GAME OVER", 225, 64, "#ff6b6b");
+        drawTextCentered("Press R to restart", 300, 30, "white");
+      }
+    }
+
+    function loop() {
+      update();
+      draw();
+      requestAnimationFrame(loop);
+    }
+
+    window.addEventListener("keydown", (e) => {
+      const key = e.key.length === 1 ? e.key.toLowerCase() : e.key;
+      keys.add(key);
+
+      if (["ArrowLeft", "ArrowRight", "ArrowUp", " "].includes(e.key)) {
+        e.preventDefault();
+      }
+
+      if (key === "r") restartGame();
+    });
+
+    window.addEventListener("keyup", (e) => {
+      const key = e.key.length === 1 ? e.key.toLowerCase() : e.key;
+      keys.delete(key);
+    });
+
+    // Touch controls for quick mobile testing.
+    canvas.addEventListener("touchstart", (e) => {
+      const touch = e.touches[0];
+      const rect = canvas.getBoundingClientRect();
+      const x = touch.clientX - rect.left;
+      const y = touch.clientY - rect.top;
+      if (x < rect.width * 0.33) keys.add("a");
+      else if (x > rect.width * 0.66) keys.add("d");
+      else if (y < rect.height * 0.5) keys.add(" ");
+      else keys.add("j");
+      e.preventDefault();
+    }, { passive: false });
+
+    canvas.addEventListener("touchend", () => {
+      keys.delete("a");
+      keys.delete("d");
+      keys.delete(" ");
+      keys.delete("j");
+    });
+
+    loadLevel(0);
+    loop();
+  </script>
+</body>
+</html>

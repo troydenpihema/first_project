@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Skybound Isles</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div id="gameShell">
+    <canvas id="gameCanvas"></canvas>
+
+    <div id="hud">
+      <div class="hud-card">
+        <span class="hud-label">Crystals</span>
+        <span id="crystalCount">0</span>
+      </div>
+      <div class="hud-card">
+        <span class="hud-label">Health</span>
+        <span id="healthCount">♥♥♥</span>
+      </div>
+      <div class="hud-card">
+        <span class="hud-label">Stage</span>
+        <span id="stageName">1</span>
+      </div>
+    </div>
+
+    <div id="toast" class="toast hidden"></div>
+
+    <div id="mobileControls">
+      <div class="mobile-left">
+        <button class="touch" data-key="ArrowLeft">←</button>
+        <button class="touch" data-key="ArrowRight">→</button>
+      </div>
+      <div class="mobile-right">
+        <button class="touch" data-key="KeyX">Dash</button>
+        <button class="touch jump" data-key="Space">Jump</button>
+      </div>
+    </div>
+
+    <section id="menu" class="overlay">
+      <div class="panel">
+        <div class="eyebrow">Premium Arcade Platformer</div>
+        <h1>Skybound<br />Isles</h1>
+        <p>
+          Leap across floating islands, dash through ancient ruins, collect sky crystals,
+          and awaken the lighthouse before the storm consumes the world.
+        </p>
+        <div class="feature-grid">
+          <div><strong>Move</strong><span>A/D or Arrows</span></div>
+          <div><strong>Jump</strong><span>Space / W / Up</span></div>
+          <div><strong>Dash</strong><span>X / Shift</span></div>
+          <div><strong>Goal</strong><span>Reach the beacon</span></div>
+        </div>
+        <button id="playBtn">Start Adventure</button>
+      </div>
+    </section>
+
+    <section id="gameOver" class="overlay hidden">
+      <div class="panel small">
+        <div class="eyebrow">Run Ended</div>
+        <h2 id="gameOverTitle">The storm caught you</h2>
+        <p id="gameOverText">Try again and use dash to cross the wider gaps.</p>
+        <button id="retryBtn">Restart</button>
+      </div>
+    </section>
+  </div>
+
+  <script src="game.js"></script>
+</body>
+</html>

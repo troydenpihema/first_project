@@ -1,0 +1,299 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Space Shooter</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background: radial-gradient(circle at top, #1b2450, #050713 70%);
+      color: #fff;
+      font-family: Arial, Helvetica, sans-serif;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+    }
+    .wrap { text-align: center; width: min(100vw, 980px); }
+    canvas {
+      width: min(94vw, 900px);
+      height: auto;
+      background: linear-gradient(#070a1e, #02030b);
+      border: 3px solid rgba(255,255,255,.85);
+      border-radius: 18px;
+      box-shadow: 0 22px 70px rgba(0,0,0,.45);
+    }
+    p { margin: 10px 0 0; color: #cdd5ff; font-size: 14px; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <canvas id="game" width="900" height="620"></canvas>
+    <p>Move: A/D or ←/→ | Shoot: Space | Start/Restart: Enter</p>
+  </div>
+
+  <script>
+    const canvas = document.getElementById('game');
+    const ctx = canvas.getContext('2d');
+    const W = canvas.width;
+    const H = canvas.height;
+
+    const keys = {};
+    let state = 'menu';
+    let score = 0;
+    let wave = 1;
+    let lives = 3;
+    let lastTime = 0;
+    let shootCooldown = 0;
+    let enemyTimer = 0;
+    let powerTimer = 0;
+    let shake = 0;
+
+    const player = { x: W / 2 - 24, y: H - 82, w: 48, h: 42, speed: 440, power: 1 };
+    let bullets = [];
+    let enemies = [];
+    let particles = [];
+    let stars = [];
+    let powers = [];
+
+    for (let i = 0; i < 110; i++) {
+      stars.push({ x: Math.random() * W, y: Math.random() * H, r: Math.random() * 2 + .5, s: Math.random() * 75 + 25 });
+    }
+
+    window.addEventListener('keydown', e => {
+      keys[e.key.toLowerCase()] = true;
+      if (e.key === ' ') e.preventDefault();
+      if (e.key === 'Enter' && (state === 'menu' || state === 'gameover' || state === 'win')) startGame();
+    });
+    window.addEventListener('keyup', e => keys[e.key.toLowerCase()] = false);
+    canvas.addEventListener('pointerdown', () => {
+      if (state !== 'playing') startGame();
+      else fire();
+    });
+
+    function startGame() {
+      state = 'playing';
+      score = 0; wave = 1; lives = 3;
+      player.x = W / 2 - player.w / 2;
+      player.power = 1;
+      bullets = []; enemies = []; particles = []; powers = [];
+      enemyTimer = 0; powerTimer = 6;
+    }
+
+    function fire() {
+      if (shootCooldown > 0 || state !== 'playing') return;
+      shootCooldown = Math.max(0.12, 0.24 - player.power * 0.03);
+      const cx = player.x + player.w / 2;
+      bullets.push({ x: cx - 4, y: player.y - 8, w: 8, h: 18, vy: -720, damage: 1 });
+      if (player.power >= 2) {
+        bullets.push({ x: cx - 22, y: player.y, w: 7, h: 16, vy: -650, damage: 1 });
+        bullets.push({ x: cx + 15, y: player.y, w: 7, h: 16, vy: -650, damage: 1 });
+      }
+      if (player.power >= 4) {
+        bullets.push({ x: cx - 36, y: player.y + 8, w: 6, h: 14, vy: -610, damage: 1 });
+        bullets.push({ x: cx + 30, y: player.y + 8, w: 6, h: 14, vy: -610, damage: 1 });
+      }
+    }
+
+    function spawnEnemy() {
+      const typeRoll = Math.random();
+      const big = wave >= 3 && typeRoll > .76;
+      const fast = wave >= 2 && typeRoll < .24;
+      const size = big ? 54 : fast ? 30 : 40;
+      enemies.push({
+        x: Math.random() * (W - size - 40) + 20,
+        y: -size,
+        w: size,
+        h: size,
+        vy: (big ? 70 : fast ? 180 : 115) + wave * 10,
+        vx: (Math.random() - .5) * (fast ? 110 : 55),
+        hp: big ? 4 + Math.floor(wave / 2) : 1 + Math.floor(wave / 4),
+        maxHp: big ? 4 + Math.floor(wave / 2) : 1 + Math.floor(wave / 4),
+        type: big ? 'tank' : fast ? 'fast' : 'normal'
+      });
+    }
+
+    function spawnPower() {
+      powers.push({ x: Math.random() * (W - 34) + 17, y: -30, w: 30, h: 30, vy: 120, type: Math.random() > .5 ? 'power' : 'life' });
+    }
+
+    function explode(x, y, color = '#8ee8ff', amount = 18) {
+      for (let i = 0; i < amount; i++) {
+        particles.push({ x, y, vx: (Math.random() - .5) * 360, vy: (Math.random() - .5) * 360, life: Math.random() * .45 + .25, color });
+      }
+    }
+
+    function hit(a, b) {
+      return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
+    }
+
+    function update(dt) {
+      stars.forEach(s => { s.y += s.s * dt; if (s.y > H) { s.y = 0; s.x = Math.random() * W; } });
+      particles = particles.filter(p => (p.life -= dt) > 0);
+      particles.forEach(p => { p.x += p.vx * dt; p.y += p.vy * dt; p.vx *= .97; p.vy *= .97; });
+      if (state !== 'playing') return;
+
+      if (keys['a'] || keys['arrowleft']) player.x -= player.speed * dt;
+      if (keys['d'] || keys['arrowright']) player.x += player.speed * dt;
+      player.x = Math.max(10, Math.min(W - player.w - 10, player.x));
+      shootCooldown -= dt;
+      if (keys[' ']) fire();
+
+      enemyTimer -= dt;
+      if (enemyTimer <= 0) {
+        spawnEnemy();
+        enemyTimer = Math.max(.22, 1.1 - wave * .08);
+      }
+      powerTimer -= dt;
+      if (powerTimer <= 0) { spawnPower(); powerTimer = 9 + Math.random() * 8; }
+
+      bullets.forEach(b => b.y += b.vy * dt);
+      bullets = bullets.filter(b => b.y + b.h > -20);
+
+      enemies.forEach(e => {
+        e.y += e.vy * dt;
+        e.x += e.vx * dt;
+        if (e.x < 0 || e.x + e.w > W) e.vx *= -1;
+      });
+
+      powers.forEach(p => p.y += p.vy * dt);
+      powers = powers.filter(p => p.y < H + 40);
+
+      for (const b of bullets) {
+        for (const e of enemies) {
+          if (!b.dead && !e.dead && hit(b, e)) {
+            b.dead = true;
+            e.hp -= b.damage;
+            explode(b.x, b.y, '#9ffcff', 5);
+            if (e.hp <= 0) {
+              e.dead = true;
+              score += e.type === 'tank' ? 50 : e.type === 'fast' ? 25 : 15;
+              explode(e.x + e.w / 2, e.y + e.h / 2, e.type === 'tank' ? '#ffb347' : '#68f0ff', 22);
+              shake = .12;
+            }
+          }
+        }
+      }
+      bullets = bullets.filter(b => !b.dead);
+      enemies = enemies.filter(e => !e.dead);
+
+      for (const e of enemies) {
+        if (hit(player, e)) {
+          e.dead = true;
+          lives--;
+          player.power = Math.max(1, player.power - 1);
+          explode(player.x + player.w / 2, player.y + player.h / 2, '#ff4d6d', 28);
+          shake = .25;
+          if (lives <= 0) state = 'gameover';
+        }
+        if (e.y > H + 40) {
+          e.dead = true;
+          lives--;
+          if (lives <= 0) state = 'gameover';
+        }
+      }
+      enemies = enemies.filter(e => !e.dead);
+
+      for (const p of powers) {
+        if (!p.dead && hit(player, p)) {
+          p.dead = true;
+          if (p.type === 'life') lives = Math.min(5, lives + 1);
+          else player.power = Math.min(5, player.power + 1);
+          explode(p.x + p.w / 2, p.y + p.h / 2, p.type === 'life' ? '#63ff90' : '#ffe66d', 16);
+        }
+      }
+      powers = powers.filter(p => !p.dead);
+
+      wave = Math.floor(score / 220) + 1;
+      if (score >= 1600) state = 'win';
+      shake = Math.max(0, shake - dt);
+    }
+
+    function drawShip() {
+      const x = player.x, y = player.y;
+      ctx.save();
+      ctx.shadowColor = '#6be7ff';
+      ctx.shadowBlur = 16;
+      ctx.fillStyle = '#6be7ff';
+      ctx.beginPath();
+      ctx.moveTo(x + player.w / 2, y);
+      ctx.lineTo(x + player.w, y + player.h);
+      ctx.lineTo(x + player.w / 2, y + player.h - 12);
+      ctx.lineTo(x, y + player.h);
+      ctx.closePath();
+      ctx.fill();
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(x + 19, y + 20, 10, 11);
+      ctx.fillStyle = '#ff7b29';
+      ctx.beginPath();
+      ctx.moveTo(x + 16, y + player.h);
+      ctx.lineTo(x + 24, y + player.h + 20 + Math.random() * 8);
+      ctx.lineTo(x + 32, y + player.h);
+      ctx.fill();
+      ctx.restore();
+    }
+
+    function draw() {
+      ctx.save();
+      if (shake > 0) ctx.translate((Math.random() - .5) * 9, (Math.random() - .5) * 9);
+      ctx.clearRect(0, 0, W, H);
+      ctx.fillStyle = '#030512';
+      ctx.fillRect(0, 0, W, H);
+      stars.forEach(s => { ctx.fillStyle = `rgba(255,255,255,${.25 + s.r / 3})`; ctx.beginPath(); ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2); ctx.fill(); });
+
+      bullets.forEach(b => { ctx.fillStyle = '#aefcff'; ctx.fillRect(b.x, b.y, b.w, b.h); });
+      enemies.forEach(e => {
+        ctx.fillStyle = e.type === 'tank' ? '#ff8f3d' : e.type === 'fast' ? '#ff3d8f' : '#8d5cff';
+        ctx.beginPath();
+        ctx.roundRect(e.x, e.y, e.w, e.h, 10);
+        ctx.fill();
+        ctx.fillStyle = '#fff';
+        ctx.fillRect(e.x + 8, e.y + 10, 6, 6);
+        ctx.fillRect(e.x + e.w - 14, e.y + 10, 6, 6);
+        if (e.maxHp > 1) {
+          ctx.fillStyle = '#111'; ctx.fillRect(e.x, e.y - 8, e.w, 4);
+          ctx.fillStyle = '#73ff7a'; ctx.fillRect(e.x, e.y - 8, e.w * (e.hp / e.maxHp), 4);
+        }
+      });
+      powers.forEach(p => {
+        ctx.fillStyle = p.type === 'life' ? '#55ff88' : '#ffe95a';
+        ctx.beginPath(); ctx.arc(p.x + 15, p.y + 15, 15, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = '#06101f'; ctx.font = 'bold 18px Arial'; ctx.fillText(p.type === 'life' ? '+' : 'P', p.x + 9, p.y + 21);
+      });
+      particles.forEach(p => { ctx.fillStyle = p.color; ctx.globalAlpha = Math.max(0, p.life * 2); ctx.fillRect(p.x, p.y, 4, 4); ctx.globalAlpha = 1; });
+      if (state === 'playing') drawShip();
+
+      ctx.fillStyle = '#fff'; ctx.font = 'bold 22px Arial';
+      ctx.fillText(`Score: ${score}`, 20, 34);
+      ctx.fillText(`Wave: ${wave}`, 20, 64);
+      ctx.fillText(`Lives: ${lives}`, W - 120, 34);
+      ctx.fillText(`Power: ${player.power}`, W - 130, 64);
+
+      if (state === 'menu') overlay('SPACE SHOOTER', 'Press ENTER or click to start', '#74f4ff');
+      if (state === 'gameover') overlay('GAME OVER', `Score: ${score} — Press ENTER to restart`, '#ff4d6d');
+      if (state === 'win') overlay('YOU WON!', `Final Score: ${score} — Press ENTER to replay`, '#ffe95a');
+      ctx.restore();
+    }
+
+    function overlay(title, subtitle, color) {
+      ctx.fillStyle = 'rgba(0,0,0,.55)'; ctx.fillRect(0, 0, W, H);
+      ctx.fillStyle = color; ctx.font = 'bold 64px Arial'; ctx.textAlign = 'center'; ctx.fillText(title, W / 2, H / 2 - 35);
+      ctx.fillStyle = '#fff'; ctx.font = '24px Arial'; ctx.fillText(subtitle, W / 2, H / 2 + 18);
+      ctx.font = '16px Arial'; ctx.fillText('A/D or arrows to move · Space to shoot', W / 2, H / 2 + 55);
+      ctx.textAlign = 'left';
+    }
+
+    function loop(t) {
+      const dt = Math.min(.033, (t - lastTime) / 1000 || 0);
+      lastTime = t;
+      update(dt);
+      draw();
+      requestAnimationFrame(loop);
+    }
+    requestAnimationFrame(loop);
+  </script>
+</body>
+</html>

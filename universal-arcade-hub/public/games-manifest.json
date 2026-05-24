@@ -1,4 +1,133 @@
 {
-  "generatedAt": "2026-05-24T03:38:29.244Z",
-  "games": []
+  "generatedAt": "2026-05-24T04:06:51.831Z",
+  "games": [
+    {
+      "id": "brick-breaker-deluxe",
+      "title": "Brick Breaker Deluxe",
+      "description": "Playable arcade game.",
+      "type": "browser",
+      "playUrl": "/games/brick-breaker-deluxe/index.html",
+      "thumbnail": null
+    },
+    {
+      "id": "coin-game",
+      "title": "Coin Game",
+      "description": "Playable arcade game.",
+      "type": "browser",
+      "playUrl": "/games/coin-game/index.html",
+      "thumbnail": null
+    },
+    {
+      "id": "crashgame",
+      "title": "Crashgame",
+      "description": "Playable arcade game.",
+      "type": "browser",
+      "playUrl": "/games/crashgame/index.html",
+      "thumbnail": null
+    },
+    {
+      "id": "crystal_fox_phaser",
+      "title": "Crystal Fox Phaser",
+      "description": "Playable arcade game.",
+      "type": "browser",
+      "playUrl": "/games/crystal_fox_phaser/index.html",
+      "thumbnail": null
+    },
+    {
+      "id": "drift-racer-arcade-game",
+      "title": "Drift Racer Arcade Game",
+      "description": "Playable arcade game.",
+      "type": "browser",
+      "playUrl": "/games/drift-racer-arcade-game/index.html",
+      "thumbnail": null
+    },
+    {
+      "id": "flappy-arcade-game",
+      "title": "Flappy Arcade Game",
+      "description": "Playable arcade game.",
+      "type": "browser",
+      "playUrl": "/games/flappy-arcade-game/index.html",
+      "thumbnail": null
+    },
+    {
+      "id": "fruitslicer",
+      "title": "Fruitslicer",
+      "description": "Playable arcade game.",
+      "type": "browser",
+      "playUrl": "/games/fruitslicer/index.html",
+      "thumbnail": null
+    },
+    {
+      "id": "jungle_dash_tuuezy_unlock",
+      "title": "Jungle Dash Tuuezy Unlock",
+      "description": "Playable arcade game.",
+      "type": "browser",
+      "playUrl": "/games/jungle_dash_tuuezy_unlock/index.html",
+      "thumbnail": null
+    },
+    {
+      "id": "jungle_relic_platformer",
+      "title": "Jungle Relic Platformer",
+      "description": "Playable arcade game.",
+      "type": "browser",
+      "playUrl": "/games/jungle_relic_platformer/index.html",
+      "thumbnail": null
+    },
+    {
+      "id": "meteor_miner_arcade",
+      "title": "Meteor Miner Arcade",
+      "description": "Playable arcade game.",
+      "type": "browser",
+      "playUrl": "/games/meteor_miner_arcade/index.html",
+      "thumbnail": null
+    },
+    {
+      "id": "mini-golf-deluxe",
+      "title": "Mini Golf Deluxe",
+      "description": "Playable arcade game.",
+      "type": "browser",
+      "playUrl": "/games/mini-golf-deluxe/index.html",
+      "thumbnail": null
+    },
+    {
+      "id": "neon_hover_run",
+      "title": "Neon Hover Run",
+      "description": "Playable arcade game.",
+      "type": "browser",
+      "playUrl": "/games/neon_hover_run/index.html",
+      "thumbnail": null
+    },
+    {
+      "id": "neonracer",
+      "title": "Neonracer",
+      "description": "Playable arcade game.",
+      "type": "browser",
+      "playUrl": "/games/neonracer/index.html",
+      "thumbnail": null
+    },
+    {
+      "id": "skybound_isles_arcade",
+      "title": "Skybound Isles Arcade",
+      "description": "Playable arcade game.",
+      "type": "browser",
+      "playUrl": "/games/skybound_isles_arcade/index.html",
+      "thumbnail": null
+    },
+    {
+      "id": "snake-game",
+      "title": "Snake Game",
+      "description": "Playable arcade game.",
+      "type": "browser",
+      "playUrl": "/games/snake-game/index.html",
+      "thumbnail": null
+    },
+    {
+      "id": "space-shooter",
+      "title": "Space Shooter",
+      "description": "Playable arcade game.",
+      "type": "browser",
+      "playUrl": "/games/space-shooter/index.html",
+      "thumbnail": null
+    }
+  ]
 }
