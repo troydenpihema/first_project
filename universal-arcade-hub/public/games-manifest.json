@@ -1,5 +1,9 @@
 {
+<<<<<<< HEAD
   "generatedAt": "2026-05-23T23:48:11.622Z",
+=======
+  "generatedAt": "2026-05-23T23:52:50.808Z",
+>>>>>>> e4eacd20b00dacb3106e741db21b8419f360a1cd
   "games": [
     {
       "id": "coin-game",
