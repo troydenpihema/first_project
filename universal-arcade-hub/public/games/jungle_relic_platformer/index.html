@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Jungle Relic</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div id="gameShell">
+    <canvas id="gameCanvas"></canvas>
+
+    <div id="hud">
+      <div class="hud-card">Fruit <span id="fruitCount">0</span>/<span id="fruitTotal">0</span></div>
+      <div class="hud-card">Keys <span id="keyCount">0</span></div>
+      <div class="hud-card">Hearts <span id="heartCount">3</span></div>
+      <div class="hud-card">Level <span id="levelCount">1</span></div>
+    </div>
+
+    <div id="dialogue" class="hidden">
+      <strong id="dialogueTitle">Sign</strong>
+      <p id="dialogueText"></p>
+    </div>
+
+    <div id="touchControls">
+      <div class="touch-left">
+        <button data-key="ArrowLeft">←</button>
+        <button data-key="ArrowRight">→</button>
+      </div>
+      <div class="touch-right">
+        <button data-key="e">Talk</button>
+        <button data-key=" ">Jump</button>
+      </div>
+    </div>
+
+    <div id="menu" class="overlay">
+      <div class="panel">
+        <h1>Jungle Relic</h1>
+        <p>A bright adventure platformer with fruit collecting, keys, locked gates, enemies, moving platforms, signs, and hidden treasure.</p>
+        <div class="mini-grid">
+          <div><strong>Move</strong><br />A/D or ←/→</div>
+          <div><strong>Jump</strong><br />W, ↑, or Space</div>
+          <div><strong>Read/Talk</strong><br />E</div>
+          <div><strong>Goal</strong><br />Find the relic gate</div>
+        </div>
+        <button id="startBtn">Start Adventure</button>
+      </div>
+    </div>
+
+    <div id="gameOver" class="overlay hidden">
+      <div class="panel">
+        <h1 id="endTitle">Game Over</h1>
+        <p id="endText">Try again.</p>
+        <button id="restartBtn">Restart</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="game.js"></script>
+</body>
+</html>

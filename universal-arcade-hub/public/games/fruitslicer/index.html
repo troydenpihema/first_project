@@ -1,0 +1,271 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Fruit Slice Deluxe</title>
+  <style>
+    body {
+      margin: 0;
+      overflow: hidden;
+      background: radial-gradient(circle at top, #1b1b2f, #0d0d16);
+      font-family: Arial, sans-serif;
+      color: white;
+    }
+
+    canvas {
+      display: block;
+    }
+
+    .ui {
+      position: fixed;
+      top: 16px;
+      left: 16px;
+      z-index: 10;
+      font-size: 24px;
+      display: flex;
+      gap: 24px;
+      text-shadow: 0 2px 4px rgba(0,0,0,0.6);
+    }
+
+    .center {
+      position: fixed;
+      inset: 0;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      flex-direction: column;
+      pointer-events: none;
+      text-align: center;
+    }
+
+    h1 {
+      font-size: 64px;
+      margin: 0;
+    }
+
+    p {
+      font-size: 22px;
+      opacity: 0.85;
+    }
+  </style>
+</head>
+<body>
+  <div class="ui">
+    <div id="score">Score: 0</div>
+    <div id="lives">Lives: 3</div>
+  </div>
+
+  <div class="center" id="overlay">
+    <h1>Fruit Slice Deluxe</h1>
+    <p>Drag your mouse to slice fruit.<br/>Avoid bombs.<br/><br/>Click to start.</p>
+  </div>
+
+  <canvas id="game"></canvas>
+
+  <script>
+    const canvas = document.getElementById('game');
+    const ctx = canvas.getContext('2d');
+
+    function resize() {
+      canvas.width = window.innerWidth;
+      canvas.height = window.innerHeight;
+    }
+
+    resize();
+    window.addEventListener('resize', resize);
+
+    let score = 0;
+    let lives = 3;
+    let running = false;
+
+    const fruits = [];
+    const particles = [];
+    const trail = [];
+
+    const fruitTypes = [
+      { color: '#ff4d4d', name: 'apple' },
+      { color: '#ffb347', name: 'orange' },
+      { color: '#66ff66', name: 'lime' },
+      { color: '#ff66cc', name: 'berry' },
+    ];
+
+    function spawnFruit() {
+      const isBomb = Math.random() < 0.08;
+
+      const type = fruitTypes[Math.floor(Math.random() * fruitTypes.length)];
+
+      fruits.push({
+        x: Math.random() * canvas.width,
+        y: canvas.height + 50,
+        vx: (Math.random() - 0.5) * 8,
+        vy: -(10 + Math.random() * 4),
+        radius: 30 + Math.random() * 10,
+        color: isBomb ? '#222' : type.color,
+        bomb: isBomb,
+        sliced: false,
+        rotation: Math.random() * Math.PI,
+      });
+    }
+
+    function spawnParticles(x, y, color) {
+      for (let i = 0; i < 15; i++) {
+        particles.push({
+          x,
+          y,
+          vx: (Math.random() - 0.5) * 10,
+          vy: (Math.random() - 0.5) * 10,
+          life: 1,
+          color,
+        });
+      }
+    }
+
+    function update() {
+      if (!running) return;
+
+      if (Math.random() < 0.012) {
+        spawnFruit();
+      }
+
+      for (const fruit of fruits) {
+        fruit.x += fruit.vx;
+        fruit.y += fruit.vy;
+        fruit.vy += 0.25;
+        fruit.rotation += 0.05;
+
+        if (fruit.y > canvas.height + 100 && !fruit.sliced && !fruit.bomb) {
+          lives--;
+          fruit.sliced = true;
+        }
+      }
+
+      for (const p of particles) {
+        p.x += p.vx;
+        p.y += p.vy;
+        p.life -= 0.02;
+      }
+
+      while (trail.length > 15) {
+        trail.shift();
+      }
+
+      if (lives <= 0) {
+        running = false;
+        document.getElementById('overlay').innerHTML = `
+          <h1>Game Over</h1>
+          <p>Final Score: ${score}<br/><br/>Click to play again.</p>
+        `;
+        document.getElementById('overlay').style.display = 'flex';
+      }
+
+      document.getElementById('score').textContent = 'Score: ' + score;
+      document.getElementById('lives').textContent = 'Lives: ' + lives;
+    }
+
+    function drawFruit(fruit) {
+      ctx.save();
+      ctx.translate(fruit.x, fruit.y);
+      ctx.rotate(fruit.rotation);
+
+      ctx.beginPath();
+      ctx.arc(0, 0, fruit.radius, 0, Math.PI * 2);
+      ctx.fillStyle = fruit.color;
+      ctx.fill();
+
+      if (fruit.bomb) {
+        ctx.fillStyle = 'red';
+        ctx.font = '28px Arial';
+        ctx.fillText('💣', -16, 10);
+      }
+
+      ctx.restore();
+    }
+
+    function render() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      for (const fruit of fruits) {
+        if (!fruit.sliced) drawFruit(fruit);
+      }
+
+      for (const p of particles) {
+        ctx.globalAlpha = p.life;
+        ctx.fillStyle = p.color;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, 5, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      ctx.globalAlpha = 1;
+
+      if (trail.length > 1) {
+        ctx.beginPath();
+        ctx.moveTo(trail[0].x, trail[0].y);
+
+        for (const point of trail) {
+          ctx.lineTo(point.x, point.y);
+        }
+
+        ctx.strokeStyle = 'rgba(255,255,255,0.8)';
+        ctx.lineWidth = 6;
+        ctx.stroke();
+      }
+    }
+
+    function gameLoop() {
+      update();
+      render();
+      requestAnimationFrame(gameLoop);
+    }
+
+    function sliceAt(x, y) {
+      for (const fruit of fruits) {
+        if (fruit.sliced) continue;
+
+        const dx = fruit.x - x;
+        const dy = fruit.y - y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+
+        if (dist < fruit.radius) {
+          fruit.sliced = true;
+
+          if (fruit.bomb) {
+            lives = 0;
+          } else {
+            score += 10;
+            spawnParticles(fruit.x, fruit.y, fruit.color);
+          }
+        }
+      }
+    }
+
+    function pointerMove(e) {
+      const x = e.clientX || e.touches?.[0]?.clientX;
+      const y = e.clientY || e.touches?.[0]?.clientY;
+
+      if (x == null || y == null) return;
+
+      trail.push({ x, y });
+      sliceAt(x, y);
+    }
+
+    window.addEventListener('mousemove', pointerMove);
+    window.addEventListener('touchmove', pointerMove);
+
+    window.addEventListener('click', () => {
+      if (!running) {
+        score = 0;
+        lives = 3;
+        fruits.length = 0;
+        particles.length = 0;
+        running = true;
+        document.getElementById('overlay').style.display = 'none';
+      }
+    });
+
+    gameLoop();
+  </script>
+</body>
+</html>
+```

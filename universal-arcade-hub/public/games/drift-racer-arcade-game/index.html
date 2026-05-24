@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Drift Racer Deluxe</title>
+  <style>
+    *{box-sizing:border-box}html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#090b14;color:#fff;font-family:Arial,Helvetica,sans-serif}body{display:flex;align-items:center;justify-content:center}.shell{width:min(100vw,1180px);height:min(100vh,720px);padding:14px;display:grid;grid-template-columns:1fr 280px;gap:14px}.game-panel,.side{border:1px solid rgba(255,255,255,.14);border-radius:22px;background:linear-gradient(160deg,rgba(20,26,48,.95),rgba(9,11,20,.96));box-shadow:0 24px 80px rgba(0,0,0,.45);overflow:hidden}.game-panel{position:relative}canvas{display:block;width:100%;height:100%;background:#101521}.hud{position:absolute;left:18px;top:16px;display:flex;gap:10px;flex-wrap:wrap;pointer-events:none}.pill{background:rgba(0,0,0,.45);border:1px solid rgba(255,255,255,.16);border-radius:999px;padding:8px 12px;font-weight:800;backdrop-filter:blur(8px)}.side{padding:18px;display:flex;flex-direction:column;gap:14px}.brand{font-size:28px;font-weight:900;letter-spacing:-1px}.brand span{color:#66f2ff}.card{padding:14px;border-radius:18px;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.1)}.card h3{margin:0 0 8px;font-size:14px;text-transform:uppercase;color:#aab6ff;letter-spacing:1px}.card p{margin:5px 0;color:#d9e1ff;font-size:14px;line-height:1.35}.btn{border:0;border-radius:16px;padding:13px 15px;background:linear-gradient(135deg,#3df5ff,#8b5cff);color:#07101e;font-weight:900;cursor:pointer;font-size:15px}.muted{opacity:.72}.overlay{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:radial-gradient(circle at center,rgba(70,245,255,.16),rgba(0,0,0,.72));text-align:center;padding:20px}.overlay.hidden{display:none}.modal{max-width:520px;padding:26px;border-radius:26px;background:rgba(8,10,20,.88);border:1px solid rgba(255,255,255,.16);box-shadow:0 22px 90px rgba(0,0,0,.6)}.modal h1{font-size:46px;margin:0 0 8px}.modal p{color:#dbe3ff}.kbd{display:inline-block;border-radius:8px;background:rgba(255,255,255,.12);padding:4px 8px;margin:2px;font-weight:800}@media(max-width:900px){.shell{grid-template-columns:1fr;height:100vh}.side{display:none}.game-panel{min-height:100vh;border-radius:0}.hud{font-size:12px}}
+  </style>
+</head>
+<body>
+  <main class="shell">
+    <section class="game-panel">
+      <canvas id="game" width="900" height="640"></canvas>
+      <div class="hud">
+        <div class="pill">Lap <span id="lap">1</span>/3</div>
+        <div class="pill">Checkpoint <span id="checkpoint">0</span>/4</div>
+        <div class="pill">Time <span id="time">0.0</span>s</div>
+        <div class="pill">Best <span id="best">--</span></div>
+      </div>
+      <div id="overlay" class="overlay">
+        <div class="modal">
+          <h1>Drift Racer</h1>
+          <p>Hit checkpoints in order. Finish 3 laps as fast as you can.</p>
+          <p><span class="kbd">W/↑</span> accelerate <span class="kbd">S/↓</span> brake <span class="kbd">A/D</span> steer <span class="kbd">Space</span> handbrake</p>
+          <button class="btn" id="startBtn">Start Race</button>
+        </div>
+      </div>
+    </section>
+    <aside class="side">
+      <div class="brand">Drift Racer <span>Deluxe</span></div>
+      <div class="card"><h3>Goal</h3><p>Drive through glowing checkpoints in order. Complete 3 laps.</p></div>
+      <div class="card"><h3>Controls</h3><p>W / Up: accelerate</p><p>S / Down: brake</p><p>A / D: steer</p><p>Space: drift handbrake</p><p>R: restart race</p></div>
+      <div class="card"><h3>Tips</h3><p>Use handbrake on corners, then counter-steer to hold the drift.</p><p class="muted">Avoid grass and walls — they slow you hard.</p></div>
+      <button class="btn" onclick="restartRace(true)">Restart Race</button>
+    </aside>
+  </main>
+<script>
+const canvas=document.getElementById('game'),ctx=canvas.getContext('2d');
+const W=canvas.width,H=canvas.height;const keys={};let running=false,finished=false,startTime=0,elapsed=0,best=localStorage.getItem('drift-best')||null;
+const ui={lap:document.getElementById('lap'),checkpoint:document.getElementById('checkpoint'),time:document.getElementById('time'),best:document.getElementById('best'),overlay:document.getElementById('overlay')};
+if(best)ui.best.textContent=Number(best).toFixed(1)+'s';
+const car={x:450,y:535,a:-Math.PI/2,vx:0,vy:0,w:24,h:42,lap:1,next:0};
+const checkpoints=[{x:450,y:95,w:230,h:30,a:0,c:'#3df5ff'},{x:765,y:320,w:30,h:190,a:0,c:'#ffcc3d'},{x:450,y:545,w:230,h:30,a:0,c:'#ff4fd8'},{x:135,y:320,w:30,h:190,a:0,c:'#8b5cff'}];
+function resetCar(){Object.assign(car,{x:450,y:535,a:-Math.PI/2,vx:0,vy:0,lap:1,next:0});elapsed=0;finished=false;startTime=performance.now();}
+function restartRace(show=false){resetCar();running=!show;ui.overlay.classList.toggle('hidden',running);}
+document.getElementById('startBtn').onclick=()=>{resetCar();running=true;ui.overlay.classList.add('hidden')};
+addEventListener('keydown',e=>{keys[e.key.toLowerCase()]=true;if(['ArrowUp','ArrowDown','ArrowLeft','ArrowRight',' '].includes(e.key))e.preventDefault();if(e.key.toLowerCase()==='r')restartRace(false)});
+addEventListener('keyup',e=>keys[e.key.toLowerCase()]=false);
+function rectHit(px,py,r){return px>r.x-r.w/2&&px<r.x+r.w/2&&py>r.y-r.h/2&&py<r.y+r.h/2}
+function trackAt(x,y){const outer=((x-450)/390)**2+((y-320)/260)**2<1;const inner=((x-450)/235)**2+((y-320)/135)**2<1;return outer&&!inner}
+function update(dt){if(!running||finished)return;elapsed=(performance.now()-startTime)/1000;let accel=0;if(keys.w||keys.arrowup)accel=520;if(keys.s||keys.arrowdown)accel=-330;const speed=Math.hypot(car.vx,car.vy);const steer=(keys.a||keys.arrowleft?-1:0)+(keys.d||keys.arrowright?1:0);const drift=keys[' '];car.a+=steer*(drift?3.2:2.25)*dt*Math.min(1.4,0.45+speed/260);car.vx+=Math.cos(car.a)*accel*dt;car.vy+=Math.sin(car.a)*accel*dt;const friction=trackAt(car.x,car.y)?(drift?0.986:0.972):0.90;car.vx*=friction;car.vy*=friction;if(speed>620){car.vx*=620/speed;car.vy*=620/speed}car.x+=car.vx*dt;car.y+=car.vy*dt;if(!trackAt(car.x,car.y)){car.vx*=0.94;car.vy*=0.94}if(car.x<30||car.x>W-30){car.vx*=-0.35;car.x=Math.max(30,Math.min(W-30,car.x))}if(car.y<30||car.y>H-30){car.vy*=-0.35;car.y=Math.max(30,Math.min(H-30,car.y))}const cp=checkpoints[car.next];if(rectHit(car.x,car.y,cp)){car.next++;if(car.next>=checkpoints.length){car.next=0;car.lap++;if(car.lap>3){finished=true;running=false;const old=best?Number(best):Infinity;if(elapsed<old){best=elapsed;localStorage.setItem('drift-best',best)}ui.overlay.querySelector('h1').textContent='Race Complete!';ui.overlay.querySelector('p').textContent=`Finished in ${elapsed.toFixed(1)} seconds.`;ui.overlay.classList.remove('hidden');}}}ui.lap.textContent=Math.min(car.lap,3);ui.checkpoint.textContent=car.next;ui.time.textContent=elapsed.toFixed(1);ui.best.textContent=best?Number(best).toFixed(1)+'s':'--'}
+function drawTrack(){ctx.fillStyle='#111827';ctx.fillRect(0,0,W,H);for(let i=0;i<80;i++){ctx.fillStyle=i%2?'rgba(255,255,255,.04)':'rgba(61,245,255,.05)';ctx.beginPath();ctx.arc((i*113)%W,(i*71)%H,1.5,0,7);ctx.fill()}ctx.save();ctx.translate(450,320);ctx.fillStyle='#2f7b42';ctx.beginPath();ctx.ellipse(0,0,390,260,0,0,7);ctx.fill();ctx.fillStyle='#202431';ctx.beginPath();ctx.ellipse(0,0,345,218,0,0,7);ctx.fill();ctx.fillStyle='#2f7b42';ctx.beginPath();ctx.ellipse(0,0,235,135,0,0,7);ctx.fill();ctx.strokeStyle='rgba(255,255,255,.9)';ctx.lineWidth=4;ctx.beginPath();ctx.ellipse(0,0,345,218,0,0,7);ctx.stroke();ctx.strokeStyle='rgba(255,255,255,.45)';ctx.setLineDash([18,18]);ctx.lineWidth=3;ctx.beginPath();ctx.ellipse(0,0,292,176,0,0,7);ctx.stroke();ctx.setLineDash([]);ctx.restore();}
+function drawCheckpoints(){checkpoints.forEach((cp,i)=>{ctx.save();ctx.translate(cp.x,cp.y);ctx.fillStyle=i===car.next?cp.c:'rgba(255,255,255,.14)';ctx.shadowColor=cp.c;ctx.shadowBlur=i===car.next?22:0;ctx.fillRect(-cp.w/2,-cp.h/2,cp.w,cp.h);ctx.fillStyle='#07101e';ctx.font='bold 18px Arial';ctx.textAlign='center';ctx.fillText(i+1,0,6);ctx.restore()})}
+function drawCar(){ctx.save();ctx.translate(car.x,car.y);ctx.rotate(car.a+Math.PI/2);ctx.shadowColor='#3df5ff';ctx.shadowBlur=12;ctx.fillStyle='#43e9ff';round(-12,-21,24,42,8);ctx.fill();ctx.shadowBlur=0;ctx.fillStyle='#0b1020';round(-7,-14,14,16,5);ctx.fill();ctx.fillStyle='#ff4fd8';ctx.fillRect(-10,12,20,6);ctx.fillStyle='#111';ctx.fillRect(-16,-14,5,13);ctx.fillRect(11,-14,5,13);ctx.fillRect(-16,8,5,13);ctx.fillRect(11,8,5,13);ctx.restore()}
+function round(x,y,w,h,r){ctx.beginPath();ctx.roundRect(x,y,w,h,r)}
+function draw(){drawTrack();drawCheckpoints();drawCar();if(!running&&!finished){/* overlay handles */}}
+let last=performance.now();function loop(t){const dt=Math.min(.033,(t-last)/1000);last=t;update(dt);draw();requestAnimationFrame(loop)}requestAnimationFrame(loop);
+</script>
+</body>
+</html>
