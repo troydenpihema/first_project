@@ -1,0 +1,8 @@
+{
+  "id": "thread-runner",
+  "title": "Thread Runner",
+  "description": "Playable arcade game.",
+  "type": "browser",
+  "playUrl": "/games/thread-runner/index.html",
+  "thumbnail": null
+}

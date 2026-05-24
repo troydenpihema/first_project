@@ -3,21 +3,16 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Thread Runner</title>
+  <meta name="description" content="Thread Runner: Stitch Rush V5 Safe - premium Phaser arcade runner." />
+  <title>Thread Runner: Stitch Rush</title>
   <link rel="stylesheet" href="./style.css" />
 </head>
 <body>
   <div id="game-container"></div>
-
-  <div id="phaser-error" style="display:none;">
-    <h1>Thread Runner could not start</h1>
-    <p>Phaser did not load. Check your internet connection or replace the CDN with your local Phaser file.</p>
-  </div>
-
   <script src="https://cdn.jsdelivr.net/npm/phaser@3.80.1/dist/phaser.min.js"></script>
   <script>
     if (!window.Phaser) {
-      document.getElementById("phaser-error").style.display = "grid";
+      document.body.innerHTML = '<div class="fallback"><h1>Thread Runner</h1><p>Phaser failed to load.</p></div>';
     }
   </script>
   <script src="./game.js"></script>

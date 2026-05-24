@@ -1,0 +1,14 @@
+<svg width="640" height="360" viewBox="0 0 640 360" xmlns="http://www.w3.org/2000/svg">
+  <rect width="640" height="360" fill="#090812"/>
+  <circle cx="500" cy="80" r="120" fill="#00e5ff" opacity="0.13"/>
+  <circle cx="150" cy="270" r="130" fill="#b44bff" opacity="0.16"/>
+  <rect x="70" y="235" width="220" height="34" rx="13" fill="#21172e" stroke="#7df9ff" stroke-width="3"/>
+  <rect x="350" y="205" width="180" height="34" rx="13" fill="#21172e" stroke="#7df9ff" stroke-width="3"/>
+  <path d="M292 236 C318 205 340 205 363 220" stroke="#1bffe4" stroke-width="10" stroke-linecap="round" fill="none"/>
+  <circle cx="152" cy="205" r="30" fill="#7df9ff" opacity="0.16"/>
+  <circle cx="152" cy="205" r="22" fill="#7b3df2" stroke="#7df9ff" stroke-width="5"/>
+  <circle cx="161" cy="197" r="4" fill="#fff"/>
+  <path d="M475 120 L495 240 L455 240 Z" fill="#ff4f8b" stroke="#fff" stroke-width="3"/>
+  <text x="48" y="70" font-family="Arial, Helvetica, sans-serif" font-size="44" font-weight="900" fill="#ffffff" stroke="#7b3df2" stroke-width="3">THREAD RUNNER</text>
+  <text x="52" y="108" font-family="Arial, Helvetica, sans-serif" font-size="21" font-weight="700" fill="#7df9ff">V5 SAFE</text>
+</svg>

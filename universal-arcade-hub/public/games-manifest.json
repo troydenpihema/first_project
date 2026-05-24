@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-05-24T06:14:27.416Z",
+  "generatedAt": "2026-05-24T07:05:08.006Z",
   "games": [
     {
       "id": "brick-breaker-deluxe",
@@ -130,11 +130,11 @@
       "thumbnail": null
     },
     {
-      "id": "thread-runner",
-      "title": "Thread Runner",
+      "id": "thread-runner ",
+      "title": "Thread Runner ",
       "description": "Playable arcade game.",
       "type": "browser",
-      "playUrl": "/games/thread-runner/index.html",
+      "playUrl": "/games/thread-runner /index.html",
       "thumbnail": null
     }
   ]
