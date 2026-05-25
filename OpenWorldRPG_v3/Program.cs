@@ -27,11 +27,14 @@ namespace OpenWorldRPG
 
         static Camera2D camera = new Camera2D();
 
-        static Player player = new Player(new Vector2(400, 400));
+        static Player player = new Player(new Vector2(0, 650));
 
         static int dayOfWeek = 0; // 0-6, Monday to Sunday
         static string[] dayNames = { "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday" };
         static float dayCounter = 0f; // tracks full day cycles
+        static string currentBiome = "SAFE ZONE";
+        static string lastBiome = "";
+        static float biomeMessageTimer = 0f;
         static bool isFishing = false;
         static float fishingTimer = 0f;
         static float fishingDuration = 3f;
@@ -53,6 +56,8 @@ namespace OpenWorldRPG
         static bool isRaining = false;
         static float rainTimer = 0f;
         static float rainInterval = 30f;
+        static bool wardrobeOpen = false;
+        static int wardrobeTab = 0; // 0 = shirt, 1 = skin, 2 = pants
         static List<Vector2> raindrops = new();
 
         static List<TreeObject> trees = new();
@@ -68,6 +73,79 @@ namespace OpenWorldRPG
         static Building currentBuilding = null;
         static float shakeDuration = 0f;
         static float shakeMagnitude = 6f;
+
+        static void DrawWardrobe()
+{
+    if (!wardrobeOpen) return;
+
+    int wx = ScreenWidth / 2 - 300;
+    int wy = 100;
+
+    // background
+    Raylib.DrawRectangle(wx, wy, 600, 480, new Color((byte)20, (byte)20, (byte)30, (byte)240));
+    Raylib.DrawRectangleLines(wx, wy, 600, 480, Color.Gold);
+    Raylib.DrawText("WARDROBE", wx + 220, wy + 15, 32, Color.Gold);
+
+    // tabs
+    string[] tabs = { "SHIRT", "SKIN", "PANTS" };
+    for (int i = 0; i < 3; i++)
+    {
+        Color tabColor = wardrobeTab == i ? Color.Gold : Color.White;
+        Raylib.DrawRectangle(wx + 20 + i * 140, wy + 60, 120, 36, new Color((byte)40, (byte)40, (byte)40, (byte)255));
+        Raylib.DrawRectangleLines(wx + 20 + i * 140, wy + 60, 120, 36, tabColor);
+        Raylib.DrawText(tabs[i], wx + 40 + i * 140, wy + 70, 20, tabColor);
+    }
+
+    // color options
+    Color[][] colorOptions = {
+        new Color[] { Color.Blue, Color.Red, Color.Green, Color.Black, Color.White, Color.Purple, Color.Orange, Color.Yellow },
+        new Color[] { Color.Beige, new Color((byte)210,(byte)160,(byte)110,(byte)255), new Color((byte)150,(byte)100,(byte)60,(byte)255), new Color((byte)80,(byte)50,(byte)30,(byte)255) },
+        new Color[] { Color.Black, new Color((byte)80,(byte)50,(byte)20,(byte)255), new Color((byte)30,(byte)50,(byte)100,(byte)255), new Color((byte)80,(byte)80,(byte)80,(byte)255) }
+    };
+
+    string[][] colorNames = {
+        new string[] { "Blue", "Red", "Green", "Black", "White", "Purple", "Orange", "Yellow" },
+        new string[] { "Light", "Medium", "Dark", "Deep" },
+        new string[] { "Black", "Brown", "Navy", "Grey" }
+    };
+
+    Raylib.DrawText("SELECT COLOR:", wx + 20, wy + 115, 22, Color.LightGray);
+
+    for (int i = 0; i < colorOptions[wardrobeTab].Length; i++)
+    {
+        int cx = wx + 20 + (i % 4) * 140;
+        int cy = wy + 150 + (i / 4) * 100;
+
+        Raylib.DrawRectangle(cx, cy, 100, 60, colorOptions[wardrobeTab][i]);
+        Raylib.DrawRectangleLines(cx, cy, 100, 60, Color.White);
+        Raylib.DrawText(colorNames[wardrobeTab][i], cx + 4, cy + 66, 16, Color.LightGray);
+
+        Vector2 mouse = Raylib.GetMousePosition();
+        if (Raylib.CheckCollisionPointRec(mouse, new Rectangle(cx, cy, 100, 60)))
+        {
+            Raylib.DrawRectangleLines(cx, cy, 100, 60, Color.Gold);
+
+            if (Raylib.IsMouseButtonPressed(MouseButton.Left))
+            {
+                if (wardrobeTab == 0) player.ShirtColor = colorOptions[wardrobeTab][i];
+                else if (wardrobeTab == 1) player.SkinColor = colorOptions[wardrobeTab][i];
+                else if (wardrobeTab == 2) player.PantsColor = colorOptions[wardrobeTab][i];
+            }
+        }
+    }
+
+    // player preview
+    Raylib.DrawText("PREVIEW", wx + 460, wy + 115, 22, Color.LightGray);
+    Raylib.DrawCircle(wx + 510, wy + 200, 20, player.SkinColor);
+    Raylib.DrawRectangle(wx + 493, wy + 220, 34, 50, player.ShirtColor);
+    Raylib.DrawRectangle(wx + 493, wy + 270, 14, 20, player.PantsColor);
+    Raylib.DrawRectangle(wx + 510, wy + 270, 14, 20, player.PantsColor);
+
+    // close button
+    Raylib.DrawRectangle(wx + 220, wy + 420, 160, 40, new Color((byte)40, (byte)40, (byte)40, (byte)255));
+    Raylib.DrawRectangleLines(wx + 220, wy + 420, 160, 40, Color.White);
+    Raylib.DrawText("CLOSE (Q)", wx + 240, wy + 432, 20, Color.White);
+}
         static void TriggerShake(float duration) => shakeDuration = duration;
                 public static void ShowLevelUp(string skill, int level)
                     {
@@ -84,6 +162,24 @@ namespace OpenWorldRPG
                 if (displayHour == 0) displayHour = 12;
                 return $"{displayHour}:{minutes:D2} {period}";
             }
+
+        static string GetCurrentBiome()
+{
+    float x = player.Position.X;
+    float y = player.Position.Y;
+
+    if (x >= -1500 && x <= 2100 && y >= -800 && y <= 1400)
+        return "SAFE ZONE";
+    else if (y < -400 || y > 1000)
+        return "FOREST";
+    else if (x > 2100)
+        return "DESERT";
+    else if (x < -1500)
+        return "SNOW ZONE";
+    else
+        return "GRASSLANDS";
+}
+
         static Color GetNightOverlay()
             {
                 float night = MathF.Sin(timeOfDay * MathF.PI);
@@ -478,6 +574,14 @@ namespace OpenWorldRPG
                     ShowLevelUp("You died! Lost $50", 0);
                     }
 
+                    currentBiome = GetCurrentBiome();
+                    if (currentBiome != lastBiome)
+                    {
+                        lastBiome = currentBiome;
+                        biomeMessageTimer = 3f;
+                    }
+                    if (biomeMessageTimer > 0) biomeMessageTimer -= dt;
+
                     if (timeOfDay > 1f)
                     {
                         timeOfDay = 0f;
@@ -710,6 +814,34 @@ namespace OpenWorldRPG
 
 if (Vector2.Distance(player.Position, currentBuilding.InteriorNPC.Position) < 120)
 {
+    if (currentBuilding.BuildingName == "MY HOUSE")
+{
+    Vector2 mouse = Raylib.GetMousePosition();
+
+    // tab switching
+    for (int i = 0; i < 3; i++)
+    {
+        Rectangle tabBtn = new Rectangle(ScreenWidth / 2 - 280 + i * 140, 160, 120, 36);
+        if (Raylib.IsMouseButtonPressed(MouseButton.Left) &&
+            Raylib.CheckCollisionPointRec(mouse, tabBtn))
+        {
+            wardrobeTab = i;
+        }
+    }
+
+    if (Vector2.Distance(player.Position, currentBuilding.InteriorNPC.Position) < 120)
+    {
+        if (Raylib.IsKeyPressed(KeyboardKey.E))
+            wardrobeOpen = !wardrobeOpen;
+    }
+
+    if (Raylib.IsKeyPressed(KeyboardKey.Q) && wardrobeOpen)
+    {
+        wardrobeOpen = false;
+        return;
+    }
+}
+
     if (currentBuilding.BuildingName == "HOSPITAL")
 {
     if (Raylib.IsKeyPressed(KeyboardKey.E))
@@ -929,26 +1061,38 @@ if (currentBuilding.BuildingName == "WEAPONS")
         }
             Raylib.BeginMode2D(camera);
 
-           // base grasslands
-            Raylib.DrawRectangle(-5000, -5000, 10000, 10000, new Color(90, 170, 90, 255));
+           // base
+            Raylib.DrawRectangle(-10000, -10000, 20000, 20000, new Color(90, 170, 90, 255));
 
             // forest top
-            Raylib.DrawRectangle(-5000, -5000, 10000, 400, new Color(40, 100, 40, 255));
+            Raylib.DrawRectangle(-10000, -10000, 20000, 400, new Color(40, 100, 40, 255));
 
             // forest bottom
-            Raylib.DrawRectangle(-5000, 1000, 10000, 4000, new Color(40, 100, 40, 255));
+            Raylib.DrawRectangle(-10000, 1000, 20000, 9000, new Color(40, 100, 40, 255));
 
-            // desert (right of safe zone)
-            Raylib.DrawRectangle(2100, -5000, 7900, 10000, new Color(210, 180, 100, 255));
+            // desert (right)
+            Raylib.DrawRectangle(2100, -10000, 7900, 20000, new Color(210, 180, 100, 255));
 
-            // snow (left of safe zone)
-            Raylib.DrawRectangle(-5000, -5000, 3500, 10000, new Color(220, 235, 255, 255));
+            // snow (left)
+            Raylib.DrawRectangle(-10000, -10000, 8500, 20000, new Color(220, 235, 255, 255));
 
-            // safe zone (middle)
+            // safe zone
             Raylib.DrawRectangle(-1500, -800, 3600, 2200, new Color(90, 170, 90, 255));
 
             // main horizontal road
-            Raylib.DrawRectangle(-4000, 550, 8000, 180, Color.DarkGray);
+            Raylib.DrawRectangle(-10000, 550, 20000, 180, Color.DarkGray);
+
+            // north highway
+            Raylib.DrawRectangle(200, -10000, 120, 10000, Color.DarkGray);
+
+            // south highway
+            Raylib.DrawRectangle(200, 730, 120, 9270, Color.DarkGray);
+
+            // desert side road
+            Raylib.DrawRectangle(2100, 200, 3000, 120, Color.DarkGray);
+
+            // snow side road
+            Raylib.DrawRectangle(-10000, 200, 8500, 120, Color.DarkGray);
 
             // vertical road to bank
             Raylib.DrawRectangle(1020, -200, 120, 760, Color.DarkGray);
@@ -962,10 +1106,22 @@ if (currentBuilding.BuildingName == "WEAPONS")
             // vertical road to weapons shop
             Raylib.DrawRectangle(500, -200, 120, 760, Color.DarkGray);
 
-            // road markings
-            for (int i = -4000; i < 4000; i += 200)
+            // road markings main road
+            for (int i = -10000; i < 10000; i += 200)
             {
                 Raylib.DrawRectangle(i, 630, 100, 12, Color.Yellow);
+            }
+
+            // road markings north highway
+            for (int i = -10000; i < 730; i += 200)
+            {
+                Raylib.DrawRectangle(248, i, 12, 100, Color.Yellow);
+            }
+
+            // road markings south highway
+            for (int i = 730; i < 10000; i += 200)
+            {
+                Raylib.DrawRectangle(248, i, 12, 100, Color.Yellow);
             }
 
             foreach (var ft in floatingTexts)
@@ -1084,7 +1240,13 @@ if (currentBuilding.BuildingName == "WEAPONS")
     {
         Raylib.DrawText($"E = Deposit $10 | F = Withdraw $10", 20, 600, 22, Color.LightGray);
     }
+
+    if (currentBuilding.BuildingName == "MY HOUSE")
+{
+    Raylib.DrawText("E = Open Wardrobe", 20, 600, 22, Color.LightGray);
 }
+}
+        DrawWardrobe();
         }
 
         static void DrawHUD()
@@ -1104,6 +1266,22 @@ if (currentBuilding.BuildingName == "WEAPONS")
 
            Raylib.DrawRectangle(0, ScreenHeight - 34, ScreenWidth, 34, new Color((byte)0, (byte)0, (byte)0, (byte)170));
             Raylib.DrawText("SPACE = Chop Tree | R = Fish | TAB = Inventory | E = Enter Building | F = Drive Vehicle", 20, ScreenHeight - 28, 20, Color.White);
+
+            if (biomeMessageTimer > 0)
+{
+    byte alpha = (byte)(255 * Math.Min(1f, biomeMessageTimer));
+    Color biomeColor = currentBiome switch
+    {
+        "SNOW ZONE" => new Color((byte)150,(byte)200,(byte)255,alpha),
+        "DESERT" => new Color((byte)210,(byte)150,(byte)20,alpha),
+        "FOREST" => new Color((byte)30,(byte)130,(byte)30,alpha),
+        "SAFE ZONE" => new Color((byte)100,(byte)200,(byte)100,alpha),
+        _ => new Color((byte)255,(byte)255,(byte)255,alpha)
+    };
+
+    int textWidth = Raylib.MeasureText($"ENTERING {currentBiome}", 36);
+    Raylib.DrawText($"ENTERING {currentBiome}", ScreenWidth / 2 - textWidth / 2, 280, 36, biomeColor);
+}
            
  if (player.InventoryOpen)
 {
@@ -1172,7 +1350,7 @@ if (currentBuilding.BuildingName == "WEAPONS")
 
         static void GenerateWorld()
         {
-            for (int i = -2500; i < 2500; i += 250)
+            for (int i = -8000; i < 8000; i += 250)
             {
                 trees.Add(new TreeObject(new Vector2(i, -300)));
                 trees.Add(new TreeObject(new Vector2(i, 1200)));
@@ -1182,72 +1360,59 @@ if (currentBuilding.BuildingName == "WEAPONS")
             lakes.Add(new Lake(new Vector2(700, 1200)));
             lakes.Add(new Lake(new Vector2(-900, -600)));
 
-        buildings.Add(new Building(
-            new Rectangle(900, 400, 280, 240),
-            new Color(180,120,90,255),
-            new Color(90,70,50,255),
-            new Vector2(1100,700),
-            "BANK",
-            new NPC(
-            new Vector2(700,450),
-            "Bank Manager",
-            "Chur maori. Welcome to Waikato Bank."
-    )
+         buildings.Add(new Building(
+    new Rectangle(1200, 410, 160, 120),
+    new Color(180,120,90,255),
+    new Color(90,70,50,255),
+    new Vector2(1100,700),
+    "BANK",
+    new NPC(new Vector2(700,450), "Bank Manager", "Chur maori. Welcome to Waikato Bank.")
 ));
 
-        buildings.Add(new Building(
-            new Rectangle(1700, 300, 320, 280),
-            Color.DarkBlue,
-            new Color(50,60,90,255),
-            new Vector2(1800,650),
-            "DBar",
-            new NPC(
-            new Vector2(600,420),
-            "Dbar Owner",
-            "Grab a woodys and relax at Dbar."
-    )
+buildings.Add(new Building(
+    new Rectangle(1700, 410, 160, 120),
+    Color.DarkBlue,
+    new Color(50,60,90,255),
+    new Vector2(1800,650),
+    "DBar",
+    new NPC(new Vector2(600,420), "Dbar Owner", "Grab a woodys and relax at Dbar.")
 ));
 
-           buildings.Add(new Building(
-            new Rectangle(-1200, 250, 300, 240),
-            Color.DarkGreen,
-            new Color(40,90,50,255),
-            new Vector2(-1050,600),
-            "STORE",
-            new NPC(
-            new Vector2(500,420),
-            "Store Clerk",
-            "Need supplies for fishing? Show me the moolack"
-    )
+buildings.Add(new Building(
+    new Rectangle(-1000, 410, 160, 120),
+    Color.DarkGreen,
+    new Color(40,90,50,255),
+    new Vector2(-1050,600),
+    "STORE",
+    new NPC(new Vector2(500,420), "Store Clerk", "Need supplies for fishing? Show me the moolack")
 ));
 
-            // Hospital
-            buildings.Add(new Building(
-                new Rectangle(200, 200, 280, 240),
-                new Color(220, 50, 50, 255),
-                new Color(200, 220, 220, 255),
-                new Vector2(340, 550),
-                "HOSPITAL",
-                new NPC(
-                    new Vector2(600, 420),
-                    "Doctor",
-                    "Kia ora! I can patch you up for $20."
-                )
-            ));
+buildings.Add(new Building(
+    new Rectangle(340, -200, 160, 120),
+    new Color(220,50,50,255),
+    new Color(200,220,220,255),
+    new Vector2(420,650),
+    "HOSPITAL",
+    new NPC(new Vector2(600,420), "Doctor", "Kia ora! I can patch you up for $20.")
+));
 
-            // Weapons Shop
-            buildings.Add(new Building(
-                new Rectangle(500, 200, 280, 240),
-                new Color(80, 80, 80, 255),
-                new Color(50, 50, 60, 255),
-                new Vector2(640, 550),
-                "WEAPONS",
-                new NPC(
-                    new Vector2(600, 420),
-                    "Weapons Dealer",
-                    "Need a sharper blade bro? I got you."
-                )
-            ));
+buildings.Add(new Building(
+    new Rectangle(660, 150, 160, 120),
+    new Color(80,80,80,255),
+    new Color(50,50,60,255),
+    new Vector2(740,650),
+    "WEAPONS",
+    new NPC(new Vector2(600,420), "Weapons Dealer", "Need a sharper blade bro? I got you.")
+));
+
+buildings.Add(new Building(
+    new Rectangle(-400, 410, 160, 120),
+    new Color(200,160,100,255),
+    new Color(180,140,100,255),
+    new Vector2(-320,650),
+    "MY HOUSE",
+    new NPC(new Vector2(800,420), "Mirror", "Check yourself out bro.")
+));
 
             npcs.Add(new NPC(
                 new Vector2(500,500),
@@ -1273,22 +1438,30 @@ if (currentBuilding.BuildingName == "WEAPONS")
             enemies.Add(new Enemy(new Vector2(2300, 600), "Wild Dog", 3, Color.Brown));
             enemies.Add(new Enemy(new Vector2(2600, 400), "Wild Dog", 3, Color.Brown));
             enemies.Add(new Enemy(new Vector2(2400, 900), "Wild Dog", 3, Color.Brown));
+            enemies.Add(new Enemy(new Vector2(3000, 300), "Wild Dog", 3, Color.Brown));
+            enemies.Add(new Enemy(new Vector2(3500, 700), "Wild Dog", 3, Color.Brown));
 
             // Forest - Wolves
-            enemies.Add(new Enemy(new Vector2(-300, -400), "Wolf", 5, Color.DarkGray));
-            enemies.Add(new Enemy(new Vector2(400, -400), "Wolf", 5, Color.DarkGray));
-            enemies.Add(new Enemy(new Vector2(-200, 1300), "Wolf", 5, Color.DarkGray));
-            enemies.Add(new Enemy(new Vector2(500, 1300), "Wolf", 5, Color.DarkGray));
+            enemies.Add(new Enemy(new Vector2(-300, -600), "Wolf", 5, Color.DarkGray));
+            enemies.Add(new Enemy(new Vector2(400, -800), "Wolf", 5, Color.DarkGray));
+            enemies.Add(new Enemy(new Vector2(-200, 1400), "Wolf", 5, Color.DarkGray));
+            enemies.Add(new Enemy(new Vector2(500, 1600), "Wolf", 5, Color.DarkGray));
+            enemies.Add(new Enemy(new Vector2(1000, -700), "Wolf", 5, Color.DarkGray));
+            enemies.Add(new Enemy(new Vector2(-800, 1500), "Wolf", 5, Color.DarkGray));
 
             // Desert - Scorpions
-            enemies.Add(new Enemy(new Vector2(2500, 300), "Scorpion", 4, new Color((byte)180, (byte)120, (byte)0, (byte)255)));
-            enemies.Add(new Enemy(new Vector2(2800, 700), "Scorpion", 4, new Color((byte)180, (byte)120, (byte)0, (byte)255)));
-            enemies.Add(new Enemy(new Vector2(3000, 200), "Scorpion", 4, new Color((byte)180, (byte)120, (byte)0, (byte)255)));
+            enemies.Add(new Enemy(new Vector2(3500, 300), "Scorpion", 4, new Color((byte)180, (byte)120, (byte)0, (byte)255)));
+            enemies.Add(new Enemy(new Vector2(4000, 700), "Scorpion", 4, new Color((byte)180, (byte)120, (byte)0, (byte)255)));
+            enemies.Add(new Enemy(new Vector2(4500, 200), "Scorpion", 4, new Color((byte)180, (byte)120, (byte)0, (byte)255)));
+            enemies.Add(new Enemy(new Vector2(5000, 600), "Scorpion", 4, new Color((byte)180, (byte)120, (byte)0, (byte)255)));
+            enemies.Add(new Enemy(new Vector2(5500, 400), "Scorpion", 4, new Color((byte)180, (byte)120, (byte)0, (byte)255)));
 
             // Snow - Bears
-            enemies.Add(new Enemy(new Vector2(-2000, 300), "Bear", 8, new Color((byte)100, (byte)100, (byte)120, (byte)255)));
-            enemies.Add(new Enemy(new Vector2(-2500, 600), "Bear", 8, new Color((byte)100, (byte)100, (byte)120, (byte)255)));
-            enemies.Add(new Enemy(new Vector2(-2200, 900), "Bear", 8, new Color((byte)100, (byte)100, (byte)120, (byte)255)));
+            enemies.Add(new Enemy(new Vector2(-3000, 300), "Bear", 8, new Color((byte)100, (byte)100, (byte)120, (byte)255)));
+            enemies.Add(new Enemy(new Vector2(-3500, 600), "Bear", 8, new Color((byte)100, (byte)100, (byte)120, (byte)255)));
+            enemies.Add(new Enemy(new Vector2(-4000, 400), "Bear", 8, new Color((byte)100, (byte)100, (byte)120, (byte)255)));
+            enemies.Add(new Enemy(new Vector2(-4500, 700), "Bear", 8, new Color((byte)100, (byte)100, (byte)120, (byte)255)));
+            enemies.Add(new Enemy(new Vector2(-5000, 300), "Bear", 8, new Color((byte)100, (byte)100, (byte)120, (byte)255)));
                     }
 
                 }
@@ -1462,6 +1635,9 @@ if (currentBuilding.BuildingName == "WEAPONS")
         public int CombatXP = 0;
         float regenTimer = 0f;
         float damageCooldown = 0f;
+        public Color ShirtColor = Color.Blue;
+        public Color SkinColor = Color.Beige;
+        public Color PantsColor = Color.Black;
 
         public bool InventoryOpen = false;
 
@@ -1619,18 +1795,18 @@ if (currentBuilding.BuildingName == "WEAPONS")
 
 
         public void Draw()
-        {
+{
             if (Hidden) return;
 
-            Raylib.DrawCircle((int)Position.X + 20,(int)Position.Y + 12,12,Color.Beige);
+            Raylib.DrawCircle((int)Position.X + 20,(int)Position.Y + 12,12,SkinColor);
 
-            Raylib.DrawRectangle((int)Position.X + 10,(int)Position.Y + 24,20,30,Color.Blue);
+            Raylib.DrawRectangle((int)Position.X + 10,(int)Position.Y + 24,20,30,ShirtColor);
 
-            Raylib.DrawRectangle((int)Position.X + 10,(int)Position.Y + 54,8,12,Color.Black);
-            Raylib.DrawRectangle((int)Position.X + 22,(int)Position.Y + 54,8,12,Color.Black);
+            Raylib.DrawRectangle((int)Position.X + 10,(int)Position.Y + 54,8,12,PantsColor);
+            Raylib.DrawRectangle((int)Position.X + 22,(int)Position.Y + 54,8,12,PantsColor);
 
-            Raylib.DrawRectangle((int)Position.X + 2,(int)Position.Y + 26,8,18,Color.Beige);
-            Raylib.DrawRectangle((int)Position.X + 30,(int)Position.Y + 26,8,18,Color.Beige);
+            Raylib.DrawRectangle((int)Position.X + 2,(int)Position.Y + 26,8,18,SkinColor);
+            Raylib.DrawRectangle((int)Position.X + 30,(int)Position.Y + 26,8,18,SkinColor);
         }
     }
 
@@ -1895,32 +2071,35 @@ public NPC(Vector2 pos)
         }
 
         public void Draw()
-        {
-            Raylib.DrawRectangleRec(Bounds, ExteriorColor);
+{
+    Raylib.DrawRectangleRec(Bounds, ExteriorColor);
 
-            Raylib.DrawRectangle(
-                (int)Bounds.X + 100,
-                (int)Bounds.Y + 160,
-                60,
-                80,
-                Color.Brown
-            );
+    // door
+    Raylib.DrawRectangle(
+        (int)Bounds.X + 50,
+        (int)Bounds.Y + 70,
+        30,
+        50,
+        Color.Brown
+    );
 
-            Raylib.DrawRectangle(
-                (int)Bounds.X + 30,
-                (int)Bounds.Y + 40,
-                60,
-                60,
-                Color.LightGray
-            );
+    // window left
+    Raylib.DrawRectangle(
+        (int)Bounds.X + 10,
+        (int)Bounds.Y + 20,
+        30,
+        30,
+        Color.LightGray
+    );
 
-            Raylib.DrawRectangle(
-                (int)Bounds.X + 180,
-                (int)Bounds.Y + 40,
-                60,
-                60,
-                Color.LightGray
-            );
-        }
+    // window right
+    Raylib.DrawRectangle(
+        (int)Bounds.X + 100,
+        (int)Bounds.Y + 20,
+        30,
+        30,
+        Color.LightGray
+    );
+}
     }
 }
