@@ -50,6 +50,13 @@ namespace OpenWorldRPG
         static bool nameEntered = false;
         static bool hoverCombat = false;
         static bool shopOpen = false;
+        static bool pauseMenuOpen = false;
+        static int overwriteSlot = -1;
+        static bool overwriteConfirmOpen = false;
+        static bool optionsMenuOpen = false;
+        static bool cheatsMenuOpen = false;
+        static bool loadMenuOpen = false;
+        static int cheatGoldAmount = 100;
         static string shopMessage = "";
         static float shopMessageTimer = 0f;
         static int minimapSize = 200;
@@ -741,6 +748,7 @@ namespace OpenWorldRPG
         {
             Raylib.InitWindow(ScreenWidth, ScreenHeight, "Open World RPG V3");
             Raylib.SetTargetFPS(60);
+            Raylib.SetExitKey(KeyboardKey.Null);
 
             GenerateWorld();
 
@@ -800,24 +808,32 @@ namespace OpenWorldRPG
             Rectangle slotBtn = new Rectangle(ScreenWidth / 2 - 250, 300 + i * 100, 500, 80);
             var (exists, name, info) = GetSlotInfo(i);
 
-            if (Raylib.IsMouseButtonPressed(MouseButton.Left) &&
-                Raylib.CheckCollisionPointRec(mouse, slotBtn))
-            {
-                selectedSlot = i;
-                slotSelected = true;
-
-                if (isLoadingGame && exists)
-                {
-                    LoadGame();
-                    currentScene = SceneState.World;
-                }
-                else if (!isLoadingGame)
-                {
-                    playerName = "typing";
-                    nameEntered = false;
-                    totalPlayTime = 0f;
-                }
-            }
+      if (Raylib.CheckCollisionPointRec(mouse, slotBtn))
+{
+    if (Raylib.IsMouseButtonPressed(MouseButton.Left))
+    {
+        if (isLoadingGame && exists)
+        {
+            selectedSlot = i;
+            slotSelected = true;
+            LoadGame();
+            currentScene = SceneState.World;
+        }
+        else if (!isLoadingGame && !exists)
+        {
+            selectedSlot = i;
+            slotSelected = true;
+            playerName = "typing";
+            nameEntered = false;
+            totalPlayTime = 0f;
+        }
+        else if (!isLoadingGame && exists)
+        {
+            overwriteConfirmOpen = true;
+            overwriteSlot = i;
+        }
+    }
+}
         }
 
         if (slotSelected && !nameEntered)
@@ -841,22 +857,42 @@ namespace OpenWorldRPG
         else if (nameEntered)
         {
             if (Raylib.IsKeyPressed(KeyboardKey.Enter))
-                currentScene = SceneState.World;
+                {
+                    player = new Player(new Vector2(0, 650));
+                    chestLogs = 0; chestFish = 0; chestBones = 0;
+                    chestFur = 0; chestStingers = 0; chestBearPelts = 0;
+                    timeOfDay = 0f; dayOfWeek = 0;
+                    quests[0].Progress = 0; quests[0].Completed = false;
+                    quests[1].Progress = 0; quests[1].Completed = false;
+                    quests[2].Progress = 0; quests[2].Completed = false;
+                    totalPlayTime = 0f;
+                    currentScene = SceneState.World;
+                }
         }
 
-        if (Raylib.IsKeyPressed(KeyboardKey.Escape))
-        {
-            mainMenuChoice = false;
-            slotSelected = false;
-            playerName = "";
-            nameEntered = false;
+        if (Raylib.IsKeyPressed(KeyboardKey.Escape) && playerName.Length == 0)
+            {
+                mainMenuChoice = false;
+                slotSelected = false;
+                playerName = "";
+                nameEntered = false;
+            }
         }
-    }
 
     break;
 
                 case SceneState.World:
 
+                    if (Raylib.IsKeyPressed(KeyboardKey.Escape))
+{
+    pauseMenuOpen = !pauseMenuOpen;
+    optionsMenuOpen = false;
+    cheatsMenuOpen = false;
+    loadMenuOpen = false;
+}
+
+if (!pauseMenuOpen)
+{
                     if (shakeDuration > 0) shakeDuration -= dt;
                     if (levelUpTimer > 0) levelUpTimer -= dt;
                     timeOfDay += daySpeed * dt;
@@ -875,11 +911,12 @@ namespace OpenWorldRPG
                     }
 
                     autoSaveTimer += dt;
-                    if (autoSaveTimer >= autoSaveInterval)
-                    {
-                        autoSaveTimer = 0f;
-                        SaveGame();
-                    }
+                   autoSaveTimer += dt;
+                        if (autoSaveTimer >= autoSaveInterval && nameEntered)
+                        {
+                            autoSaveTimer = 0f;
+                            SaveGame();
+                        }
 
                     if (Raylib.IsKeyPressed(KeyboardKey.F5))
                         SaveGame();
@@ -1114,6 +1151,7 @@ namespace OpenWorldRPG
                     }
 
                     camera.Target = player.Position;
+}
 
                     break;
 
@@ -1317,10 +1355,12 @@ namespace OpenWorldRPG
             {
                 case SceneState.MainMenu:
                     DrawMenu();
+                    DrawOverwriteConfirm();
                     break;
 
                 case SceneState.World:
                     DrawWorld();
+                    DrawPauseMenu();
                     break;
 
                 case SceneState.Building:
@@ -1339,6 +1379,59 @@ namespace OpenWorldRPG
             Raylib.EndDrawing();
         }
 
+        static void DrawOverwriteConfirm()
+{
+    if (!overwriteConfirmOpen) return;
+
+    // dim background
+    Raylib.DrawRectangle(0, 0, ScreenWidth, ScreenHeight, new Color((byte)0, (byte)0, (byte)0, (byte)150));
+
+    // panel
+    int px = ScreenWidth / 2 - 250;
+    int py = ScreenHeight / 2 - 100;
+    Raylib.DrawRectangle(px, py, 500, 200, new Color((byte)20, (byte)20, (byte)30, (byte)240));
+    Raylib.DrawRectangleLines(px, py, 500, 200, Color.Gold);
+
+    var (exists, name, info) = GetSlotInfo(overwriteSlot);
+    Raylib.DrawText("OVERWRITE SAVE?", px + 120, py + 20, 28, Color.Gold);
+    Raylib.DrawText($"Slot {overwriteSlot + 1}: {name}", px + 30, py + 65, 22, Color.White);
+    Raylib.DrawText(info, px + 30, py + 95, 18, Color.LightGray);
+
+    Vector2 mouse = Raylib.GetMousePosition();
+
+    // confirm button
+    Rectangle confirmBtn = new Rectangle(px + 40, py + 140, 180, 44);
+    bool hoverConfirm = Raylib.CheckCollisionPointRec(mouse, confirmBtn);
+    Raylib.DrawRectangleRec(confirmBtn, new Color((byte)40, (byte)40, (byte)40, (byte)255));
+    Raylib.DrawRectangleLinesEx(confirmBtn, 2, hoverConfirm ? Color.Gold : Color.White);
+    Raylib.DrawText("OVERWRITE", px + 65, py + 153, 24, hoverConfirm ? Color.Gold : Color.White);
+
+    // cancel button
+    Rectangle cancelBtn = new Rectangle(px + 280, py + 140, 180, 44);
+    bool hoverCancel = Raylib.CheckCollisionPointRec(mouse, cancelBtn);
+    Raylib.DrawRectangleRec(cancelBtn, new Color((byte)40, (byte)40, (byte)40, (byte)255));
+    Raylib.DrawRectangleLinesEx(cancelBtn, 2, hoverCancel ? Color.Red : Color.White);
+    Raylib.DrawText("CANCEL", px + 320, py + 153, 24, hoverCancel ? Color.Red : Color.White);
+
+   if (hoverConfirm && Raylib.IsMouseButtonPressed(MouseButton.Left))
+        {
+            selectedSlot = overwriteSlot;
+            if (System.IO.File.Exists(savePaths[overwriteSlot]))
+                System.IO.File.Delete(savePaths[overwriteSlot]);
+            slotSelected = true;
+            playerName = "typing";
+            nameEntered = false;
+            totalPlayTime = 0f;
+            overwriteConfirmOpen = false;
+            overwriteSlot = -1;
+        }
+
+    if (hoverCancel && Raylib.IsMouseButtonPressed(MouseButton.Left))
+    {
+        overwriteConfirmOpen = false;
+        overwriteSlot = -1;
+    }
+}
        static void DrawMenu()
 {
     Raylib.ClearBackground(new Color(10, 10, 20, 255));
@@ -1390,10 +1483,10 @@ namespace OpenWorldRPG
             Raylib.DrawText($"SLOT {i + 1}", (int)slotBtn.X + 20, (int)slotBtn.Y + 12, 22, hover ? Color.Gold : Color.White);
 
             if (exists)
-            {
-                Raylib.DrawText(name, (int)slotBtn.X + 120, (int)slotBtn.Y + 12, 22, Color.White);
-                Raylib.DrawText(info, (int)slotBtn.X + 20, (int)slotBtn.Y + 46, 18, Color.LightGray);
-            }
+                {
+                    Raylib.DrawText(name, (int)slotBtn.X + 120, (int)slotBtn.Y + 12, 22, Color.White);
+                    Raylib.DrawText(info, (int)slotBtn.X + 20, (int)slotBtn.Y + 46, 18, Color.LightGray);
+                }
             else
             {
                 Raylib.DrawText("Empty Slot", (int)slotBtn.X + 120, (int)slotBtn.Y + 26, 22, Color.DarkGray);
@@ -1422,7 +1515,228 @@ namespace OpenWorldRPG
             Raylib.DrawText("PRESS ENTER TO START", 390, 390, 34, Color.White);
     }
 }
+        static void DrawPauseMenu()
+{
+    if (!pauseMenuOpen) return;
 
+    // dim background
+    Raylib.DrawRectangle(0, 0, ScreenWidth, ScreenHeight, new Color((byte)0, (byte)0, (byte)0, (byte)150));
+
+    // panel
+    Raylib.DrawRectangle(ScreenWidth / 2 - 200, ScreenHeight / 2 - 250, 400, 500, new Color((byte)20, (byte)20, (byte)30, (byte)240));
+    Raylib.DrawRectangleLines(ScreenWidth / 2 - 200, ScreenHeight / 2 - 250, 400, 500, Color.Gold);
+    Raylib.DrawText("PAUSED", ScreenWidth / 2 - 70, ScreenHeight / 2 - 230, 40, Color.Gold);
+
+    Vector2 mouse = Raylib.GetMousePosition();
+
+    string[] buttons = { "RESUME", "LOAD GAME", "OPTIONS", "CHEATS", "QUIT TO MENU" };
+
+    for (int i = 0; i < buttons.Length; i++)
+    {
+        Rectangle btn = new Rectangle(ScreenWidth / 2 - 150, ScreenHeight / 2 - 140 + i * 80, 300, 55);
+        bool hover = Raylib.CheckCollisionPointRec(mouse, btn);
+
+        Raylib.DrawRectangleRec(btn, new Color((byte)40, (byte)40, (byte)40, (byte)255));
+        Raylib.DrawRectangleLinesEx(btn, 2, hover ? Color.Gold : Color.White);
+        Raylib.DrawText(buttons[i], (int)btn.X + 20, (int)btn.Y + 16, 26, hover ? Color.Gold : Color.White);
+
+        if (hover && Raylib.IsMouseButtonPressed(MouseButton.Left))
+        {
+            switch (buttons[i])
+            {
+                case "RESUME":
+                    pauseMenuOpen = false;
+                    break;
+                case "LOAD GAME":
+                    loadMenuOpen = !loadMenuOpen;
+                    optionsMenuOpen = false;
+                    cheatsMenuOpen = false;
+                    break;
+                case "OPTIONS":
+                    optionsMenuOpen = !optionsMenuOpen;
+                    loadMenuOpen = false;
+                    cheatsMenuOpen = false;
+                    break;
+                case "CHEATS":
+                    cheatsMenuOpen = !cheatsMenuOpen;
+                    optionsMenuOpen = false;
+                    loadMenuOpen = false;
+                    break;
+                case "QUIT TO MENU":
+                    pauseMenuOpen = false;
+                    currentScene = SceneState.MainMenu;
+                    mainMenuChoice = false;
+                    slotSelected = false;
+                    playerName = "";
+                    nameEntered = false;
+                    break;
+            }
+        }
+    }
+
+    if (loadMenuOpen) DrawPauseLoadMenu();
+    if (optionsMenuOpen) DrawOptionsMenu();
+    if (cheatsMenuOpen) DrawCheatsMenu();
+}
+
+static void DrawPauseLoadMenu()
+{
+    Raylib.DrawRectangle(ScreenWidth / 2 + 220, ScreenHeight / 2 - 250, 400, 300, new Color((byte)20, (byte)20, (byte)30, (byte)240));
+    Raylib.DrawRectangleLines(ScreenWidth / 2 + 220, ScreenHeight / 2 - 250, 400, 300, Color.Gold);
+    Raylib.DrawText("LOAD GAME", ScreenWidth / 2 + 280, ScreenHeight / 2 - 235, 28, Color.Gold);
+
+    Vector2 mouse = Raylib.GetMousePosition();
+
+    for (int i = 0; i < 3; i++)
+    {
+        Rectangle slotBtn = new Rectangle(ScreenWidth / 2 + 240, ScreenHeight / 2 - 190 + i * 85, 360, 70);
+        bool hover = Raylib.CheckCollisionPointRec(mouse, slotBtn);
+        var (exists, name, info) = GetSlotInfo(i);
+
+        Raylib.DrawRectangleRec(slotBtn, new Color((byte)30, (byte)30, (byte)40, (byte)255));
+        Raylib.DrawRectangleLinesEx(slotBtn, 2, hover ? Color.Gold : Color.White);
+        Raylib.DrawText($"SLOT {i + 1}", (int)slotBtn.X + 15, (int)slotBtn.Y + 10, 20, hover ? Color.Gold : Color.White);
+
+        if (exists)
+        {
+            Raylib.DrawText(name, (int)slotBtn.X + 110, (int)slotBtn.Y + 10, 20, Color.White);
+            Raylib.DrawText(info, (int)slotBtn.X + 15, (int)slotBtn.Y + 40, 16, Color.LightGray);
+        }
+        else
+        {
+            Raylib.DrawText("Empty Slot", (int)slotBtn.X + 110, (int)slotBtn.Y + 25, 20, Color.DarkGray);
+        }
+
+        if (hover && Raylib.IsMouseButtonPressed(MouseButton.Left) && exists)
+        {
+            selectedSlot = i;
+            LoadGame();
+            pauseMenuOpen = false;
+            loadMenuOpen = false;
+        }
+    }
+}
+
+static void DrawOptionsMenu()
+{
+    Raylib.DrawRectangle(ScreenWidth / 2 + 220, ScreenHeight / 2 - 250, 400, 300, new Color((byte)20, (byte)20, (byte)30, (byte)240));
+    Raylib.DrawRectangleLines(ScreenWidth / 2 + 220, ScreenHeight / 2 - 250, 400, 300, Color.Gold);
+    Raylib.DrawText("OPTIONS", ScreenWidth / 2 + 300, ScreenHeight / 2 - 235, 28, Color.Gold);
+
+    Vector2 mouse = Raylib.GetMousePosition();
+
+    // day speed slider
+    Raylib.DrawText("Day Speed", ScreenWidth / 2 + 240, ScreenHeight / 2 - 180, 22, Color.White);
+    Rectangle sliderBg = new Rectangle(ScreenWidth / 2 + 240, ScreenHeight / 2 - 150, 300, 16);
+    Raylib.DrawRectangleRec(sliderBg, new Color((byte)60, (byte)60, (byte)60, (byte)255));
+    float daySpeedNorm = (daySpeed - 0.005f) / (0.1f - 0.005f);
+    Raylib.DrawRectangle(ScreenWidth / 2 + 240, ScreenHeight / 2 - 150, (int)(300 * daySpeedNorm), 16, Color.Gold);
+    Raylib.DrawRectangleLines(ScreenWidth / 2 + 240, ScreenHeight / 2 - 150, 300, 16, Color.White);
+    if (Raylib.IsMouseButtonDown(MouseButton.Left) && Raylib.CheckCollisionPointRec(mouse, sliderBg))
+    {
+        daySpeedNorm = (mouse.X - (ScreenWidth / 2 + 240)) / 300f;
+        daySpeedNorm = Math.Clamp(daySpeedNorm, 0f, 1f);
+        daySpeed = 0.005f + daySpeedNorm * (0.1f - 0.005f);
+    }
+    Raylib.DrawText($"{daySpeed:F3}", ScreenWidth / 2 + 555, ScreenHeight / 2 - 153, 18, Color.LightGray);
+
+    // minimap size toggle
+    Raylib.DrawText("Minimap Size", ScreenWidth / 2 + 240, ScreenHeight / 2 - 100, 22, Color.White);
+    Rectangle minimapBtn = new Rectangle(ScreenWidth / 2 + 240, ScreenHeight / 2 - 70, 160, 40);
+    bool hoverMinimap = Raylib.CheckCollisionPointRec(mouse, minimapBtn);
+    Raylib.DrawRectangleRec(minimapBtn, new Color((byte)40, (byte)40, (byte)40, (byte)255));
+    Raylib.DrawRectangleLinesEx(minimapBtn, 2, hoverMinimap ? Color.Gold : Color.White);
+    Raylib.DrawText(minimapSize == 200 ? "Normal" : "Large", ScreenWidth / 2 + 270, ScreenHeight / 2 - 58, 22, hoverMinimap ? Color.Gold : Color.White);
+    if (hoverMinimap && Raylib.IsMouseButtonPressed(MouseButton.Left))
+        minimapSize = minimapSize == 200 ? 300 : 200;
+
+    // rain toggle
+    Raylib.DrawText("Rain", ScreenWidth / 2 + 240, ScreenHeight / 2 - 10, 22, Color.White);
+    Rectangle rainBtn = new Rectangle(ScreenWidth / 2 + 240, ScreenHeight / 2 + 20, 160, 40);
+    bool hoverRain = Raylib.CheckCollisionPointRec(mouse, rainBtn);
+    Raylib.DrawRectangleRec(rainBtn, new Color((byte)40, (byte)40, (byte)40, (byte)255));
+    Raylib.DrawRectangleLinesEx(rainBtn, 2, hoverRain ? Color.Gold : Color.White);
+    Raylib.DrawText(isRaining ? "ON" : "OFF", ScreenWidth / 2 + 270, ScreenHeight / 2 + 32, 22, isRaining ? Color.SkyBlue : Color.DarkGray);
+    if (hoverRain && Raylib.IsMouseButtonPressed(MouseButton.Left))
+        isRaining = !isRaining;
+}
+
+static void DrawCheatsMenu()
+{
+    Raylib.DrawRectangle(ScreenWidth / 2 + 220, ScreenHeight / 2 - 250, 400, 400, new Color((byte)20, (byte)20, (byte)30, (byte)240));
+    Raylib.DrawRectangleLines(ScreenWidth / 2 + 220, ScreenHeight / 2 - 250, 400, 400, Color.Gold);
+    Raylib.DrawText("CHEATS", ScreenWidth / 2 + 310, ScreenHeight / 2 - 235, 28, Color.Gold);
+
+    Vector2 mouse = Raylib.GetMousePosition();
+
+    string[] cheats = { $"Add ${cheatGoldAmount} Gold", "Max Health", "Fill Inventory", "Max All Skills", "Clear Enemies" };
+
+    for (int i = 0; i < cheats.Length; i++)
+    {
+        Rectangle btn = new Rectangle(ScreenWidth / 2 + 240, ScreenHeight / 2 - 180 + i * 70, 320, 50);
+        bool hover = Raylib.CheckCollisionPointRec(mouse, btn);
+
+        Raylib.DrawRectangleRec(btn, new Color((byte)40, (byte)40, (byte)40, (byte)255));
+        Raylib.DrawRectangleLinesEx(btn, 2, hover ? Color.Gold : Color.White);
+        Raylib.DrawText(cheats[i], (int)btn.X + 15, (int)btn.Y + 14, 22, hover ? Color.Gold : Color.White);
+
+        if (hover && Raylib.IsMouseButtonPressed(MouseButton.Left))
+        {
+            switch (i)
+            {
+                case 0:
+                    player.Money += cheatGoldAmount;
+                    ShowNotification($"+${cheatGoldAmount} Gold added!");
+                    break;
+                case 1:
+                    player.Health = player.MaxHealth;
+                    ShowNotification("Health maxed out!");
+                    break;
+                case 2:
+                    player.Logs += 50;
+                    player.Fish += 50;
+                    player.Bones += 50;
+                    player.Fur += 50;
+                    player.Stingers += 50;
+                    player.BearPelts += 50;
+                    ShowNotification("Inventory filled!");
+                    break;
+                case 3:
+                    player.WoodcuttingLevel = 99;
+                    player.FishingLevel = 99;
+                    player.CombatLevel = 99;
+                    ShowNotification("All skills maxed!");
+                    break;
+                case 4:
+                    foreach (Enemy e in enemies) e.Dead = true;
+                    ShowNotification("All enemies cleared!");
+                    break;
+            }
+        }
+    }
+
+    // gold amount adjuster
+    Raylib.DrawText("Gold Amount:", ScreenWidth / 2 + 240, ScreenHeight / 2 + 175, 20, Color.LightGray);
+    Rectangle minusBtn = new Rectangle(ScreenWidth / 2 + 370, ScreenHeight / 2 + 170, 36, 36);
+    Rectangle plusBtn = new Rectangle(ScreenWidth / 2 + 460, ScreenHeight / 2 + 170, 36, 36);
+    bool hoverMinus = Raylib.CheckCollisionPointRec(mouse, minusBtn);
+    bool hoverPlus = Raylib.CheckCollisionPointRec(mouse, plusBtn);
+
+    Raylib.DrawRectangleRec(minusBtn, new Color((byte)40, (byte)40, (byte)40, (byte)255));
+    Raylib.DrawRectangleLinesEx(minusBtn, 2, hoverMinus ? Color.Gold : Color.White);
+    Raylib.DrawText("-", (int)minusBtn.X + 12, (int)minusBtn.Y + 8, 22, Color.White);
+
+    Raylib.DrawText($"{cheatGoldAmount}", ScreenWidth / 2 + 412, ScreenHeight / 2 + 178, 20, Color.White);
+
+    Raylib.DrawRectangleRec(plusBtn, new Color((byte)40, (byte)40, (byte)40, (byte)255));
+    Raylib.DrawRectangleLinesEx(plusBtn, 2, hoverPlus ? Color.Gold : Color.White);
+    Raylib.DrawText("+", (int)plusBtn.X + 10, (int)plusBtn.Y + 8, 22, Color.White);
+
+    if (hoverMinus && Raylib.IsMouseButtonPressed(MouseButton.Left))
+        cheatGoldAmount = Math.Max(50, cheatGoldAmount - 50);
+    if (hoverPlus && Raylib.IsMouseButtonPressed(MouseButton.Left))
+        cheatGoldAmount = Math.Min(10000, cheatGoldAmount + 50);
+}
         static void DrawWorld()
         {
             Raylib.ClearBackground(new Color(100,180,100,255));
