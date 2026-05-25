@@ -24,7 +24,7 @@ namespace OpenWorldRPG
         static float timeOfDay = 0f; // 0 to 1, full day cycle
         static float daySpeed = 0.02f; // how fast the day progresses
         static float autoSaveTimer = 0f;
-        static float autoSaveInterval = 30f;
+        static float autoSaveInterval = 300f;
         static int selectedSlot = 0;
         static string[] savePaths = { "savegame1.txt", "savegame2.txt", "savegame3.txt" };
         static string savePath => savePaths[selectedSlot];
@@ -50,7 +50,11 @@ namespace OpenWorldRPG
         static bool nameEntered = false;
         static bool hoverCombat = false;
         static bool shopOpen = false;
+        static bool shopUIOpen = false;
+        static int shopSelectedItem = -1;
+        static string shopSelectedItemName = "";
         static bool pauseMenuOpen = false;
+        static bool mapOpen = false;
         static int overwriteSlot = -1;
         static bool overwriteConfirmOpen = false;
         static bool optionsMenuOpen = false;
@@ -101,13 +105,13 @@ namespace OpenWorldRPG
             if (!System.IO.File.Exists(path)) return (false, "", "");
 
             string[] lines = System.IO.File.ReadAllLines(path);
-            if (lines.Length < 19) return (false, "", "");
+            if (lines.Length < 24) return (false, "", "");
 
-            string name = lines[18];
-            int wcLv = int.Parse(lines[10]);
-            int fishLv = int.Parse(lines[12]);
-            int combatLv = int.Parse(lines[14]);
-            float playTime = lines.Length > 40 ? float.Parse(lines[40]) : 0f;
+            string name = lines[23];
+            int wcLv = int.Parse(lines[15]);
+            int fishLv = int.Parse(lines[17]);
+            int combatLv = int.Parse(lines[19]);
+            float playTime = lines.Length > 45 ? float.Parse(lines[45]) : 0f;
             int hours = (int)(playTime / 3600);
             int minutes = (int)((playTime % 3600) / 60);
 
@@ -128,6 +132,11 @@ namespace OpenWorldRPG
         player.Money.ToString(),
         player.BankBalance.ToString(),
         player.Logs.ToString(),
+        player.BirchLogs.ToString(),
+        player.OakLogs.ToString(),
+        player.PineLogs.ToString(),
+        player.ArcticLogs.ToString(),
+        player.DeadWood.ToString(),
         player.Fish.ToString(),
         player.Bones.ToString(),
         player.Fur.ToString(),
@@ -170,50 +179,55 @@ namespace OpenWorldRPG
     ShowNotification("Game Saved!");
 }
 
-        static void LoadGame()
+       static void LoadGame()
 {
     if (!System.IO.File.Exists(savePath)) return;
 
     string[] lines = System.IO.File.ReadAllLines(savePath);
 
-    if (lines.Length < 40) return;
+    if (lines.Length < 45) return;
 
     player.Position = new Vector2(float.Parse(lines[0]), float.Parse(lines[1]));
     player.Money = int.Parse(lines[2]);
     player.BankBalance = int.Parse(lines[3]);
     player.Logs = int.Parse(lines[4]);
-    player.Fish = int.Parse(lines[5]);
-    player.Bones = int.Parse(lines[6]);
-    player.Fur = int.Parse(lines[7]);
-    player.Stingers = int.Parse(lines[8]);
-    player.BearPelts = int.Parse(lines[9]);
-    player.WoodcuttingLevel = int.Parse(lines[10]);
-    player.WoodcuttingXP = int.Parse(lines[11]);
-    player.FishingLevel = int.Parse(lines[12]);
-    player.FishingXP = int.Parse(lines[13]);
-    player.CombatLevel = int.Parse(lines[14]);
-    player.CombatXP = int.Parse(lines[15]);
-    player.Health = int.Parse(lines[16]);
-    player.MaxHealth = int.Parse(lines[17]);
-    playerName = lines[18];
+    player.BirchLogs = int.Parse(lines[5]);
+    player.OakLogs = int.Parse(lines[6]);
+    player.PineLogs = int.Parse(lines[7]);
+    player.ArcticLogs = int.Parse(lines[8]);
+    player.DeadWood = int.Parse(lines[9]);
+    player.Fish = int.Parse(lines[10]);
+    player.Bones = int.Parse(lines[11]);
+    player.Fur = int.Parse(lines[12]);
+    player.Stingers = int.Parse(lines[13]);
+    player.BearPelts = int.Parse(lines[14]);
+    player.WoodcuttingLevel = int.Parse(lines[15]);
+    player.WoodcuttingXP = int.Parse(lines[16]);
+    player.FishingLevel = int.Parse(lines[17]);
+    player.FishingXP = int.Parse(lines[18]);
+    player.CombatLevel = int.Parse(lines[19]);
+    player.CombatXP = int.Parse(lines[20]);
+    player.Health = int.Parse(lines[21]);
+    player.MaxHealth = int.Parse(lines[22]);
+    playerName = lines[23];
     nameEntered = true;
-    player.ShirtColor = new Color((byte)int.Parse(lines[19]), (byte)int.Parse(lines[20]), (byte)int.Parse(lines[21]), (byte)255);
-    player.SkinColor = new Color((byte)int.Parse(lines[22]), (byte)int.Parse(lines[23]), (byte)int.Parse(lines[24]), (byte)255);
-    player.PantsColor = new Color((byte)int.Parse(lines[25]), (byte)int.Parse(lines[26]), (byte)int.Parse(lines[27]), (byte)255);
-    chestLogs = int.Parse(lines[28]);
-    chestFish = int.Parse(lines[29]);
-    chestBones = int.Parse(lines[30]);
-    chestFur = int.Parse(lines[31]);
-    chestStingers = int.Parse(lines[32]);
-    chestBearPelts = int.Parse(lines[33]);
-    quests[0].Progress = int.Parse(lines[34]);
-    quests[0].Completed = lines[35] == "1";
-    quests[1].Progress = int.Parse(lines[36]);
-    quests[1].Completed = lines[37] == "1";
-    quests[2].Progress = int.Parse(lines[38]);
-    quests[2].Completed = lines[39] == "1";
+    player.ShirtColor = new Color((byte)int.Parse(lines[24]), (byte)int.Parse(lines[25]), (byte)int.Parse(lines[26]), (byte)255);
+    player.SkinColor = new Color((byte)int.Parse(lines[27]), (byte)int.Parse(lines[28]), (byte)int.Parse(lines[29]), (byte)255);
+    player.PantsColor = new Color((byte)int.Parse(lines[30]), (byte)int.Parse(lines[31]), (byte)int.Parse(lines[32]), (byte)255);
+    chestLogs = int.Parse(lines[33]);
+    chestFish = int.Parse(lines[34]);
+    chestBones = int.Parse(lines[35]);
+    chestFur = int.Parse(lines[36]);
+    chestStingers = int.Parse(lines[37]);
+    chestBearPelts = int.Parse(lines[38]);
+    quests[0].Progress = int.Parse(lines[39]);
+    quests[0].Completed = lines[40] == "1";
+    quests[1].Progress = int.Parse(lines[41]);
+    quests[1].Completed = lines[42] == "1";
+    quests[2].Progress = int.Parse(lines[43]);
+    quests[2].Completed = lines[44] == "1";
 
-    if (lines.Length > 40) totalPlayTime = float.Parse(lines[40]);
+    if (lines.Length > 45) totalPlayTime = float.Parse(lines[45]);
 }
         static void DrawWardrobe()
 {
@@ -293,7 +307,182 @@ namespace OpenWorldRPG
                     levelUpMessage = $"{skill} LEVEL UP! {level}";
                     levelUpTimer = 2.5f;
                     }
+        static void DrawShopUI()
+{
+    if (!shopUIOpen) return;
 
+    int panelX = ScreenWidth / 2 - 420;
+    int panelY = 60;
+    int slotSize = 70;
+    int padding = 8;
+    int cols = 5;
+
+    // background
+    Raylib.DrawRectangle(panelX, panelY, 840, 560, new Color((byte)20,(byte)20,(byte)30,(byte)240));
+    Raylib.DrawRectangleLines(panelX, panelY, 840, 560, Color.Gold);
+    Raylib.DrawText("SHOP", panelX + 20, panelY + 15, 28, Color.Gold);
+    Raylib.DrawText("YOUR INVENTORY", panelX + 450, panelY + 15, 28, Color.Gold);
+
+    // divider
+    Raylib.DrawRectangle(panelX + 415, panelY + 10, 4, 540, new Color((byte)80,(byte)80,(byte)80,(byte)255));
+
+    // shop stock left side - prices
+    string[] shopItems = { "Logs", "Birch Logs", "Oak Logs", "Pine Logs", "Arctic Logs", "Dead Wood", "Fish", "Bones", "Fur", "Stingers", "Pelts" };
+    int[] shopPrices = { 5, 8, 12, 18, 25, 3, 10, 8, 15, 12, 25 };
+
+    Raylib.DrawText("Click item to sell", panelX + 20, panelY + 48, 16, Color.LightGray);
+
+    Vector2 mouse = Raylib.GetMousePosition();
+
+    // inventory slots right side
+    int[] invCounts = {
+        player.Logs, player.BirchLogs, player.OakLogs, player.PineLogs,
+        player.ArcticLogs, player.DeadWood, player.Fish, player.Bones,
+        player.Fur, player.Stingers, player.BearPelts
+    };
+
+    // draw shop price list on left
+    for (int i = 0; i < shopItems.Length; i++)
+    {
+        int col = i % cols;
+        int row = i / cols;
+        int sx = panelX + 20 + col * (slotSize + padding);
+        int sy = panelY + 75 + row * (slotSize + padding);
+
+        bool selected = shopSelectedItemName == shopItems[i];
+        Raylib.DrawRectangle(sx, sy, slotSize, slotSize, new Color((byte)40,(byte)40,(byte)40,(byte)255));
+        Raylib.DrawRectangleLines(sx, sy, slotSize, slotSize, selected ? Color.Gold : new Color((byte)100,(byte)100,(byte)100,(byte)255));
+
+        DrawInventoryIcon(shopItems[i] == "Pelts" ? "Pelts" : shopItems[i], sx, sy, slotSize);
+        Raylib.DrawText($"${shopPrices[i]}", sx + 6, sy + 6, 16, Color.Gold);
+        Raylib.DrawText(shopItems[i].Length > 7 ? shopItems[i].Substring(0, 7) : shopItems[i], sx + 4, sy + slotSize - 18, 13, Color.LightGray);
+    }
+
+    // draw player inventory on right
+    Raylib.DrawText("Click to select", panelX + 450, panelY + 48, 16, Color.LightGray);
+    for (int i = 0; i < shopItems.Length; i++)
+    {
+        int col = i % cols;
+        int row = i / cols;
+        int sx = panelX + 435 + col * (slotSize + padding);
+        int sy = panelY + 75 + row * (slotSize + padding);
+
+        bool selected = shopSelectedItemName == shopItems[i];
+        Raylib.DrawRectangle(sx, sy, slotSize, slotSize, new Color((byte)40,(byte)40,(byte)40,(byte)255));
+        Raylib.DrawRectangleLines(sx, sy, slotSize, slotSize, selected ? Color.Gold : new Color((byte)100,(byte)100,(byte)100,(byte)255));
+
+        if (invCounts[i] > 0)
+        {
+            DrawInventoryIcon(shopItems[i] == "Pelts" ? "Pelts" : shopItems[i], sx, sy, slotSize);
+            Raylib.DrawText($"{invCounts[i]}", sx + 6, sy + 6, 16, Color.White);
+            Raylib.DrawText(shopItems[i].Length > 7 ? shopItems[i].Substring(0, 7) : shopItems[i], sx + 4, sy + slotSize - 18, 13, Color.LightGray);
+
+            if (Raylib.CheckCollisionPointRec(mouse, new Rectangle(sx, sy, slotSize, slotSize)))
+            {
+                Raylib.DrawRectangleLines(sx, sy, slotSize, slotSize, Color.Gold);
+                if (Raylib.IsMouseButtonPressed(MouseButton.Left))
+                {
+                    shopSelectedItem = i;
+                    shopSelectedItemName = shopItems[i];
+                }
+            }
+        }
+    }
+
+    // sell options panel at bottom if item selected
+    if (shopSelectedItem >= 0)
+    {
+        int sellPanelY = panelY + 430;
+        Raylib.DrawRectangle(panelX + 20, sellPanelY, 800, 100, new Color((byte)30,(byte)30,(byte)40,(byte)255));
+        Raylib.DrawRectangleLines(panelX + 20, sellPanelY, 800, 100, Color.Gold);
+
+        int price = shopPrices[shopSelectedItem];
+        int count = invCounts[shopSelectedItem];
+        Raylib.DrawText($"Selling: {shopSelectedItemName} @ ${price} each", panelX + 30, sellPanelY + 10, 20, Color.White);
+
+        // sell 1 button
+        Rectangle sell1Btn = new Rectangle(panelX + 30, sellPanelY + 45, 160, 44);
+        bool hover1 = Raylib.CheckCollisionPointRec(mouse, sell1Btn);
+        Raylib.DrawRectangleRec(sell1Btn, new Color((byte)40,(byte)40,(byte)40,(byte)255));
+        Raylib.DrawRectangleLinesEx(sell1Btn, 2, hover1 ? Color.Gold : Color.White);
+        Raylib.DrawText($"Sell 1 (${price})", panelX + 40, sellPanelY + 57, 18, hover1 ? Color.Gold : Color.White);
+
+        // sell 5 button
+        Rectangle sell5Btn = new Rectangle(panelX + 210, sellPanelY + 45, 160, 44);
+        bool hover5 = Raylib.CheckCollisionPointRec(mouse, sell5Btn);
+        Raylib.DrawRectangleRec(sell5Btn, new Color((byte)40,(byte)40,(byte)40,(byte)255));
+        Raylib.DrawRectangleLinesEx(sell5Btn, 2, hover5 ? Color.Gold : Color.White);
+        Raylib.DrawText($"Sell 5 (${price * Math.Min(5, count)})", panelX + 220, sellPanelY + 57, 18, hover5 ? Color.Gold : Color.White);
+
+        // sell all button
+        Rectangle sellAllBtn = new Rectangle(panelX + 390, sellPanelY + 45, 160, 44);
+        bool hoverAll = Raylib.CheckCollisionPointRec(mouse, sellAllBtn);
+        Raylib.DrawRectangleRec(sellAllBtn, new Color((byte)40,(byte)40,(byte)40,(byte)255));
+        Raylib.DrawRectangleLinesEx(sellAllBtn, 2, hoverAll ? Color.Gold : Color.White);
+        Raylib.DrawText($"Sell All (${price * count})", panelX + 400, sellPanelY + 57, 18, hoverAll ? Color.Gold : Color.White);
+
+        if (hover1 && Raylib.IsMouseButtonPressed(MouseButton.Left) && count >= 1)
+        {
+            SellItem(shopSelectedItemName, 1, price);
+            if (GetItemCount(shopSelectedItemName) <= 0) { shopSelectedItem = -1; shopSelectedItemName = ""; }
+        }
+        if (hover5 && Raylib.IsMouseButtonPressed(MouseButton.Left) && count >= 1)
+        {
+            SellItem(shopSelectedItemName, Math.Min(5, count), price);
+            if (GetItemCount(shopSelectedItemName) <= 0) { shopSelectedItem = -1; shopSelectedItemName = ""; }
+        }
+        if (hoverAll && Raylib.IsMouseButtonPressed(MouseButton.Left) && count >= 1)
+        {
+            SellItem(shopSelectedItemName, count, price);
+            shopSelectedItem = -1;
+            shopSelectedItemName = "";
+        }
+    }
+
+    Raylib.DrawText("Q = Close Shop", panelX + 350, panelY + 520, 20, Color.LightGray);
+}
+
+static void SellItem(string itemName, int amount, int price)
+{
+    int earned = amount * price;
+    player.Money += earned;
+    shopMessage = $"Sold {amount} {itemName} for ${earned}!";
+    shopMessageTimer = 1.5f;
+
+    switch (itemName)
+    {
+        case "Logs": player.Logs -= amount; break;
+        case "Birch Logs": player.BirchLogs -= amount; break;
+        case "Oak Logs": player.OakLogs -= amount; break;
+        case "Pine Logs": player.PineLogs -= amount; break;
+        case "Arctic Logs": player.ArcticLogs -= amount; break;
+        case "Dead Wood": player.DeadWood -= amount; break;
+        case "Fish": player.Fish -= amount; break;
+        case "Bones": player.Bones -= amount; break;
+        case "Fur": player.Fur -= amount; break;
+        case "Stingers": player.Stingers -= amount; break;
+        case "Pelts": player.BearPelts -= amount; break;
+    }
+}
+
+static int GetItemCount(string itemName)
+{
+    return itemName switch
+    {
+        "Logs" => player.Logs,
+        "Birch Logs" => player.BirchLogs,
+        "Oak Logs" => player.OakLogs,
+        "Pine Logs" => player.PineLogs,
+        "Arctic Logs" => player.ArcticLogs,
+        "Dead Wood" => player.DeadWood,
+        "Fish" => player.Fish,
+        "Bones" => player.Bones,
+        "Fur" => player.Fur,
+        "Stingers" => player.Stingers,
+        "Pelts" => player.BearPelts,
+        _ => 0
+    };
+}
         static void DrawChestUI()
 {
     if (!chestOpen) return;
@@ -407,21 +596,21 @@ namespace OpenWorldRPG
             }
 
         static string GetCurrentBiome()
-{
-    float x = player.Position.X;
-    float y = player.Position.Y;
+            {
+                float x = player.Position.X;
+                float y = player.Position.Y;
 
-    if (x >= -1500 && x <= 2100 && y >= -800 && y <= 1400)
-        return "SAFE ZONE";
-    else if (y < -400 || y > 1000)
-        return "FOREST";
-    else if (x > 2100)
-        return "DESERT";
-    else if (x < -1500)
-        return "SNOW ZONE";
-    else
-        return "GRASSLANDS";
-}
+                if (x >= -3000 && x <= 4000 && y >= -1500 && y <= 2500)
+                    return "SAFE ZONE";
+                else if (y < -400 || y > 1000)
+                    return "FOREST";
+                else if (x > 4000)
+                    return "DESERT";
+                else if (x < -3000)
+                    return "SNOW ZONE";
+                else
+                    return "GRASSLANDS";
+            }
 
         static Color GetNightOverlay()
             {
@@ -439,6 +628,37 @@ namespace OpenWorldRPG
         case "Logs":
             Raylib.DrawRectangle(cx - 20, cy - 8, 40, 16, Color.Brown);
             Raylib.DrawRectangle(cx - 14, cy - 14, 28, 6, new Color((byte)100, (byte)60, (byte)20, (byte)255));
+            break;
+
+        case "Birch Logs":
+            Raylib.DrawRectangle(cx - 20, cy - 8, 40, 16, Color.White);
+            Raylib.DrawRectangle(cx - 14, cy - 14, 28, 6, new Color((byte)200,(byte)200,(byte)200,(byte)255));
+            Raylib.DrawRectangle(cx - 10, cy - 6, 4, 4, Color.DarkGray);
+            Raylib.DrawRectangle(cx + 6, cy - 2, 4, 4, Color.DarkGray);
+            break;
+
+        case "Oak Logs":
+            Raylib.DrawRectangle(cx - 20, cy - 8, 40, 16, new Color((byte)101,(byte)67,(byte)33,(byte)255));
+            Raylib.DrawRectangle(cx - 14, cy - 14, 28, 6, new Color((byte)80,(byte)50,(byte)20,(byte)255));
+            Raylib.DrawCircle(cx - 18, cy, 6, new Color((byte)101,(byte)67,(byte)33,(byte)255));
+            Raylib.DrawCircle(cx + 18, cy, 6, new Color((byte)101,(byte)67,(byte)33,(byte)255));
+            break;
+
+        case "Pine Logs":
+            Raylib.DrawRectangle(cx - 20, cy - 8, 40, 16, new Color((byte)120,(byte)80,(byte)40,(byte)255));
+            Raylib.DrawRectangle(cx - 14, cy - 14, 28, 6, new Color((byte)0,(byte)80,(byte)0,(byte)255));
+            break;
+
+        case "Arctic Logs":
+            Raylib.DrawRectangle(cx - 20, cy - 8, 40, 16, new Color((byte)180,(byte)210,(byte)230,(byte)255));
+            Raylib.DrawRectangle(cx - 14, cy - 14, 28, 6, new Color((byte)220,(byte)235,(byte)255,(byte)255));
+            Raylib.DrawRectangle(cx - 20, cy - 8, 40, 5, new Color((byte)220,(byte)235,(byte)255,(byte)180));
+            break;
+
+        case "Dead Wood":
+            Raylib.DrawRectangle(cx - 20, cy - 8, 40, 16, Color.DarkGray);
+            Raylib.DrawRectangle(cx - 14, cy - 14, 28, 6, new Color((byte)80,(byte)80,(byte)80,(byte)255));
+            Raylib.DrawRectangle(cx - 8, cy - 6, 4, 12, new Color((byte)60,(byte)60,(byte)60,(byte)255));
             break;
 
         case "Fish":
@@ -697,53 +917,147 @@ namespace OpenWorldRPG
         Raylib.DrawText($"XP: {player.CombatXP}/{required}", ScreenWidth - 315, ScreenHeight - 218, 20, Color.LightGray);
     }
 }
-        static void DrawMinimap()
+ 
+    static void DrawMinimap()
 {
     // background
-    Raylib.DrawRectangle(minimapX, minimapY, minimapSize, minimapSize, new Color((byte)0, (byte)0, (byte)0, (byte)180));
-    Raylib.DrawRectangleLines(minimapX, minimapY, minimapSize, minimapSize, Color.White);
+    Raylib.DrawRectangle(minimapX, minimapY, minimapSize, minimapSize, new Color((byte)0,(byte)0,(byte)0,(byte)180));
+
+    Raylib.BeginScissorMode(minimapX, minimapY, minimapSize, minimapSize);
 
     int cx = minimapX + minimapSize / 2;
     int cy = minimapY + minimapSize / 2;
 
-    // lakes
-    foreach (Lake lake in lakes)
-    {
-        int lx = cx + (int)((lake.Position.X - player.Position.X) * minimapScale);
-        int ly = cy + (int)((lake.Position.Y - player.Position.Y) * minimapScale);
-        Raylib.DrawCircle(lx, ly, 6, new Color((byte)30, (byte)100, (byte)200, (byte)255));
-    }
+    // -- BIOMES --
+    // base grasslands colour
+    Raylib.DrawRectangle(minimapX, minimapY, minimapSize, minimapSize, new Color((byte)90,(byte)170,(byte)90,(byte)200));
 
-    // buildings
+    // forest top
+    int forestTopY = cy + (int)((-300 - player.Position.Y) * minimapScale);
+    Raylib.DrawRectangle(minimapX, minimapY, minimapSize, Math.Clamp(forestTopY - minimapY, 0, minimapSize), new Color((byte)40,(byte)100,(byte)40,(byte)220));
+
+    // forest bottom
+    int forestBotY = cy + (int)((1000 - player.Position.Y) * minimapScale);
+    Raylib.DrawRectangle(minimapX, forestBotY, minimapSize, Math.Clamp(minimapY + minimapSize - forestBotY, 0, minimapSize), new Color((byte)40,(byte)100,(byte)40,(byte)220));
+
+    // desert right
+    int desertX = cx + (int)((4000 - player.Position.X) * minimapScale);
+    Raylib.DrawRectangle(desertX, minimapY, Math.Clamp(minimapX + minimapSize - desertX, 0, minimapSize), minimapSize, new Color((byte)210,(byte)180,(byte)100,(byte)220));
+
+    // snow left
+    int snowLeftX = cx + (int)((-3000 - player.Position.X) * minimapScale);
+    Raylib.DrawRectangle(minimapX, minimapY, Math.Clamp(snowLeftX - minimapX, 0, minimapSize), minimapSize, new Color((byte)220,(byte)235,(byte)255,(byte)220));
+
+    // safe zone overlay
+    int szX = cx + (int)((-3000 - player.Position.X) * minimapScale);
+    int szY = cy + (int)((-1500 - player.Position.Y) * minimapScale);
+    int szX2 = cx + (int)((4000 - player.Position.X) * minimapScale);
+    int szY2 = cy + (int)((2500 - player.Position.Y) * minimapScale);
+
+    // clamp to minimap bounds
+    int clampedSzX = Math.Clamp(szX, minimapX, minimapX + minimapSize);
+    int clampedSzY = Math.Clamp(szY, minimapY, minimapY + minimapSize);
+    int clampedSzX2 = Math.Clamp(szX2, minimapX, minimapX + minimapSize);
+    int clampedSzY2 = Math.Clamp(szY2, minimapY, minimapY + minimapSize);
+
+    Raylib.DrawRectangle(
+        clampedSzX,
+        clampedSzY,
+        clampedSzX2 - clampedSzX,
+        clampedSzY2 - clampedSzY,
+        new Color((byte)90,(byte)170,(byte)90,(byte)180)
+    );
+
+    // -- ROADS --
+    // main horizontal road
+    int roadY = cy + (int)((550 - player.Position.Y) * minimapScale);
+    Raylib.DrawRectangle(minimapX, roadY, minimapSize, Math.Max(1, (int)(180 * minimapScale)), new Color((byte)80,(byte)80,(byte)80,(byte)255));
+
+    // north/south highway
+    int highwayX = cx + (int)((200 - player.Position.X) * minimapScale);
+    Raylib.DrawRectangle(highwayX, minimapY, Math.Max(1, (int)(120 * minimapScale)), minimapSize, new Color((byte)80,(byte)80,(byte)80,(byte)255));
+
+    // outer ring road top
+    int ringTopY = cy + (int)((-38000 - player.Position.Y) * minimapScale);
+    Raylib.DrawRectangle(minimapX, ringTopY, minimapSize, Math.Max(1, (int)(180 * minimapScale)), new Color((byte)80,(byte)80,(byte)80,(byte)255));
+
+    // outer ring road bottom
+    int ringBotY = cy + (int)((38000 - player.Position.Y) * minimapScale);
+    Raylib.DrawRectangle(minimapX, ringBotY, minimapSize, Math.Max(1, (int)(180 * minimapScale)), new Color((byte)80,(byte)80,(byte)80,(byte)255));
+
+    // outer ring road left
+    int ringLeftX = cx + (int)((-40000 - player.Position.X) * minimapScale);
+    Raylib.DrawRectangle(ringLeftX, minimapY, Math.Max(1, (int)(180 * minimapScale)), minimapSize, new Color((byte)80,(byte)80,(byte)80,(byte)255));
+
+    // outer ring road right
+    int ringRightX = cx + (int)((39820 - player.Position.X) * minimapScale);
+    Raylib.DrawRectangle(ringRightX, minimapY, Math.Max(1, (int)(180 * minimapScale)), minimapSize, new Color((byte)80,(byte)80,(byte)80,(byte)255));
+
+    // snow vertical connectors
+    int snow1X = cx + (int)((-20000 - player.Position.X) * minimapScale);
+    int snow2X = cx + (int)((-10000 - player.Position.X) * minimapScale);
+    Raylib.DrawRectangle(snow1X, minimapY, Math.Max(1, (int)(120 * minimapScale)), minimapSize, new Color((byte)80,(byte)80,(byte)80,(byte)255));
+    Raylib.DrawRectangle(snow2X, minimapY, Math.Max(1, (int)(120 * minimapScale)), minimapSize, new Color((byte)80,(byte)80,(byte)80,(byte)255));
+
+    // desert vertical connectors
+    int des1X = cx + (int)((15000 - player.Position.X) * minimapScale);
+    int des2X = cx + (int)((25000 - player.Position.X) * minimapScale);
+    Raylib.DrawRectangle(des1X, minimapY, Math.Max(1, (int)(120 * minimapScale)), minimapSize, new Color((byte)80,(byte)80,(byte)80,(byte)255));
+    Raylib.DrawRectangle(des2X, minimapY, Math.Max(1, (int)(120 * minimapScale)), minimapSize, new Color((byte)80,(byte)80,(byte)80,(byte)255));
+
+    // desert side road
+    int desertRoadY = cy + (int)((200 - player.Position.Y) * minimapScale);
+    int desertRoadX = cx + (int)((4000 - player.Position.X) * minimapScale);
+    Raylib.DrawRectangle(desertRoadX, desertRoadY, Math.Clamp(minimapX + minimapSize - desertRoadX, 0, minimapSize), Math.Max(1, (int)(120 * minimapScale)), new Color((byte)80,(byte)80,(byte)80,(byte)255));
+
+    // snow side road
+    int snowRoadY = cy + (int)((200 - player.Position.Y) * minimapScale);
+    int snowRoadLeftX = cx + (int)((-3000 - player.Position.X) * minimapScale);
+    Raylib.DrawRectangle(minimapX, snowRoadY, Math.Clamp(snowRoadLeftX - minimapX, 0, minimapSize), Math.Max(1, (int)(120 * minimapScale)), new Color((byte)80,(byte)80,(byte)80,(byte)255));
+
+
+
+    // -- BUILDINGS --
     foreach (Building building in buildings)
     {
         int bx = cx + (int)((building.Bounds.X - player.Position.X) * minimapScale);
         int by = cy + (int)((building.Bounds.Y - player.Position.Y) * minimapScale);
-        Raylib.DrawRectangle(bx, by, 8, 8, Color.Yellow);
+
+        if (bx >= minimapX && bx <= minimapX + minimapSize &&
+            by >= minimapY && by <= minimapY + minimapSize)
+        {
+            Raylib.DrawRectangle(bx - 3, by - 3, 10, 10, Color.Yellow);
+            // building name label
+            Raylib.DrawText(building.BuildingName, bx + 8, by - 4, 10, Color.Yellow);
+        }
     }
 
-    // npcs
-    foreach (NPC npc in npcs)
-    {
-        int nx = cx + (int)((npc.Position.X - player.Position.X) * minimapScale);
-        int ny = cy + (int)((npc.Position.Y - player.Position.Y) * minimapScale);
-        Raylib.DrawCircle(nx, ny, 3, Color.Red);
-    }
+    // -- BORDER --
+    Raylib.DrawRectangleLines(minimapX, minimapY, minimapSize, minimapSize, Color.White);
 
-    // enemies
-    foreach (Enemy enemy in enemies)
-{
-    if (enemy.Dead) continue;
-    int ex = cx + (int)((enemy.Position.X - player.Position.X) * minimapScale);
-    int ey = cy + (int)((enemy.Position.Y - player.Position.Y) * minimapScale);
-    Raylib.DrawCircle(ex, ey, 3, Color.Red);
-}
-
-    // player dot
+   // -- PLAYER DOT --
     Raylib.DrawCircle(cx, cy, 4, Color.White);
 
-    Raylib.DrawText(playerName, minimapX, minimapY + 208, 18, Color.LightGray);
+    Raylib.EndScissorMode();
+
+    // -- BORDER -- drawn after scissor so it's always clean
+    Raylib.DrawRectangleLines(minimapX, minimapY, minimapSize, minimapSize, Color.White);
+
+    // -- PLAYER NAME and LEGEND -- drawn outside scissor so they don't get clipped
+    Raylib.DrawText(playerName, minimapX, minimapY + minimapSize + 6, 18, Color.LightGray);
+
+    int lx = minimapX;
+    int ly = minimapY + minimapSize + 28;
+    Raylib.DrawRectangle(lx, ly, 10, 10, new Color((byte)90,(byte)170,(byte)90,(byte)255));
+    Raylib.DrawText("Safe", lx + 13, ly, 12, Color.LightGray);
+    Raylib.DrawRectangle(lx + 50, ly, 10, 10, new Color((byte)40,(byte)100,(byte)40,(byte)255));
+    Raylib.DrawText("Forest", lx + 63, ly, 12, Color.LightGray);
+    Raylib.DrawRectangle(lx, ly + 16, 10, 10, new Color((byte)210,(byte)180,(byte)100,(byte)255));
+    Raylib.DrawText("Desert", lx + 13, ly + 16, 12, Color.LightGray);
+    Raylib.DrawRectangle(lx + 50, ly + 16, 10, 10, new Color((byte)220,(byte)235,(byte)255,(byte)255));
+    Raylib.DrawText("Snow", lx + 63, ly + 16, 12, Color.LightGray);
 }
+
         static void Main()
         {
             Raylib.InitWindow(ScreenWidth, ScreenHeight, "Open World RPG V3");
@@ -884,15 +1198,16 @@ namespace OpenWorldRPG
                 case SceneState.World:
 
                     if (Raylib.IsKeyPressed(KeyboardKey.Escape))
-{
-    pauseMenuOpen = !pauseMenuOpen;
-    optionsMenuOpen = false;
-    cheatsMenuOpen = false;
-    loadMenuOpen = false;
-}
+                        {
+                            pauseMenuOpen = !pauseMenuOpen;
+                            optionsMenuOpen = false;
+                            cheatsMenuOpen = false;
+                            loadMenuOpen = false;
+                            mapOpen = false;
+                        }
 
-if (!pauseMenuOpen)
-{
+                        if (!pauseMenuOpen)
+                        {
                     if (shakeDuration > 0) shakeDuration -= dt;
                     if (levelUpTimer > 0) levelUpTimer -= dt;
                     timeOfDay += daySpeed * dt;
@@ -910,7 +1225,6 @@ if (!pauseMenuOpen)
                     ShowLevelUp("You died! Lost $50", 0);
                     }
 
-                    autoSaveTimer += dt;
                    autoSaveTimer += dt;
                         if (autoSaveTimer >= autoSaveInterval && nameEntered)
                         {
@@ -1074,7 +1388,7 @@ if (!pauseMenuOpen)
                         npc.Update(dt);
                     }
 
-                   foreach (TreeObject tree in trees)
+                    foreach (TreeObject tree in trees)
 {
     tree.Update(dt);
 
@@ -1084,20 +1398,49 @@ if (!pauseMenuOpen)
         {
             if (Raylib.IsKeyPressed(KeyboardKey.Space))
             {
-                tree.Health--;
-
-                if (tree.Health <= 0)
+                if (player.WoodcuttingLevel < tree.LevelRequired)
                 {
-                    tree.Chopped = true;
-                    player.AddWoodcuttingXP(25);
-                    player.Logs += Raylib.GetRandomValue(1, 3);
-                    TriggerShake(0.15f);
                     floatingTexts.Add(new FloatingText {
-                        Position = player.Position - new Vector2(0, 20),
-                        Text = "+25 WC XP",
-                        Timer = 1.2f,
-                        TextColor = Color.Yellow
+                        Position = player.Position - new Vector2(0, 40),
+                        Text = $"Need WC level {tree.LevelRequired}!",
+                        Timer = 1.5f,
+                        TextColor = Color.Red
                     });
+                }
+                else
+                {
+                    tree.Health--;
+
+                    if (tree.Health <= 0)
+                    {
+                        tree.Chopped = true;
+                        player.AddWoodcuttingXP(tree.XPReward);
+                        int logsGained = Raylib.GetRandomValue(1, 3);
+
+                        switch (tree.LogType)
+                        {
+                            case "Logs": player.Logs += logsGained; break;
+                            case "Birch Logs": player.BirchLogs += logsGained; break;
+                            case "Oak Logs": player.OakLogs += logsGained; break;
+                            case "Pine Logs": player.PineLogs += logsGained; break;
+                            case "Arctic Logs": player.ArcticLogs += logsGained; break;
+                            case "Dead Wood": player.DeadWood += logsGained; break;
+                        }
+
+                        TriggerShake(0.15f);
+                        floatingTexts.Add(new FloatingText {
+                            Position = player.Position - new Vector2(0, 20),
+                            Text = $"+{tree.XPReward} WC XP",
+                            Timer = 1.2f,
+                            TextColor = Color.Yellow
+                        });
+                        floatingTexts.Add(new FloatingText {
+                            Position = player.Position - new Vector2(0, 44),
+                            Text = $"+{logsGained} {tree.LogType}",
+                            Timer = 1.2f,
+                            TextColor = Color.Orange
+                        });
+                    }
                 }
             }
         }
@@ -1200,6 +1543,20 @@ if (!pauseMenuOpen)
         }
     }
 
+              if (currentBuilding.BuildingName == "STORE")
+{
+    if (Raylib.IsKeyPressed(KeyboardKey.E))
+        shopUIOpen = !shopUIOpen;
+
+    if (Raylib.IsKeyPressed(KeyboardKey.Q) && shopUIOpen)
+    {
+        shopUIOpen = false;
+        shopSelectedItem = -1;
+        shopSelectedItemName = "";
+        return;
+    }
+}
+
     // All other buildings - NPC distance check
     if (Vector2.Distance(player.Position, currentBuilding.InteriorNPC.Position) < 120)
     {
@@ -1242,62 +1599,6 @@ if (!pauseMenuOpen)
             }
         }
 
-        if (currentBuilding.BuildingName == "STORE")
-        {
-            if (Raylib.IsKeyPressed(KeyboardKey.E))
-            {
-                if (player.Logs > 0)
-                {
-                    player.Logs--;
-                    player.Money += 5;
-                    shopMessage = "Sold 1 Log for $5!";
-                    shopMessageTimer = 1.5f;
-                }
-                else
-                {
-                    shopMessage = "No logs to sell!";
-                    shopMessageTimer = 1.5f;
-                }
-            }
-
-            if (Raylib.IsKeyPressed(KeyboardKey.F))
-            {
-                if (player.Fish > 0)
-                {
-                    player.Fish--;
-                    player.Money += 10;
-                    shopMessage = "Sold 1 Fish for $10!";
-                    shopMessageTimer = 1.5f;
-                }
-                else
-                {
-                    shopMessage = "No fish to sell!";
-                    shopMessageTimer = 1.5f;
-                }
-            }
-
-            if (Raylib.IsKeyPressed(KeyboardKey.G))
-            {
-                int earned = 0;
-                earned += player.Bones * 8; player.Bones = 0;
-                earned += player.Fur * 15; player.Fur = 0;
-                earned += player.Stingers * 12; player.Stingers = 0;
-                earned += player.BearPelts * 25; player.BearPelts = 0;
-
-                if (earned > 0)
-                {
-                    player.Money += earned;
-                    shopMessage = $"Sold all loot for ${earned}!";
-                    shopMessageTimer = 1.5f;
-                }
-                else
-                {
-                    shopMessage = "No loot to sell!";
-                    shopMessageTimer = 1.5f;
-                }
-            }
-        }
-
         if (currentBuilding.BuildingName == "BANK")
         {
             if (Raylib.IsKeyPressed(KeyboardKey.Z))
@@ -1334,11 +1635,14 @@ if (!pauseMenuOpen)
         }
     }
 
-    if (Raylib.IsKeyPressed(KeyboardKey.Q) && !wardrobeOpen && !chestOpen)
-    {
-        currentScene = SceneState.World;
-        player.Position = currentBuilding.ExitPosition;
-    }
+   if (Raylib.IsKeyPressed(KeyboardKey.Q) && !wardrobeOpen && !chestOpen && !shopUIOpen)
+{
+    currentScene = SceneState.World;
+    player.Position = currentBuilding.ExitPosition;
+    shopUIOpen = false;
+    shopSelectedItem = -1;
+    shopSelectedItemName = "";
+}
 
     camera.Target = player.Position;
 
@@ -1361,6 +1665,7 @@ if (!pauseMenuOpen)
                 case SceneState.World:
                     DrawWorld();
                     DrawPauseMenu();
+                    DrawWorldMap();
                     break;
 
                 case SceneState.Building:
@@ -1515,6 +1820,160 @@ if (!pauseMenuOpen)
             Raylib.DrawText("PRESS ENTER TO START", 390, 390, 34, Color.White);
     }
 }
+        static void DrawWorldMap()
+{
+    if (!mapOpen) return;
+
+    int mapW = 900;
+    int mapH = 600;
+    int mapX = ScreenWidth / 2 - mapW / 2;
+    int mapY = ScreenHeight / 2 - mapH / 2;
+    float scale = 0.001f;
+
+    // background panel
+    Raylib.DrawRectangle(mapX, mapY, mapW, mapH, new Color((byte)10,(byte)10,(byte)20,(byte)245));
+    Raylib.DrawRectangleLines(mapX, mapY, mapW, mapH, Color.Gold);
+    Raylib.DrawText("WORLD MAP", mapX + mapW / 2 - 70, mapY + 10, 28, Color.Gold);
+
+    int cx = mapX + mapW / 2;
+    int cy = mapY + mapH / 2;
+
+    // clip drawing to map panel
+    // -- BIOMES --
+
+    // base grasslands
+    Raylib.DrawRectangle(mapX, mapY, mapW, mapH, new Color((byte)90,(byte)170,(byte)90,(byte)255));
+
+    // forest top
+    int forestTopH = cy + (int)(-300 * scale) - mapY;
+    Raylib.DrawRectangle(mapX, mapY, mapW, Math.Max(0, forestTopH), new Color((byte)40,(byte)100,(byte)40,(byte)255));
+
+    // forest bottom
+    int forestBotY = cy + (int)(1000 * scale);
+    Raylib.DrawRectangle(mapX, forestBotY, mapW, Math.Max(0, mapY + mapH - forestBotY), new Color((byte)40,(byte)100,(byte)40,(byte)255));
+
+    // desert right
+    int desertX = cx + (int)(4000 * scale);
+    Raylib.DrawRectangle(desertX, mapY, Math.Max(0, mapX + mapW - desertX), mapH, new Color((byte)210,(byte)180,(byte)100,(byte)255));
+
+    // snow left
+    int snowX = cx + (int)(-3000 * scale);
+    Raylib.DrawRectangle(mapX, mapY, Math.Max(0, snowX - mapX), mapH, new Color((byte)220,(byte)235,(byte)255,(byte)255));
+
+    // safe zone
+    int szX = cx + (int)(-3000 * scale);
+    int szY = cy + (int)(-1500 * scale);
+    int szW = (int)(7000 * scale);
+    int szH = (int)(4000 * scale);
+    Raylib.DrawRectangle(szX, szY, szW, szH, new Color((byte)90,(byte)170,(byte)90,(byte)255));
+    Raylib.DrawRectangleLines(szX, szY, szW, szH, new Color((byte)120,(byte)200,(byte)120,(byte)255));
+
+    // -- ROADS --
+    // main horizontal road
+    int roadY = cy + (int)(550 * scale);
+    Raylib.DrawRectangle(mapX, roadY, mapW, Math.Max(2, (int)(180 * scale)), new Color((byte)80,(byte)80,(byte)80,(byte)255));
+
+    // north/south highway
+    int highwayX = cx + (int)(200 * scale);
+    Raylib.DrawRectangle(highwayX, mapY, Math.Max(2, (int)(120 * scale)), mapH, new Color((byte)80,(byte)80,(byte)80,(byte)255));
+
+    // desert side road
+    int desertRoadY = cy + (int)(200 * scale);
+    Raylib.DrawRectangle(desertX, desertRoadY, mapX + mapW - desertX, Math.Max(2, (int)(120 * scale)), new Color((byte)80,(byte)80,(byte)80,(byte)255));
+
+    // snow side road
+    Raylib.DrawRectangle(mapX, desertRoadY, snowX - mapX, Math.Max(2, (int)(120 * scale)), new Color((byte)80,(byte)80,(byte)80,(byte)255));
+
+    // outer ring road top
+    int ringTopY = cy + (int)(-38000 * scale);
+    Raylib.DrawRectangle(mapX, ringTopY, mapW, Math.Max(2, (int)(180 * scale)), new Color((byte)80,(byte)80,(byte)80,(byte)255));
+
+    // outer ring road bottom
+    int ringBotY = cy + (int)(38000 * scale);
+    Raylib.DrawRectangle(mapX, ringBotY, mapW, Math.Max(2, (int)(180 * scale)), new Color((byte)80,(byte)80,(byte)80,(byte)255));
+
+    // outer ring road left
+    int ringLeftX = cx + (int)(-40000 * scale);
+    Raylib.DrawRectangle(ringLeftX, mapY, Math.Max(2, (int)(180 * scale)), mapH, new Color((byte)80,(byte)80,(byte)80,(byte)255));
+
+    // outer ring road right
+    int ringRightX = cx + (int)(39820 * scale);
+    Raylib.DrawRectangle(ringRightX, mapY, Math.Max(2, (int)(180 * scale)), mapH, new Color((byte)80,(byte)80,(byte)80,(byte)255));
+
+    // snow vertical connectors
+    int snow1X = cx + (int)(-20000 * scale);
+    int snow2X = cx + (int)(-10000 * scale);
+    Raylib.DrawRectangle(snow1X, mapY, Math.Max(2, (int)(120 * scale)), mapH, new Color((byte)80,(byte)80,(byte)80,(byte)255));
+    Raylib.DrawRectangle(snow2X, mapY, Math.Max(2, (int)(120 * scale)), mapH, new Color((byte)80,(byte)80,(byte)80,(byte)255));
+
+    // desert vertical connectors
+    int des1X = cx + (int)(15000 * scale);
+    int des2X = cx + (int)(25000 * scale);
+    Raylib.DrawRectangle(des1X, mapY, Math.Max(2, (int)(120 * scale)), mapH, new Color((byte)80,(byte)80,(byte)80,(byte)255));
+    Raylib.DrawRectangle(des2X, mapY, Math.Max(2, (int)(120 * scale)), mapH, new Color((byte)80,(byte)80,(byte)80,(byte)255));
+
+    // vertical building roads
+    int bankRoadX = cx + (int)(1020 * scale);
+    Raylib.DrawRectangle(bankRoadX, roadY - (int)(600 * scale), Math.Max(2, (int)(120 * scale)), (int)(600 * scale), new Color((byte)80,(byte)80,(byte)80,(byte)255));
+
+    int storeRoadX = cx + (int)(-1260 * scale);
+    Raylib.DrawRectangle(storeRoadX, roadY - (int)(600 * scale), Math.Max(2, (int)(120 * scale)), (int)(600 * scale), new Color((byte)80,(byte)80,(byte)80,(byte)255));
+
+    // -- LAKES --
+    foreach (Lake lake in lakes)
+    {
+        int lakeX = cx + (int)(lake.Position.X * scale);
+        int lakeY = cy + (int)(lake.Position.Y * scale);
+        Raylib.DrawCircle(lakeX, lakeY, (int)(120 * scale), new Color((byte)30,(byte)100,(byte)200,(byte)255));
+        Raylib.DrawCircleLines(lakeX, lakeY, (int)(120 * scale), Color.SkyBlue);
+        Raylib.DrawText("Lake", lakeX - 14, lakeY - 8, 12, Color.White);
+    }
+
+    // -- BUILDINGS --
+    foreach (Building building in buildings)
+    {
+        int bx = cx + (int)(building.Bounds.X * scale);
+        int by = cy + (int)(building.Bounds.Y * scale);
+
+        if (bx >= mapX && bx <= mapX + mapW && by >= mapY && by <= mapY + mapH)
+        {
+            Raylib.DrawRectangle(bx - 5, by - 5, 14, 14, Color.Yellow);
+            Raylib.DrawRectangleLines(bx - 5, by - 5, 14, 14, Color.Gold);
+            Raylib.DrawText(building.BuildingName, bx + 12, by - 6, 12, Color.Yellow);
+        }
+    }
+
+    // -- PLAYER POSITION --
+    int px = cx + (int)(player.Position.X * scale);
+    int py = cy + (int)(player.Position.Y * scale);
+    px = Math.Clamp(px, mapX + 5, mapX + mapW - 5);
+    py = Math.Clamp(py, mapY + 5, mapY + mapH - 5);
+    Raylib.DrawCircle(px, py, 6, Color.White);
+    Raylib.DrawCircleLines(px, py, 6, Color.Gold);
+    Raylib.DrawText(playerName, px + 10, py - 8, 14, Color.White);
+
+    // -- BIOME LABELS --
+    Raylib.DrawText("FOREST", mapX + mapW / 2 - 30, mapY + 8, 16, new Color((byte)150,(byte)255,(byte)150,(byte)255));
+    Raylib.DrawText("FOREST", mapX + mapW / 2 - 30, forestBotY + 4, 16, new Color((byte)150,(byte)255,(byte)150,(byte)255));
+    Raylib.DrawText("DESERT", mapX + mapW - 80, mapY + mapH / 2, 16, new Color((byte)255,(byte)220,(byte)100,(byte)255));
+    Raylib.DrawText("SNOW ZONE", mapX + 8, mapY + mapH / 2, 16, new Color((byte)200,(byte)220,(byte)255,(byte)255));
+    Raylib.DrawText("SAFE ZONE", szX + 10, szY + 10, 16, new Color((byte)100,(byte)255,(byte)100,(byte)255));
+    Raylib.DrawText("GRASSLANDS", cx + (int)(2200 * scale), cy - 20, 16, new Color((byte)150,(byte)220,(byte)150,(byte)255));
+
+    // -- LEGEND --
+    int lx = mapX + 10;
+    int ly = mapY + mapH - 80;
+    Raylib.DrawRectangle(lx, ly, mapW - 20, 70, new Color((byte)0,(byte)0,(byte)0,(byte)180));
+    Raylib.DrawCircle(lx + 20, ly + 18, 6, Color.White);
+    Raylib.DrawText("= You", lx + 30, ly + 10, 14, Color.White);
+    Raylib.DrawRectangle(lx + 100, ly + 12, 12, 12, Color.Yellow);
+    Raylib.DrawText("= Building", lx + 116, ly + 10, 14, Color.Yellow);
+    Raylib.DrawCircle(lx + 240, ly + 18, 8, new Color((byte)30,(byte)100,(byte)200,(byte)255));
+    Raylib.DrawText("= Lake", lx + 252, ly + 10, 14, Color.SkyBlue);
+
+    // -- CLOSE HINT --
+    Raylib.DrawText("ESC or click MAP to close", mapX + mapW - 220, mapY + 10, 16, Color.LightGray);
+}
         static void DrawPauseMenu()
 {
     if (!pauseMenuOpen) return;
@@ -1529,7 +1988,7 @@ if (!pauseMenuOpen)
 
     Vector2 mouse = Raylib.GetMousePosition();
 
-    string[] buttons = { "RESUME", "LOAD GAME", "OPTIONS", "CHEATS", "QUIT TO MENU" };
+    string[] buttons = { "RESUME", "LOAD GAME", "OPTIONS", "CHEATS", "MAP", "QUIT TO MENU" };
 
     for (int i = 0; i < buttons.Length; i++)
     {
@@ -1561,6 +2020,12 @@ if (!pauseMenuOpen)
                     cheatsMenuOpen = !cheatsMenuOpen;
                     optionsMenuOpen = false;
                     loadMenuOpen = false;
+                    break;
+                case "MAP":
+                    mapOpen = !mapOpen;
+                    optionsMenuOpen = false;
+                    loadMenuOpen = false;
+                    cheatsMenuOpen = false;
                     break;
                 case "QUIT TO MENU":
                     pauseMenuOpen = false;
@@ -1755,37 +2220,37 @@ static void DrawCheatsMenu()
             Raylib.BeginMode2D(camera);
 
            // base
-            Raylib.DrawRectangle(-10000, -10000, 20000, 20000, new Color(90, 170, 90, 255));
+            Raylib.DrawRectangle(-40000, -40000, 80000, 80000, new Color(90, 170, 90, 255));
 
             // forest top
-            Raylib.DrawRectangle(-10000, -10000, 20000, 400, new Color(40, 100, 40, 255));
+            Raylib.DrawRectangle(-40000, -40000, 80000, 400, new Color(40, 100, 40, 255));
 
             // forest bottom
-            Raylib.DrawRectangle(-10000, 1000, 20000, 9000, new Color(40, 100, 40, 255));
+            Raylib.DrawRectangle(-40000, 1000, 80000, 39000, new Color(40, 100, 40, 255));
 
             // desert (right)
-            Raylib.DrawRectangle(2100, -10000, 7900, 20000, new Color(210, 180, 100, 255));
+            Raylib.DrawRectangle(4000, -40000, 36000, 80000, new Color(210, 180, 100, 255));
 
             // snow (left)
-            Raylib.DrawRectangle(-10000, -10000, 8500, 20000, new Color(220, 235, 255, 255));
+            Raylib.DrawRectangle(-40000, -40000, 37000, 80000, new Color(220, 235, 255, 255));
 
             // safe zone
-            Raylib.DrawRectangle(-1500, -800, 3600, 2200, new Color(90, 170, 90, 255));
+            Raylib.DrawRectangle(-3000, -1500, 7000, 4000, new Color(90, 170, 90, 255));
 
             // main horizontal road
-            Raylib.DrawRectangle(-10000, 550, 20000, 180, Color.DarkGray);
+            Raylib.DrawRectangle(-40000, 550, 80000, 180, Color.DarkGray);
 
             // north highway
-            Raylib.DrawRectangle(200, -10000, 120, 10000, Color.DarkGray);
+            Raylib.DrawRectangle(200, -40000, 120, 40000, Color.DarkGray);
 
             // south highway
-            Raylib.DrawRectangle(200, 730, 120, 9270, Color.DarkGray);
+            Raylib.DrawRectangle(200, 730, 120, 39270, Color.DarkGray);
 
             // desert side road
-            Raylib.DrawRectangle(2100, 200, 3000, 120, Color.DarkGray);
+            Raylib.DrawRectangle(4000, 200, 36000, 120, Color.DarkGray);
 
             // snow side road
-            Raylib.DrawRectangle(-10000, 200, 8500, 120, Color.DarkGray);
+            Raylib.DrawRectangle(-40000, 200, 37000, 120, Color.DarkGray);
 
             // vertical road to bank
             Raylib.DrawRectangle(1020, -200, 120, 760, Color.DarkGray);
@@ -1800,21 +2265,71 @@ static void DrawCheatsMenu()
             Raylib.DrawRectangle(500, -200, 120, 760, Color.DarkGray);
 
             // road markings main road
-            for (int i = -10000; i < 10000; i += 200)
+            for (int i = -40000; i < 40000; i += 200)
             {
                 Raylib.DrawRectangle(i, 630, 100, 12, Color.Yellow);
             }
 
             // road markings north highway
-            for (int i = -10000; i < 730; i += 200)
+            for (int i = -40000; i < 730; i += 200)
             {
                 Raylib.DrawRectangle(248, i, 12, 100, Color.Yellow);
             }
 
             // road markings south highway
-            for (int i = 730; i < 10000; i += 200)
+            for (int i = 730; i < 40000; i += 200)
             {
                 Raylib.DrawRectangle(248, i, 12, 100, Color.Yellow);
+            }
+
+            // outer ring road - top
+            Raylib.DrawRectangle(-40000, -38000, 80000, 180, Color.DarkGray);
+
+            // outer ring road - bottom
+            Raylib.DrawRectangle(-40000, 38000, 80000, 180, Color.DarkGray);
+
+            // outer ring road - left
+            Raylib.DrawRectangle(-40000, -38000, 180, 76180, Color.DarkGray);
+
+            // outer ring road - right
+            Raylib.DrawRectangle(39820, -38000, 180, 76180, Color.DarkGray);
+
+            // snow zone vertical connectors
+            Raylib.DrawRectangle(-20000, -38000, 120, 76180, Color.DarkGray);
+            Raylib.DrawRectangle(-10000, -38000, 120, 76180, Color.DarkGray);
+
+            // desert zone vertical connectors
+            Raylib.DrawRectangle(15000, -38000, 120, 76180, Color.DarkGray);
+            Raylib.DrawRectangle(25000, -38000, 120, 76180, Color.DarkGray);
+
+            // ring road markings top
+            for (int i = -40000; i < 40000; i += 200)
+                Raylib.DrawRectangle(i, -37920, 100, 12, Color.Yellow);
+
+            // ring road markings bottom
+            for (int i = -40000; i < 40000; i += 200)
+                Raylib.DrawRectangle(i, 38080, 100, 12, Color.Yellow);
+
+            // ring road markings left
+            for (int i = -38000; i < 38000; i += 200)
+                Raylib.DrawRectangle(-37920, i, 12, 100, Color.Yellow);
+
+            // ring road markings right
+            for (int i = -38000; i < 38000; i += 200)
+                Raylib.DrawRectangle(39900, i, 12, 100, Color.Yellow);
+
+            // snow connector markings
+            for (int i = -38000; i < 38000; i += 200)
+            {
+                Raylib.DrawRectangle(-19920, i, 12, 100, Color.Yellow);
+                Raylib.DrawRectangle(-9920, i, 12, 100, Color.Yellow);
+            }
+
+            // desert connector markings
+            for (int i = -38000; i < 38000; i += 200)
+            {
+                Raylib.DrawRectangle(15080, i, 12, 100, Color.Yellow);
+                Raylib.DrawRectangle(25080, i, 12, 100, Color.Yellow);
             }
 
             foreach (var ft in floatingTexts)
@@ -1940,7 +2455,7 @@ static void DrawCheatsMenu()
         }
 
         if (currentBuilding.BuildingName == "STORE")
-            Raylib.DrawText("E = Sell Log ($5) | F = Sell Fish ($10) | G = Sell Loot", 20, 600, 22, Color.LightGray);
+              Raylib.DrawText("E = Open Shop", 20, 600, 22, Color.LightGray);
 
         if (currentBuilding.BuildingName == "BANK")
             Raylib.DrawText("Z = Deposit $10 | X = Withdraw $10", 20, 600, 22, Color.LightGray);
@@ -1951,12 +2466,14 @@ static void DrawCheatsMenu()
 
     DrawChestUI();
     DrawWardrobe();
+    DrawShopUI();
 }
 
         static void DrawHUD()
         {
             DrawSkillsUI();
             DrawQuestsUI();
+            
 
             // health bar
             int hbWidth = 300;
@@ -1970,7 +2487,7 @@ static void DrawCheatsMenu()
             Raylib.DrawText("F5 = Save", ScreenWidth - 280, 90, 18, Color.LightGray);
 
            Raylib.DrawRectangle(0, ScreenHeight - 34, ScreenWidth, 34, new Color((byte)0, (byte)0, (byte)0, (byte)170));
-            Raylib.DrawText("SPACE = Chop Tree | R = Fish | TAB = Inventory | E = Enter Building | F = Drive Vehicle", 20, ScreenHeight - 28, 20, Color.White);
+            Raylib.DrawText("SPACE = Action/Chop | R = Fish | TAB = Inventory | E = Enter Building | F = Drive Vehicle", 20, ScreenHeight - 28, 20, Color.White);
 
             if (biomeMessageTimer > 0)
 {
@@ -1999,6 +2516,11 @@ static void DrawCheatsMenu()
     // build dynamic item list
     List<(string name, int count)> items = new();
     if (player.Logs > 0) items.Add(("Logs", player.Logs));
+    if (player.BirchLogs > 0) items.Add(("Birch Logs", player.BirchLogs));
+    if (player.OakLogs > 0) items.Add(("Oak Logs", player.OakLogs));
+    if (player.PineLogs > 0) items.Add(("Pine Logs", player.PineLogs));
+    if (player.ArcticLogs > 0) items.Add(("Arctic Logs", player.ArcticLogs));
+    if (player.DeadWood > 0) items.Add(("Dead Wood", player.DeadWood));
     if (player.Fish > 0) items.Add(("Fish", player.Fish));
     if (player.Bones > 0) items.Add(("Bones", player.Bones));
     if (player.Fur > 0) items.Add(("Fur", player.Fur));
@@ -2055,11 +2577,42 @@ static void DrawCheatsMenu()
 
         static void GenerateWorld()
         {
-            for (int i = -8000; i < 8000; i += 250)
-            {
-                trees.Add(new TreeObject(new Vector2(i, -300)));
-                trees.Add(new TreeObject(new Vector2(i, 1200)));
-            }
+          // Forest top and bottom - Oak trees
+        for (int i = -30000; i < 30000; i += 250)
+        {
+            trees.Add(TreeObject.Oak(new Vector2(i, -300)));
+            trees.Add(TreeObject.Oak(new Vector2(i, 1200)));
+        }
+
+        // Safe zone - Normal trees scattered
+        for (int i = -2800; i < 3800; i += 400)
+        {
+            trees.Add(TreeObject.Normal(new Vector2(i, 50)));
+            trees.Add(TreeObject.Normal(new Vector2(i, 900)));
+        }
+
+        // Grasslands - Birch trees
+        for (int i = 4200; i < 10000; i += 300)
+        {
+            trees.Add(TreeObject.Birch(new Vector2(i, 200)));
+            trees.Add(TreeObject.Birch(new Vector2(i, 500)));
+            trees.Add(TreeObject.Birch(new Vector2(i, 800)));
+        }
+
+        // Snow zone - Pine and Arctic trees
+        for (int i = -30000; i < -3100; i += 300)
+        {
+            trees.Add(TreeObject.Pine(new Vector2(i, 200)));
+            trees.Add(TreeObject.Pine(new Vector2(i, 500)));
+            trees.Add(TreeObject.Arctic(new Vector2(i + 150, 350)));
+        }
+
+        // Desert - Dead trees scattered
+        for (int i = 4200; i < 30000; i += 500)
+        {
+            trees.Add(TreeObject.Dead(new Vector2(i, 100)));
+            trees.Add(TreeObject.Dead(new Vector2(i + 200, 700)));
+        }
             
 
             lakes.Add(new Lake(new Vector2(700, 1200)));
@@ -2140,33 +2693,35 @@ buildings.Add(new Building(
             quests.Add(new Quest("Big Money", "Earn $100", 100, 200));
 
             // Grasslands - Wild Dogs
-            enemies.Add(new Enemy(new Vector2(2300, 600), "Wild Dog", 3, Color.Brown));
-            enemies.Add(new Enemy(new Vector2(2600, 400), "Wild Dog", 3, Color.Brown));
-            enemies.Add(new Enemy(new Vector2(2400, 900), "Wild Dog", 3, Color.Brown));
-            enemies.Add(new Enemy(new Vector2(3000, 300), "Wild Dog", 3, Color.Brown));
-            enemies.Add(new Enemy(new Vector2(3500, 700), "Wild Dog", 3, Color.Brown));
+            enemies.Add(new Enemy(new Vector2(4500, 600), "Wild Dog", 3, Color.Brown));
+            enemies.Add(new Enemy(new Vector2(6000, 400), "Wild Dog", 3, Color.Brown));
+            enemies.Add(new Enemy(new Vector2(8000, 900), "Wild Dog", 3, Color.Brown));
+            enemies.Add(new Enemy(new Vector2(10000, 300), "Wild Dog", 3, Color.Brown));
+            enemies.Add(new Enemy(new Vector2(12000, 700), "Wild Dog", 3, Color.Brown));
 
             // Forest - Wolves
             enemies.Add(new Enemy(new Vector2(-300, -600), "Wolf", 5, Color.DarkGray));
             enemies.Add(new Enemy(new Vector2(400, -800), "Wolf", 5, Color.DarkGray));
             enemies.Add(new Enemy(new Vector2(-200, 1400), "Wolf", 5, Color.DarkGray));
             enemies.Add(new Enemy(new Vector2(500, 1600), "Wolf", 5, Color.DarkGray));
-            enemies.Add(new Enemy(new Vector2(1000, -700), "Wolf", 5, Color.DarkGray));
-            enemies.Add(new Enemy(new Vector2(-800, 1500), "Wolf", 5, Color.DarkGray));
+            enemies.Add(new Enemy(new Vector2(5000, -700), "Wolf", 5, Color.DarkGray));
+            enemies.Add(new Enemy(new Vector2(-5000, 1500), "Wolf", 5, Color.DarkGray));
+            enemies.Add(new Enemy(new Vector2(10000, -500), "Wolf", 5, Color.DarkGray));
+            enemies.Add(new Enemy(new Vector2(-10000, 1200), "Wolf", 5, Color.DarkGray));
 
             // Desert - Scorpions
-            enemies.Add(new Enemy(new Vector2(3500, 300), "Scorpion", 4, new Color((byte)180, (byte)120, (byte)0, (byte)255)));
-            enemies.Add(new Enemy(new Vector2(4000, 700), "Scorpion", 4, new Color((byte)180, (byte)120, (byte)0, (byte)255)));
-            enemies.Add(new Enemy(new Vector2(4500, 200), "Scorpion", 4, new Color((byte)180, (byte)120, (byte)0, (byte)255)));
-            enemies.Add(new Enemy(new Vector2(5000, 600), "Scorpion", 4, new Color((byte)180, (byte)120, (byte)0, (byte)255)));
-            enemies.Add(new Enemy(new Vector2(5500, 400), "Scorpion", 4, new Color((byte)180, (byte)120, (byte)0, (byte)255)));
+            enemies.Add(new Enemy(new Vector2(6000, 300), "Scorpion", 4, new Color((byte)180, (byte)120, (byte)0, (byte)255)));
+            enemies.Add(new Enemy(new Vector2(10000, 700), "Scorpion", 4, new Color((byte)180, (byte)120, (byte)0, (byte)255)));
+            enemies.Add(new Enemy(new Vector2(15000, 200), "Scorpion", 4, new Color((byte)180, (byte)120, (byte)0, (byte)255)));
+            enemies.Add(new Enemy(new Vector2(20000, 600), "Scorpion", 4, new Color((byte)180, (byte)120, (byte)0, (byte)255)));
+            enemies.Add(new Enemy(new Vector2(25000, 400), "Scorpion", 4, new Color((byte)180, (byte)120, (byte)0, (byte)255)));
 
             // Snow - Bears
-            enemies.Add(new Enemy(new Vector2(-3000, 300), "Bear", 8, new Color((byte)100, (byte)100, (byte)120, (byte)255)));
-            enemies.Add(new Enemy(new Vector2(-3500, 600), "Bear", 8, new Color((byte)100, (byte)100, (byte)120, (byte)255)));
-            enemies.Add(new Enemy(new Vector2(-4000, 400), "Bear", 8, new Color((byte)100, (byte)100, (byte)120, (byte)255)));
-            enemies.Add(new Enemy(new Vector2(-4500, 700), "Bear", 8, new Color((byte)100, (byte)100, (byte)120, (byte)255)));
-            enemies.Add(new Enemy(new Vector2(-5000, 300), "Bear", 8, new Color((byte)100, (byte)100, (byte)120, (byte)255)));
+            enemies.Add(new Enemy(new Vector2(-6000, 300), "Bear", 8, new Color((byte)100, (byte)100, (byte)120, (byte)255)));
+            enemies.Add(new Enemy(new Vector2(-10000, 600), "Bear", 8, new Color((byte)100, (byte)100, (byte)120, (byte)255)));
+            enemies.Add(new Enemy(new Vector2(-15000, 400), "Bear", 8, new Color((byte)100, (byte)100, (byte)120, (byte)255)));
+            enemies.Add(new Enemy(new Vector2(-20000, 700), "Bear", 8, new Color((byte)100, (byte)100, (byte)120, (byte)255)));
+            enemies.Add(new Enemy(new Vector2(-25000, 300), "Bear", 8, new Color((byte)100, (byte)100, (byte)120, (byte)255)));
                     }
 
                 }
@@ -2327,6 +2882,11 @@ buildings.Add(new Building(
         public int FishingXP = 0;
 
         public int Logs = 0;
+        public int BirchLogs = 0;
+        public int OakLogs = 0;
+        public int PineLogs = 0;
+        public int ArcticLogs = 0;
+        public int DeadWood = 0;
         public int Fish = 0;
         public int Money = 0;
         public int BankBalance = 0;
@@ -2518,19 +3078,34 @@ buildings.Add(new Building(
     class TreeObject
 {
     public Vector2 Position;
-
     public bool Chopped = false;
-
-    public int Health = 3;
-
+    public int Health;
+    public int MaxHealth;
+    public string TreeType;
+    public int LevelRequired;
+    public int XPReward;
+    public string LogType;
     float respawnTimer = 0f;
 
     public Rectangle Bounds =>
         new Rectangle(Position.X, Position.Y, 60, 80);
 
-    public TreeObject(Vector2 pos)
+    public static TreeObject Normal(Vector2 pos) => new TreeObject(pos, "Normal", 3, 1, 25, "Logs");
+    public static TreeObject Birch(Vector2 pos) => new TreeObject(pos, "Birch", 4, 3, 40, "Birch Logs");
+    public static TreeObject Oak(Vector2 pos) => new TreeObject(pos, "Oak", 5, 5, 60, "Oak Logs");
+    public static TreeObject Pine(Vector2 pos) => new TreeObject(pos, "Pine", 6, 10, 80, "Pine Logs");
+    public static TreeObject Arctic(Vector2 pos) => new TreeObject(pos, "Arctic", 7, 15, 100, "Arctic Logs");
+    public static TreeObject Dead(Vector2 pos) => new TreeObject(pos, "Dead", 2, 1, 15, "Dead Wood");
+
+    public TreeObject(Vector2 pos, string treeType, int health, int levelRequired, int xpReward, string logType)
     {
         Position = pos;
+        TreeType = treeType;
+        Health = health;
+        MaxHealth = health;
+        LevelRequired = levelRequired;
+        XPReward = xpReward;
+        LogType = logType;
     }
 
     public void Update(float dt)
@@ -2538,11 +3113,10 @@ buildings.Add(new Building(
         if (Chopped)
         {
             respawnTimer += dt;
-
             if (respawnTimer >= 5f)
             {
                 Chopped = false;
-                Health = 3;
+                Health = MaxHealth;
                 respawnTimer = 0f;
             }
         }
@@ -2552,34 +3126,88 @@ buildings.Add(new Building(
     {
         if (Chopped)
         {
-            // stump
-            Raylib.DrawRectangle(
-                (int)Position.X + 12,
-                (int)Position.Y + 55,
-                36,
-                18,
-                Color.Brown
-            );
-
+            Raylib.DrawRectangle((int)Position.X + 12, (int)Position.Y + 55, 36, 18, Color.Brown);
             return;
         }
 
-        // trunk
-        Raylib.DrawRectangle(
-            (int)Position.X + 20,
-            (int)Position.Y + 40,
-            20,
-            40,
-            Color.Brown
-        );
+        switch (TreeType)
+        {
+            case "Normal":
+                // brown trunk, dark green leaves
+                Raylib.DrawRectangle((int)Position.X + 20, (int)Position.Y + 40, 20, 40, Color.Brown);
+                Raylib.DrawCircle((int)Position.X + 30, (int)Position.Y + 25, 35, Color.DarkGreen);
+                break;
 
-        // leaves
-        Raylib.DrawCircle(
-            (int)Position.X + 30,
-            (int)Position.Y + 25,
-            35,
-            Color.DarkGreen
-        );
+            case "Birch":
+                // white trunk, light green leaves
+                Raylib.DrawRectangle((int)Position.X + 20, (int)Position.Y + 40, 20, 40, Color.White);
+                Raylib.DrawRectangle((int)Position.X + 22, (int)Position.Y + 45, 4, 6, Color.DarkGray);
+                Raylib.DrawRectangle((int)Position.X + 22, (int)Position.Y + 58, 4, 6, Color.DarkGray);
+                Raylib.DrawCircle((int)Position.X + 30, (int)Position.Y + 25, 35, new Color((byte)144,(byte)238,(byte)144,(byte)255));
+                break;
+
+            case "Oak":
+                // wide dark trunk, big deep green canopy
+                Raylib.DrawRectangle((int)Position.X + 18, (int)Position.Y + 40, 24, 40, new Color((byte)101,(byte)67,(byte)33,(byte)255));
+                Raylib.DrawCircle((int)Position.X + 30, (int)Position.Y + 20, 42, new Color((byte)0,(byte)100,(byte)0,(byte)255));
+                Raylib.DrawCircle((int)Position.X + 10, (int)Position.Y + 30, 28, new Color((byte)0,(byte)100,(byte)0,(byte)255));
+                Raylib.DrawCircle((int)Position.X + 50, (int)Position.Y + 30, 28, new Color((byte)0,(byte)100,(byte)0,(byte)255));
+                break;
+
+            case "Pine":
+                // thin trunk, triangular layers
+                Raylib.DrawRectangle((int)Position.X + 24, (int)Position.Y + 55, 12, 25, Color.Brown);
+                Raylib.DrawTriangle(
+                    new Vector2(Position.X + 30, Position.Y),
+                    new Vector2(Position.X, Position.Y + 45),
+                    new Vector2(Position.X + 60, Position.Y + 45),
+                    new Color((byte)0,(byte)80,(byte)0,(byte)255)
+                );
+                Raylib.DrawTriangle(
+                    new Vector2(Position.X + 30, Position.Y + 15),
+                    new Vector2(Position.X + 5, Position.Y + 55),
+                    new Vector2(Position.X + 55, Position.Y + 55),
+                    new Color((byte)0,(byte)100,(byte)0,(byte)255)
+                );
+                break;
+
+            case "Arctic":
+                // snow covered pine
+                Raylib.DrawRectangle((int)Position.X + 24, (int)Position.Y + 55, 12, 25, new Color((byte)100,(byte)70,(byte)40,(byte)255));
+                Raylib.DrawTriangle(
+                    new Vector2(Position.X + 30, Position.Y),
+                    new Vector2(Position.X, Position.Y + 45),
+                    new Vector2(Position.X + 60, Position.Y + 45),
+                    new Color((byte)0,(byte)60,(byte)0,(byte)255)
+                );
+                Raylib.DrawTriangle(
+                    new Vector2(Position.X + 30, Position.Y + 15),
+                    new Vector2(Position.X + 5, Position.Y + 55),
+                    new Vector2(Position.X + 55, Position.Y + 55),
+                    new Color((byte)20,(byte)80,(byte)20,(byte)255)
+                );
+                // snow on top
+                Raylib.DrawTriangle(
+                    new Vector2(Position.X + 30, Position.Y),
+                    new Vector2(Position.X + 8, Position.Y + 28),
+                    new Vector2(Position.X + 52, Position.Y + 28),
+                    new Color((byte)220,(byte)235,(byte)255,(byte)200)
+                );
+                break;
+
+            case "Dead":
+                // bare grey trunk with branches
+                Raylib.DrawRectangle((int)Position.X + 22, (int)Position.Y + 20, 16, 60, Color.DarkGray);
+                Raylib.DrawRectangle((int)Position.X + 10, (int)Position.Y + 28, 22, 6, Color.DarkGray);
+                Raylib.DrawRectangle((int)Position.X + 28, (int)Position.Y + 38, 20, 5, Color.DarkGray);
+                break;
+        }
+
+        // level requirement label
+        if (LevelRequired > 1)
+        {
+            Raylib.DrawText($"WC {LevelRequired}", (int)Position.X + 5, (int)Position.Y - 18, 16, Color.Yellow);
+        }
     }
 }
 
