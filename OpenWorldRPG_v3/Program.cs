@@ -3,6 +3,7 @@ using Raylib_cs;
 using System;
 using System.Numerics;
 using System.Collections.Generic;
+using System.Linq;
 
 namespace OpenWorldRPG
 {
@@ -22,13 +23,15 @@ namespace OpenWorldRPG
         static float levelUpTimer = 0f;
         static float timeOfDay = 0f; // 0 to 1, full day cycle
         static float daySpeed = 0.02f; // how fast the day progresses
-
+        static float autoSaveTimer = 0f;
+        static float autoSaveInterval = 30f;
+        static int selectedSlot = 0;
+        static string[] savePaths = { "savegame1.txt", "savegame2.txt", "savegame3.txt" };
+        static string savePath => savePaths[selectedSlot];
+        static float totalPlayTime = 0f;
         static SceneState currentScene = SceneState.MainMenu;
-
         static Camera2D camera = new Camera2D();
-
         static Player player = new Player(new Vector2(0, 650));
-
         static int dayOfWeek = 0; // 0-6, Monday to Sunday
         static string[] dayNames = { "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday" };
         static float dayCounter = 0f; // tracks full day cycles
@@ -56,8 +59,19 @@ namespace OpenWorldRPG
         static bool isRaining = false;
         static float rainTimer = 0f;
         static float rainInterval = 30f;
+        static bool mainMenuChoice = false; // false = showing menu, true = showing name entry
         static bool wardrobeOpen = false;
         static int wardrobeTab = 0; // 0 = shirt, 1 = skin, 2 = pants
+        static bool chestOpen = false;
+        static int chestLogs = 0;
+        static int chestFish = 0;
+        static int chestBones = 0;
+        static int chestFur = 0;
+        static int chestStingers = 0;
+        static int chestBearPelts = 0;
+        static int chestSelectedSlot = -1;
+        static bool isLoadingGame = false;
+        static bool slotSelected = false;
         static List<Vector2> raindrops = new();
 
         static List<TreeObject> trees = new();
@@ -74,6 +88,126 @@ namespace OpenWorldRPG
         static float shakeDuration = 0f;
         static float shakeMagnitude = 6f;
 
+        static (bool exists, string name, string info) GetSlotInfo(int slot)
+        {
+            string path = savePaths[slot];
+            if (!System.IO.File.Exists(path)) return (false, "", "");
+
+            string[] lines = System.IO.File.ReadAllLines(path);
+            if (lines.Length < 19) return (false, "", "");
+
+            string name = lines[18];
+            int wcLv = int.Parse(lines[10]);
+            int fishLv = int.Parse(lines[12]);
+            int combatLv = int.Parse(lines[14]);
+            float playTime = lines.Length > 40 ? float.Parse(lines[40]) : 0f;
+            int hours = (int)(playTime / 3600);
+            int minutes = (int)((playTime % 3600) / 60);
+
+            return (true, name, $"WC:{wcLv} Fish:{fishLv} Combat:{combatLv} | {hours}h {minutes}m");
+        }
+        static void ShowNotification(string message)
+        {
+            levelUpMessage = message;
+            levelUpTimer = 2.5f;
+        }
+
+        static void SaveGame()
+{
+    List<string> lines = new List<string>
+    {
+        player.Position.X.ToString(),
+        player.Position.Y.ToString(),
+        player.Money.ToString(),
+        player.BankBalance.ToString(),
+        player.Logs.ToString(),
+        player.Fish.ToString(),
+        player.Bones.ToString(),
+        player.Fur.ToString(),
+        player.Stingers.ToString(),
+        player.BearPelts.ToString(),
+        player.WoodcuttingLevel.ToString(),
+        player.WoodcuttingXP.ToString(),
+        player.FishingLevel.ToString(),
+        player.FishingXP.ToString(),
+        player.CombatLevel.ToString(),
+        player.CombatXP.ToString(),
+        player.Health.ToString(),
+        player.MaxHealth.ToString(),
+        playerName,
+        player.ShirtColor.R.ToString(),
+        player.ShirtColor.G.ToString(),
+        player.ShirtColor.B.ToString(),
+        player.SkinColor.R.ToString(),
+        player.SkinColor.G.ToString(),
+        player.SkinColor.B.ToString(),
+        player.PantsColor.R.ToString(),
+        player.PantsColor.G.ToString(),
+        player.PantsColor.B.ToString(),
+        chestLogs.ToString(),
+        chestFish.ToString(),
+        chestBones.ToString(),
+        chestFur.ToString(),
+        chestStingers.ToString(),
+        chestBearPelts.ToString(),
+        quests[0].Progress.ToString(),
+        quests[0].Completed ? "1" : "0",
+        quests[1].Progress.ToString(),
+        quests[1].Completed ? "1" : "0",
+        quests[2].Progress.ToString(),
+        quests[2].Completed ? "1" : "0",
+        totalPlayTime.ToString(),
+    };
+
+    System.IO.File.WriteAllLines(savePath, lines);
+    ShowNotification("Game Saved!");
+}
+
+        static void LoadGame()
+{
+    if (!System.IO.File.Exists(savePath)) return;
+
+    string[] lines = System.IO.File.ReadAllLines(savePath);
+
+    if (lines.Length < 40) return;
+
+    player.Position = new Vector2(float.Parse(lines[0]), float.Parse(lines[1]));
+    player.Money = int.Parse(lines[2]);
+    player.BankBalance = int.Parse(lines[3]);
+    player.Logs = int.Parse(lines[4]);
+    player.Fish = int.Parse(lines[5]);
+    player.Bones = int.Parse(lines[6]);
+    player.Fur = int.Parse(lines[7]);
+    player.Stingers = int.Parse(lines[8]);
+    player.BearPelts = int.Parse(lines[9]);
+    player.WoodcuttingLevel = int.Parse(lines[10]);
+    player.WoodcuttingXP = int.Parse(lines[11]);
+    player.FishingLevel = int.Parse(lines[12]);
+    player.FishingXP = int.Parse(lines[13]);
+    player.CombatLevel = int.Parse(lines[14]);
+    player.CombatXP = int.Parse(lines[15]);
+    player.Health = int.Parse(lines[16]);
+    player.MaxHealth = int.Parse(lines[17]);
+    playerName = lines[18];
+    nameEntered = true;
+    player.ShirtColor = new Color((byte)int.Parse(lines[19]), (byte)int.Parse(lines[20]), (byte)int.Parse(lines[21]), (byte)255);
+    player.SkinColor = new Color((byte)int.Parse(lines[22]), (byte)int.Parse(lines[23]), (byte)int.Parse(lines[24]), (byte)255);
+    player.PantsColor = new Color((byte)int.Parse(lines[25]), (byte)int.Parse(lines[26]), (byte)int.Parse(lines[27]), (byte)255);
+    chestLogs = int.Parse(lines[28]);
+    chestFish = int.Parse(lines[29]);
+    chestBones = int.Parse(lines[30]);
+    chestFur = int.Parse(lines[31]);
+    chestStingers = int.Parse(lines[32]);
+    chestBearPelts = int.Parse(lines[33]);
+    quests[0].Progress = int.Parse(lines[34]);
+    quests[0].Completed = lines[35] == "1";
+    quests[1].Progress = int.Parse(lines[36]);
+    quests[1].Completed = lines[37] == "1";
+    quests[2].Progress = int.Parse(lines[38]);
+    quests[2].Completed = lines[39] == "1";
+
+    if (lines.Length > 40) totalPlayTime = float.Parse(lines[40]);
+}
         static void DrawWardrobe()
 {
     if (!wardrobeOpen) return;
@@ -152,6 +286,108 @@ namespace OpenWorldRPG
                     levelUpMessage = $"{skill} LEVEL UP! {level}";
                     levelUpTimer = 2.5f;
                     }
+
+        static void DrawChestUI()
+{
+    if (!chestOpen) return;
+
+    int panelX = ScreenWidth / 2 - 420;
+    int panelY = 60;
+    int slotSize = 70;
+    int padding = 8;
+    int cols = 5;
+
+    // background
+    Raylib.DrawRectangle(panelX, panelY, 840, 560, new Color((byte)20,(byte)20,(byte)30,(byte)240));
+    Raylib.DrawRectangleLines(panelX, panelY, 840, 560, Color.Gold);
+    Raylib.DrawText("CHEST", panelX + 20, panelY + 15, 28, Color.Gold);
+    Raylib.DrawText("INVENTORY", panelX + 450, panelY + 15, 28, Color.Gold);
+
+    // divider
+    Raylib.DrawRectangle(panelX + 415, panelY + 10, 4, 540, new Color((byte)80,(byte)80,(byte)80,(byte)255));
+
+    string[] itemNames = { "Logs", "Fish", "Bones", "Fur", "Stingers", "Pelts" };
+    int[] chestCounts = { chestLogs, chestFish, chestBones, chestFur, chestStingers, chestBearPelts };
+    int[] invCounts = { player.Logs, player.Fish, player.Bones, player.Fur, player.Stingers, player.BearPelts };
+
+    Vector2 mouse = Raylib.GetMousePosition();
+
+    // chest slots - 20 slots left side
+    Raylib.DrawText("Click to withdraw", panelX + 20, panelY + 48, 16, Color.LightGray);
+    for (int i = 0; i < 20; i++)
+    {
+        int col = i % cols;
+        int row = i / cols;
+        int sx = panelX + 20 + col * (slotSize + padding);
+        int sy = panelY + 75 + row * (slotSize + padding);
+
+        Raylib.DrawRectangle(sx, sy, slotSize, slotSize, new Color((byte)40,(byte)40,(byte)40,(byte)255));
+        Raylib.DrawRectangleLines(sx, sy, slotSize, slotSize, new Color((byte)100,(byte)100,(byte)100,(byte)255));
+
+        if (i < itemNames.Length && chestCounts[i] > 0)
+        {
+            DrawInventoryIcon(itemNames[i], sx, sy, slotSize);
+            Raylib.DrawText($"{chestCounts[i]}", sx + 6, sy + 6, 16, Color.White);
+            Raylib.DrawText(itemNames[i], sx + 4, sy + slotSize - 18, 13, Color.LightGray);
+
+            if (Raylib.CheckCollisionPointRec(mouse, new Rectangle(sx, sy, slotSize, slotSize)))
+            {
+                Raylib.DrawRectangleLines(sx, sy, slotSize, slotSize, Color.Gold);
+                if (Raylib.IsMouseButtonPressed(MouseButton.Left))
+                {
+                    switch (i)
+                    {
+                        case 0: player.Logs++; chestLogs--; break;
+                        case 1: player.Fish++; chestFish--; break;
+                        case 2: player.Bones++; chestBones--; break;
+                        case 3: player.Fur++; chestFur--; break;
+                        case 4: player.Stingers++; chestStingers--; break;
+                        case 5: player.BearPelts++; chestBearPelts--; break;
+                    }
+                }
+            }
+        }
+    }
+
+    // inventory slots - 20 slots right side
+    Raylib.DrawText("Click to deposit", panelX + 450, panelY + 48, 16, Color.LightGray);
+    for (int i = 0; i < 20; i++)
+    {
+        int col = i % cols;
+        int row = i / cols;
+        int sx = panelX + 435 + col * (slotSize + padding);
+        int sy = panelY + 75 + row * (slotSize + padding);
+
+        Raylib.DrawRectangle(sx, sy, slotSize, slotSize, new Color((byte)40,(byte)40,(byte)40,(byte)255));
+        Raylib.DrawRectangleLines(sx, sy, slotSize, slotSize, new Color((byte)100,(byte)100,(byte)100,(byte)255));
+
+        if (i < itemNames.Length && invCounts[i] > 0)
+        {
+            DrawInventoryIcon(itemNames[i], sx, sy, slotSize);
+            Raylib.DrawText($"{invCounts[i]}", sx + 6, sy + 6, 16, Color.White);
+            Raylib.DrawText(itemNames[i], sx + 4, sy + slotSize - 18, 13, Color.LightGray);
+
+            if (Raylib.CheckCollisionPointRec(mouse, new Rectangle(sx, sy, slotSize, slotSize)))
+            {
+                Raylib.DrawRectangleLines(sx, sy, slotSize, slotSize, Color.Gold);
+                if (Raylib.IsMouseButtonPressed(MouseButton.Left))
+                {
+                    switch (i)
+                    {
+                        case 0: chestLogs++; player.Logs--; break;
+                        case 1: chestFish++; player.Fish--; break;
+                        case 2: chestBones++; player.Bones--; break;
+                        case 3: chestFur++; player.Fur--; break;
+                        case 4: chestStingers++; player.Stingers--; break;
+                        case 5: chestBearPelts++; player.BearPelts--; break;
+                    }
+                }
+            }
+        }
+    }
+
+    Raylib.DrawText("Q = Close Chest", panelX + 350, panelY + 520, 20, Color.LightGray);
+}
         static string GetTimeString()
             {
                 float totalHours = timeOfDay * 24f;
@@ -532,26 +768,89 @@ namespace OpenWorldRPG
             {
                 case SceneState.MainMenu:
 
-                      if (!nameEntered)
+    if (!mainMenuChoice)
     {
-        int key = Raylib.GetCharPressed();
-        while (key > 0)
-        {
-            if (playerName.Length < 12)
-                playerName += (char)key;
-            key = Raylib.GetCharPressed();
-        }
+        Vector2 mouse = Raylib.GetMousePosition();
+        Rectangle newGameBtn = new Rectangle(ScreenWidth / 2 - 150, 360, 300, 60);
+        Rectangle loadGameBtn = new Rectangle(ScreenWidth / 2 - 150, 440, 300, 60);
 
-        if (Raylib.IsKeyPressed(KeyboardKey.Backspace) && playerName.Length > 0)
-            playerName = playerName.Substring(0, playerName.Length - 1);
+        bool anySaveExists = savePaths.Any(p => System.IO.File.Exists(p));
 
-        if (Raylib.IsKeyPressed(KeyboardKey.Enter) && playerName.Length > 0)
-            nameEntered = true;
+       if (Raylib.IsMouseButtonPressed(MouseButton.Left))
+{
+    if (Raylib.CheckCollisionPointRec(mouse, newGameBtn))
+    {
+        mainMenuChoice = true;
+        isLoadingGame = false;
+    }
+
+    if (anySaveExists && Raylib.CheckCollisionPointRec(mouse, loadGameBtn))
+    {
+        mainMenuChoice = true;
+        isLoadingGame = true;
+    }
+}
     }
     else
     {
-        if (Raylib.IsKeyPressed(KeyboardKey.Enter))
-            currentScene = SceneState.World;
+        Vector2 mouse = Raylib.GetMousePosition();
+
+        for (int i = 0; i < 3; i++)
+        {
+            Rectangle slotBtn = new Rectangle(ScreenWidth / 2 - 250, 300 + i * 100, 500, 80);
+            var (exists, name, info) = GetSlotInfo(i);
+
+            if (Raylib.IsMouseButtonPressed(MouseButton.Left) &&
+                Raylib.CheckCollisionPointRec(mouse, slotBtn))
+            {
+                selectedSlot = i;
+                slotSelected = true;
+
+                if (isLoadingGame && exists)
+                {
+                    LoadGame();
+                    currentScene = SceneState.World;
+                }
+                else if (!isLoadingGame)
+                {
+                    playerName = "typing";
+                    nameEntered = false;
+                    totalPlayTime = 0f;
+                }
+            }
+        }
+
+        if (slotSelected && !nameEntered)
+{
+    if (playerName == "typing") playerName = "";
+
+            int key = Raylib.GetCharPressed();
+            while (key > 0)
+            {
+                if (playerName.Length < 12)
+                    playerName += (char)key;
+                key = Raylib.GetCharPressed();
+            }
+
+            if (Raylib.IsKeyPressed(KeyboardKey.Backspace) && playerName.Length > 0)
+                playerName = playerName.Substring(0, playerName.Length - 1);
+
+            if (Raylib.IsKeyPressed(KeyboardKey.Enter) && playerName.Length > 0)
+                nameEntered = true;
+        }
+        else if (nameEntered)
+        {
+            if (Raylib.IsKeyPressed(KeyboardKey.Enter))
+                currentScene = SceneState.World;
+        }
+
+        if (Raylib.IsKeyPressed(KeyboardKey.Escape))
+        {
+            mainMenuChoice = false;
+            slotSelected = false;
+            playerName = "";
+            nameEntered = false;
+        }
     }
 
     break;
@@ -565,6 +864,7 @@ namespace OpenWorldRPG
                     UpdateQuests();
                     player.UpdateHealth(dt);
                     bool nearEnemy = false;
+                    totalPlayTime += dt;
 
                     if (player.Health <= 0)
                     {
@@ -573,6 +873,16 @@ namespace OpenWorldRPG
                     player.Money = Math.Max(0, player.Money - 50);
                     ShowLevelUp("You died! Lost $50", 0);
                     }
+
+                    autoSaveTimer += dt;
+                    if (autoSaveTimer >= autoSaveInterval)
+                    {
+                        autoSaveTimer = 0f;
+                        SaveGame();
+                    }
+
+                    if (Raylib.IsKeyPressed(KeyboardKey.F5))
+                        SaveGame();
 
                     currentBiome = GetCurrentBiome();
                     if (currentBiome != lastBiome)
@@ -807,115 +1117,128 @@ namespace OpenWorldRPG
 
                     break;
 
-                case SceneState.Building:
+         case SceneState.Building:
 
-                    player.UpdateInterior(dt, currentBuilding.InteriorObjects);
-                    if (shopMessageTimer > 0) shopMessageTimer -= dt;
+    player.UpdateInterior(dt, currentBuilding.InteriorObjects);
+    if (shopMessageTimer > 0) shopMessageTimer -= dt;
 
-if (Vector2.Distance(player.Position, currentBuilding.InteriorNPC.Position) < 120)
-{
+    // My House - independent of NPC distance
     if (currentBuilding.BuildingName == "MY HOUSE")
-{
-    Vector2 mouse = Raylib.GetMousePosition();
-
-    // tab switching
-    for (int i = 0; i < 3; i++)
     {
-        Rectangle tabBtn = new Rectangle(ScreenWidth / 2 - 280 + i * 140, 160, 120, 36);
-        if (Raylib.IsMouseButtonPressed(MouseButton.Left) &&
-            Raylib.CheckCollisionPointRec(mouse, tabBtn))
+        Vector2 mouse = Raylib.GetMousePosition();
+        Vector2 wardrobePos = new Vector2(530, 240);
+        Vector2 chestPos = new Vector2(330, 375);
+
+        for (int i = 0; i < 3; i++)
         {
-            wardrobeTab = i;
+            Rectangle tabBtn = new Rectangle(ScreenWidth / 2 - 280 + i * 140, 160, 120, 36);
+            if (Raylib.IsMouseButtonPressed(MouseButton.Left) &&
+                Raylib.CheckCollisionPointRec(mouse, tabBtn))
+                wardrobeTab = i;
+        }
+
+        if (!chestOpen && Vector2.Distance(player.Position, wardrobePos) < 200)
+        {
+            if (Raylib.IsKeyPressed(KeyboardKey.E))
+                wardrobeOpen = !wardrobeOpen;
+        }
+
+        if (!wardrobeOpen && Vector2.Distance(player.Position, chestPos) < 200)
+        {
+            if (Raylib.IsKeyPressed(KeyboardKey.E))
+                chestOpen = !chestOpen;
+        }
+
+        if (Raylib.IsKeyPressed(KeyboardKey.Q) && wardrobeOpen)
+        {
+            wardrobeOpen = false;
+            return;
+        }
+
+        if (Raylib.IsKeyPressed(KeyboardKey.Q) && chestOpen)
+        {
+            chestOpen = false;
+            return;
         }
     }
 
+    // All other buildings - NPC distance check
     if (Vector2.Distance(player.Position, currentBuilding.InteriorNPC.Position) < 120)
     {
-        if (Raylib.IsKeyPressed(KeyboardKey.E))
-            wardrobeOpen = !wardrobeOpen;
-    }
-
-    if (Raylib.IsKeyPressed(KeyboardKey.Q) && wardrobeOpen)
-    {
-        wardrobeOpen = false;
-        return;
-    }
-}
-
-    if (currentBuilding.BuildingName == "HOSPITAL")
-{
-    if (Raylib.IsKeyPressed(KeyboardKey.E))
-    {
-        if (player.Money >= 20)
+        if (currentBuilding.BuildingName == "HOSPITAL")
         {
-            player.Money -= 20;
-            player.Health = player.MaxHealth;
-            shopMessage = "Full health restored for $20!";
-            shopMessageTimer = 1.5f;
-        }
-        else
-        {
-            shopMessage = "Need $20 to heal!";
-            shopMessageTimer = 1.5f;
-        }
-    }
-}
-
-if (currentBuilding.BuildingName == "WEAPONS")
-{
-    if (Raylib.IsKeyPressed(KeyboardKey.E))
-    {
-        int upgradeCost = player.CombatLevel * 50;
-        if (player.Money >= upgradeCost)
-        {
-            player.Money -= upgradeCost;
-            player.MaxHealth += 10;
-            shopMessage = $"Weapon upgraded! Damage increased.";
-            shopMessageTimer = 1.5f;
-        }
-        else
-        {
-            shopMessage = $"Need ${upgradeCost} to upgrade!";
-            shopMessageTimer = 1.5f;
-        }
-    }
-}
-
-    if (currentBuilding.BuildingName == "STORE")
-    {
-        if (Raylib.IsKeyPressed(KeyboardKey.E))
-        {
-            if (player.Logs > 0)
+            if (Raylib.IsKeyPressed(KeyboardKey.E))
             {
-                player.Logs--;
-                player.Money += 5;
-                shopMessage = "Sold 1 Log for $5!";
-                shopMessageTimer = 1.5f;
-            }
-            else
-            {
-                shopMessage = "No logs to sell!";
-                shopMessageTimer = 1.5f;
+                if (player.Money >= 20)
+                {
+                    player.Money -= 20;
+                    player.Health = player.MaxHealth;
+                    shopMessage = "Full health restored for $20!";
+                    shopMessageTimer = 1.5f;
+                }
+                else
+                {
+                    shopMessage = "Need $20 to heal!";
+                    shopMessageTimer = 1.5f;
+                }
             }
         }
 
-        if (Raylib.IsKeyPressed(KeyboardKey.F))
+        if (currentBuilding.BuildingName == "WEAPONS")
         {
-            if (player.Fish > 0)
+            if (Raylib.IsKeyPressed(KeyboardKey.E))
             {
-                player.Fish--;
-                player.Money += 10;
-                shopMessage = "Sold 1 Fish for $10!";
-                shopMessageTimer = 1.5f;
-            }
-            else
-            {
-                shopMessage = "No fish to sell!";
-                shopMessageTimer = 1.5f;
+                int upgradeCost = player.CombatLevel * 50;
+                if (player.Money >= upgradeCost)
+                {
+                    player.Money -= upgradeCost;
+                    player.MaxHealth += 10;
+                    shopMessage = "Weapon upgraded! Damage increased.";
+                    shopMessageTimer = 1.5f;
+                }
+                else
+                {
+                    shopMessage = $"Need ${upgradeCost} to upgrade!";
+                    shopMessageTimer = 1.5f;
+                }
             }
         }
 
-        if (Raylib.IsKeyPressed(KeyboardKey.G))
+        if (currentBuilding.BuildingName == "STORE")
+        {
+            if (Raylib.IsKeyPressed(KeyboardKey.E))
+            {
+                if (player.Logs > 0)
+                {
+                    player.Logs--;
+                    player.Money += 5;
+                    shopMessage = "Sold 1 Log for $5!";
+                    shopMessageTimer = 1.5f;
+                }
+                else
+                {
+                    shopMessage = "No logs to sell!";
+                    shopMessageTimer = 1.5f;
+                }
+            }
+
+            if (Raylib.IsKeyPressed(KeyboardKey.F))
+            {
+                if (player.Fish > 0)
+                {
+                    player.Fish--;
+                    player.Money += 10;
+                    shopMessage = "Sold 1 Fish for $10!";
+                    shopMessageTimer = 1.5f;
+                }
+                else
+                {
+                    shopMessage = "No fish to sell!";
+                    shopMessageTimer = 1.5f;
+                }
+            }
+
+            if (Raylib.IsKeyPressed(KeyboardKey.G))
             {
                 int earned = 0;
                 earned += player.Bones * 8; player.Bones = 0;
@@ -937,52 +1260,53 @@ if (currentBuilding.BuildingName == "WEAPONS")
             }
         }
 
-    if (currentBuilding.BuildingName == "BANK")
-{
-    if (Raylib.IsKeyPressed(KeyboardKey.E))
-    {
-        if (player.Money >= 10)
+        if (currentBuilding.BuildingName == "BANK")
         {
-            player.Money -= 10;
-            player.BankBalance += 10;
-            shopMessage = "Deposited $10!";
-            shopMessageTimer = 1.5f;
-        }
-        else
-        {
-            shopMessage = "Not enough money!";
-            shopMessageTimer = 1.5f;
-        }
-    }
+            if (Raylib.IsKeyPressed(KeyboardKey.Z))
+            {
+                if (player.Money >= 10)
+                {
+                    player.Money -= 10;
+                    player.BankBalance += 10;
+                    shopMessage = "Deposited $10!";
+                    shopMessageTimer = 1.5f;
+                }
+                else
+                {
+                    shopMessage = "Not enough money!";
+                    shopMessageTimer = 1.5f;
+                }
+            }
 
-    if (Raylib.IsKeyPressed(KeyboardKey.F))
-    {
-        if (player.BankBalance >= 10)
-        {
-            player.BankBalance -= 10;
-            player.Money += 10;
-            shopMessage = "Withdrew $10!";
-            shopMessageTimer = 1.5f;
-        }
-        else
-        {
-            shopMessage = "Not enough in bank!";
-            shopMessageTimer = 1.5f;
-        }
-    }
-}
-}
-                    if (Raylib.IsKeyPressed(KeyboardKey.Q))
-                    {
-                        currentScene = SceneState.World;
-                        player.Position = currentBuilding.ExitPosition;
-                    }
-
-                    camera.Target = player.Position;
-
-                    break;
+            if (Raylib.IsKeyPressed(KeyboardKey.X))
+            {
+                if (player.BankBalance >= 10)
+                {
+                    player.BankBalance -= 10;
+                    player.Money += 10;
+                    shopMessage = "Withdrew $10!";
+                    shopMessageTimer = 1.5f;
+                }
+                else
+                {
+                    shopMessage = "Not enough in bank!";
+                    shopMessageTimer = 1.5f;
+                }
             }
         }
+    }
+
+    if (Raylib.IsKeyPressed(KeyboardKey.Q) && !wardrobeOpen && !chestOpen)
+    {
+        currentScene = SceneState.World;
+        player.Position = currentBuilding.ExitPosition;
+    }
+
+    camera.Target = player.Position;
+
+    break;
+            }
+        }       
         
 
         static void Draw()
@@ -1015,21 +1339,76 @@ if (currentBuilding.BuildingName == "WEAPONS")
             Raylib.EndDrawing();
         }
 
-        static void DrawMenu()
+       static void DrawMenu()
 {
     Raylib.ClearBackground(new Color(10, 10, 20, 255));
-
-    Raylib.DrawText("OPEN WORLD RPG", 312, 182, 64, new Color((byte)255, (byte)200, (byte)0, (byte)80));
+    Raylib.DrawText("OPEN WORLD RPG", 312, 182, 64, new Color((byte)255,(byte)200,(byte)0,(byte)80));
     Raylib.DrawText("OPEN WORLD RPG", 310, 180, 64, Color.Gold);
 
-    if (!nameEntered)
+    if (!mainMenuChoice)
+    {
+        Vector2 mouse = Raylib.GetMousePosition();
+        bool anySaveExists = savePaths.Any(p => System.IO.File.Exists(p));
+
+        Rectangle newGameBtn = new Rectangle(ScreenWidth / 2 - 150, 360, 300, 60);
+        bool hoverNew = Raylib.CheckCollisionPointRec(mouse, newGameBtn);
+        Raylib.DrawRectangleRec(newGameBtn, new Color((byte)40,(byte)40,(byte)40,(byte)255));
+        Raylib.DrawRectangleLinesEx(newGameBtn, 2, hoverNew ? Color.Gold : Color.White);
+        Raylib.DrawText("NEW GAME", ScreenWidth / 2 - 80, 378, 28, hoverNew ? Color.Gold : Color.White);
+
+        Rectangle loadGameBtn = new Rectangle(ScreenWidth / 2 - 150, 440, 300, 60);
+        bool hoverLoad = anySaveExists && Raylib.CheckCollisionPointRec(mouse, loadGameBtn);
+        Color loadColor = anySaveExists ? (hoverLoad ? Color.Gold : Color.White) : Color.DarkGray;
+        Raylib.DrawRectangleRec(loadGameBtn, new Color((byte)40,(byte)40,(byte)40,(byte)255));
+        Raylib.DrawRectangleLinesEx(loadGameBtn, 2, loadColor);
+        Raylib.DrawText("LOAD GAME", ScreenWidth / 2 - 85, 458, 28, loadColor);
+
+        if (Raylib.IsKeyPressed(KeyboardKey.Escape))
+        {
+            mainMenuChoice = false;
+            playerName = "";
+            nameEntered = false;
+        }
+
+        if (!anySaveExists)
+            Raylib.DrawText("No save files found", ScreenWidth / 2 - 100, 510, 20, Color.DarkGray);
+    }
+        else if (!slotSelected)
+    {
+        // show save slots
+        Raylib.DrawText("SELECT SAVE SLOT", ScreenWidth / 2 - 130, 250, 28, Color.LightGray);
+        Vector2 mouse = Raylib.GetMousePosition();
+
+        for (int i = 0; i < 3; i++)
+        {
+            Rectangle slotBtn = new Rectangle(ScreenWidth / 2 - 250, 300 + i * 100, 500, 80);
+            bool hover = Raylib.CheckCollisionPointRec(mouse, slotBtn);
+            var (exists, name, info) = GetSlotInfo(i);
+
+            Raylib.DrawRectangleRec(slotBtn, new Color((byte)30,(byte)30,(byte)40,(byte)255));
+            Raylib.DrawRectangleLinesEx(slotBtn, 2, hover ? Color.Gold : Color.White);
+            Raylib.DrawText($"SLOT {i + 1}", (int)slotBtn.X + 20, (int)slotBtn.Y + 12, 22, hover ? Color.Gold : Color.White);
+
+            if (exists)
+            {
+                Raylib.DrawText(name, (int)slotBtn.X + 120, (int)slotBtn.Y + 12, 22, Color.White);
+                Raylib.DrawText(info, (int)slotBtn.X + 20, (int)slotBtn.Y + 46, 18, Color.LightGray);
+            }
+            else
+            {
+                Raylib.DrawText("Empty Slot", (int)slotBtn.X + 120, (int)slotBtn.Y + 26, 22, Color.DarkGray);
+            }
+        }
+
+        Raylib.DrawText("ESC = Back", ScreenWidth / 2 - 50, 620, 20, Color.LightGray);
+    }
+    else if (slotSelected && !nameEntered)
     {
         Raylib.DrawText("ENTER YOUR NAME:", 440, 320, 28, Color.LightGray);
-        Raylib.DrawRectangle(420, 360, 440, 50, new Color((byte)40, (byte)40, (byte)40, (byte)255));
+        Raylib.DrawRectangle(420, 360, 440, 50, new Color((byte)40,(byte)40,(byte)40,(byte)255));
         Raylib.DrawRectangleLines(420, 360, 440, 50, Color.White);
         Raylib.DrawText(playerName, 440, 375, 28, Color.White);
 
-        // blinking cursor
         if ((int)(Raylib.GetTime() * 2) % 2 == 0)
             Raylib.DrawText("|", 440 + Raylib.MeasureText(playerName, 28), 375, 28, Color.White);
 
@@ -1178,76 +1557,87 @@ if (currentBuilding.BuildingName == "WEAPONS")
         }
 
         static void DrawInterior()
-        {
-            Raylib.ClearBackground(new Color(40,40,40,255));
+{
+    Raylib.ClearBackground(new Color(40,40,40,255));
 
-            Raylib.BeginMode2D(camera);
+    Raylib.BeginMode2D(camera);
 
-            Raylib.DrawRectangle(0,0,1400,1000,currentBuilding.InteriorColor);
+    Raylib.DrawRectangle(0,0,1400,1000,currentBuilding.InteriorColor);
 
-            foreach (Rectangle obj in currentBuilding.InteriorObjects)
-            {
-                Raylib.DrawRectangleRec(obj, Color.DarkBrown);
-            }
-            currentBuilding.InteriorNPC.Draw();
+    foreach (Rectangle obj in currentBuilding.InteriorObjects)
+    {
+        Raylib.DrawRectangleRec(obj, Color.DarkBrown);
+    }
 
-            player.Draw();
+    // wardrobe and chest always visible in My House
+    if (currentBuilding.BuildingName == "MY HOUSE")
+    {
+        // wardrobe
+        Raylib.DrawRectangle(500, 200, 60, 80, new Color((byte)80,(byte)50,(byte)20,(byte)255));
+        Raylib.DrawRectangle(500, 200, 60, 10, new Color((byte)100,(byte)70,(byte)30,(byte)255));
+        Raylib.DrawRectangle(527, 230, 6, 20, new Color((byte)200,(byte)160,(byte)40,(byte)255));
+        Raylib.DrawText("WARDROBE", 492, 285, 16, Color.White);
 
-            Raylib.EndMode2D();
+        // chest
+        Raylib.DrawRectangle(300, 350, 60, 50, new Color((byte)120,(byte)80,(byte)20,(byte)255));
+        Raylib.DrawRectangle(300, 350, 60, 20, new Color((byte)150,(byte)100,(byte)30,(byte)255));
+        Raylib.DrawRectangle(322, 362, 16, 16, new Color((byte)200,(byte)160,(byte)40,(byte)255));
+        Raylib.DrawText("CHEST", 298, 406, 16, Color.White);
+    }
 
-            if (shopMessageTimer > 0)
-                {
-                    byte alpha = (byte)(255 * Math.Min(1f, shopMessageTimer));
-                    Raylib.DrawText(shopMessage, 480, 560, 30, new Color((byte)255, (byte)215, (byte)0, alpha));
-                }
+    currentBuilding.InteriorNPC.Draw();
+    player.Draw();
 
-            Raylib.DrawText("Q = EXIT BUILDING", 20, 20, 28, Color.White);
-            if (currentBuilding.BuildingName == "STORE" || currentBuilding.BuildingName == "BANK")
-                {
-                    Raylib.DrawRectangle(ScreenWidth - 300, 0, 300, 100, new Color((byte)0, (byte)0, (byte)0, (byte)180));
-                    Raylib.DrawText($"Wallet: ${player.Money}", ScreenWidth - 280, 15, 26, Color.Gold);
+    Raylib.EndMode2D();
 
-    if (currentBuilding.BuildingName == "BANK")
+    if (shopMessageTimer > 0)
+    {
+        byte alpha = (byte)(255 * Math.Min(1f, shopMessageTimer));
+        Raylib.DrawText(shopMessage, 480, 560, 30, new Color((byte)255, (byte)215, (byte)0, alpha));
+    }
+
+    Raylib.DrawText("Q = EXIT BUILDING", 20, 20, 28, Color.White);
+
+    if (currentBuilding.BuildingName == "STORE" || currentBuilding.BuildingName == "BANK")
+    {
+        Raylib.DrawRectangle(ScreenWidth - 300, 0, 300, 100, new Color((byte)0, (byte)0, (byte)0, (byte)180));
+        Raylib.DrawText($"Wallet: ${player.Money}", ScreenWidth - 280, 15, 26, Color.Gold);
+
+        if (currentBuilding.BuildingName == "BANK")
         {
             Raylib.DrawText($"Bank: ${player.BankBalance}", ScreenWidth - 280, 45, 26, Color.LightGray);
             Raylib.DrawText($"Total: ${player.Money + player.BankBalance}", ScreenWidth - 280, 75, 22, Color.White);
         }
     }
 
-            if (Vector2.Distance(player.Position, currentBuilding.InteriorNPC.Position) < 120)
-{
-    Raylib.DrawRectangle(0, 620, 1280, 100, new Color((byte)0, (byte)0, (byte)0, (byte)180));
-    Raylib.DrawText(currentBuilding.BuildingName, 20, 630, 30, Color.Gold);
-    Raylib.DrawText(currentBuilding.InteriorNPC.Name + ": " + currentBuilding.InteriorNPC.Dialogue, 20, 670, 24, Color.White);
+    if (Vector2.Distance(player.Position, currentBuilding.InteriorNPC.Position) < 120)
+    {
+        Raylib.DrawRectangle(0, 620, 1280, 100, new Color((byte)0, (byte)0, (byte)0, (byte)180));
+        Raylib.DrawText(currentBuilding.BuildingName, 20, 630, 30, Color.Gold);
+        Raylib.DrawText(currentBuilding.InteriorNPC.Name + ": " + currentBuilding.InteriorNPC.Dialogue, 20, 670, 24, Color.White);
 
-            if (currentBuilding.BuildingName == "HOSPITAL")
-        {
+        if (currentBuilding.BuildingName == "HOSPITAL")
             Raylib.DrawText("E = Restore Health ($20)", 20, 600, 22, Color.LightGray);
-        }
 
-            if (currentBuilding.BuildingName == "WEAPONS")
+        if (currentBuilding.BuildingName == "WEAPONS")
         {
             int upgradeCost = player.CombatLevel * 50;
             Raylib.DrawText($"E = Upgrade Weapon (${upgradeCost})", 20, 600, 22, Color.LightGray);
         }
 
-    if (currentBuilding.BuildingName == "STORE")
-    {
-        Raylib.DrawText("E = Sell Log ($5) | F = Sell Fish ($10) | G = Sell Loot", 20, 600, 22, Color.LightGray);
+        if (currentBuilding.BuildingName == "STORE")
+            Raylib.DrawText("E = Sell Log ($5) | F = Sell Fish ($10) | G = Sell Loot", 20, 600, 22, Color.LightGray);
+
+        if (currentBuilding.BuildingName == "BANK")
+            Raylib.DrawText("Z = Deposit $10 | X = Withdraw $10", 20, 600, 22, Color.LightGray);
+
+        if (currentBuilding.BuildingName == "MY HOUSE")
+            Raylib.DrawText("E = Open Wardrobe | Walk to CHEST and press E", 20, 600, 22, Color.LightGray);
     }
 
-    if (currentBuilding.BuildingName == "BANK")
-    {
-        Raylib.DrawText($"E = Deposit $10 | F = Withdraw $10", 20, 600, 22, Color.LightGray);
-    }
-
-    if (currentBuilding.BuildingName == "MY HOUSE")
-{
-    Raylib.DrawText("E = Open Wardrobe", 20, 600, 22, Color.LightGray);
+    DrawChestUI();
+    DrawWardrobe();
 }
-}
-        DrawWardrobe();
-        }
 
         static void DrawHUD()
         {
@@ -1263,6 +1653,7 @@ if (currentBuilding.BuildingName == "WEAPONS")
             Raylib.DrawRectangle(hbX, 10, (int)(hbWidth * healthPercent), 24, hpColor);
             Raylib.DrawRectangleLines(hbX, 10, hbWidth, 24, Color.White);
             Raylib.DrawText($"HP: {player.Health}/{player.MaxHealth}", hbX + hbWidth / 2 - 40, 13, 18, Color.White);
+            Raylib.DrawText("F5 = Save", ScreenWidth - 280, 90, 18, Color.LightGray);
 
            Raylib.DrawRectangle(0, ScreenHeight - 34, ScreenWidth, 34, new Color((byte)0, (byte)0, (byte)0, (byte)170));
             Raylib.DrawText("SPACE = Chop Tree | R = Fish | TAB = Inventory | E = Enter Building | F = Drive Vehicle", 20, ScreenHeight - 28, 20, Color.White);
