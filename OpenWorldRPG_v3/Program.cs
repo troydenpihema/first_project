@@ -17,7 +17,7 @@ namespace OpenWorldRPG
     {
         const int ScreenWidth = 1280;
         const int ScreenHeight = 720;
-
+        
         static string levelUpMessage = "";
         static float levelUpTimer = 0f;
         static float timeOfDay = 0f; // 0 to 1, full day cycle
@@ -38,7 +38,11 @@ namespace OpenWorldRPG
         static bool skillsOpen = false;
         static bool hoverWoodcutting = false;
         static bool hoverFishing = false;
-        
+        static bool questsOpen = false;
+        static List<Quest> quests = new();
+        static string playerName = "";
+        static bool nameEntered = false;
+        static bool hoverCombat = false;
         static bool shopOpen = false;
         static string shopMessage = "";
         static float shopMessageTimer = 0f;
@@ -58,6 +62,8 @@ namespace OpenWorldRPG
         static List<Building> buildings = new();
 
         static List<FloatingText> floatingTexts = new();
+        static List<Enemy> enemies = new();
+        static List<LootDrop> lootDrops = new();
 
         static Building currentBuilding = null;
         static float shakeDuration = 0f;
@@ -84,6 +90,60 @@ namespace OpenWorldRPG
                 byte alpha = (byte)(180 * (1f - night));
                 return new Color((byte)0, (byte)0, (byte)30, alpha);
             }
+            static void DrawInventoryIcon(string item, int x, int y, int size)
+{
+    int cx = x + size / 2;
+    int cy = y + size / 2 - 10;
+
+    switch (item)
+    {
+        case "Logs":
+            Raylib.DrawRectangle(cx - 20, cy - 8, 40, 16, Color.Brown);
+            Raylib.DrawRectangle(cx - 14, cy - 14, 28, 6, new Color((byte)100, (byte)60, (byte)20, (byte)255));
+            break;
+
+        case "Fish":
+            Raylib.DrawTriangle(
+                new Vector2(cx + 20, cy),
+                new Vector2(cx + 8, cy - 8),
+                new Vector2(cx + 8, cy + 8),
+                Color.SkyBlue
+            );
+            Raylib.DrawEllipse(cx - 6, cy, 18, 10, Color.Blue);
+            break;
+
+        case "Bones":
+            Raylib.DrawRectangle(cx - 3, cy - 18, 6, 36, Color.White);
+            Raylib.DrawCircle(cx, cy - 18, 7, Color.White);
+            Raylib.DrawCircle(cx, cy + 18, 7, Color.White);
+            break;
+
+        case "Fur":
+            Raylib.DrawCircle(cx, cy, 18, new Color((byte)139, (byte)90, (byte)43, (byte)255));
+            Raylib.DrawCircle(cx - 8, cy - 8, 8, new Color((byte)160, (byte)110, (byte)60, (byte)255));
+            Raylib.DrawCircle(cx + 8, cy - 8, 8, new Color((byte)160, (byte)110, (byte)60, (byte)255));
+            break;
+
+        case "Stingers":
+            Raylib.DrawTriangle(
+                new Vector2(cx, cy - 22),
+                new Vector2(cx - 8, cy + 18),
+                new Vector2(cx + 8, cy + 18),
+                new Color((byte)180, (byte)120, (byte)0, (byte)255)
+            );
+            break;
+
+        case "Pelts":
+            Raylib.DrawRectangle(cx - 16, cy - 18, 32, 36, new Color((byte)100, (byte)100, (byte)120, (byte)255));
+            Raylib.DrawRectangle(cx - 10, cy - 10, 20, 20, new Color((byte)130, (byte)130, (byte)150, (byte)255));
+            break;
+
+        case "Money":
+            Raylib.DrawCircle(cx, cy, 18, Color.Gold);
+            Raylib.DrawText("$", cx - 6, cy - 12, 22, Color.DarkGray);
+            break;
+    }
+}
             static void UpdateWeather(float dt)
 {
     rainTimer += dt;
@@ -135,6 +195,56 @@ namespace OpenWorldRPG
         );
     }
 }
+        static void UpdateQuests()
+{
+    foreach (Quest quest in quests)
+    {
+        if (quest.Completed) continue;
+
+        if (quest.Title == "Lumberjack")
+            quest.Progress = player.Logs;
+
+        if (quest.Title == "Fisher")
+            quest.Progress = player.Fish;
+
+        if (quest.Title == "Big Money")
+            quest.Progress = player.Money;
+
+        if (quest.Progress >= quest.Target)
+        {
+            quest.Completed = true;
+            quest.Progress = quest.Target;
+            player.Money += quest.Reward;
+            ShowLevelUp($"Quest Complete: {quest.Title}! +${quest.Reward}", 0);
+        }
+    }
+}
+            static void DrawQuestsUI()
+{
+    // QUESTS button
+    Rectangle questsBtn = new Rectangle(ScreenWidth - 320, ScreenHeight - 60, 140, 40);
+    Raylib.DrawRectangleRec(questsBtn, new Color((byte)0, (byte)0, (byte)0, (byte)200));
+    Raylib.DrawRectangleLinesEx(questsBtn, 2, questsOpen ? Color.Gold : Color.White);
+    Raylib.DrawText("QUESTS", ScreenWidth - 300, ScreenHeight - 48, 22, questsOpen ? Color.Gold : Color.White);
+
+    if (!questsOpen) return;
+
+    // Quest panel
+    Raylib.DrawRectangle(ScreenWidth - 320, ScreenHeight - 260, 300, 200, new Color((byte)0, (byte)0, (byte)0, (byte)200));
+    Raylib.DrawRectangleLines(ScreenWidth - 320, ScreenHeight - 260, 300, 200, Color.White);
+    Raylib.DrawText("QUESTS", ScreenWidth - 290, ScreenHeight - 248, 22, Color.Gold);
+
+    int yOffset = 0;
+    foreach (Quest quest in quests)
+    {
+        Color questColor = quest.Completed ? Color.Green : Color.White;
+        string tick = quest.Completed ? "[DONE]" : $"{quest.Progress}/{quest.Target}";
+        Raylib.DrawText(quest.Description, ScreenWidth - 310, ScreenHeight - 210 + yOffset, 18, questColor);
+        Raylib.DrawText(tick, ScreenWidth - 310, ScreenHeight - 192 + yOffset, 16, questColor);
+        Raylib.DrawText($"Reward: ${quest.Reward}", ScreenWidth - 180, ScreenHeight - 192 + yOffset, 16, Color.Gold);
+        yOffset += 50;
+    }
+}
 
             static void UpdateSkillsUI()
 {
@@ -147,7 +257,7 @@ namespace OpenWorldRPG
     {
         if (Raylib.CheckCollisionPointRec(mouse, skillsBtn))
             skillsOpen = !skillsOpen;
-        else if (!Raylib.CheckCollisionPointRec(mouse, new Rectangle(ScreenWidth - 160, ScreenHeight - 200, 140, 145)))
+        else if (!Raylib.CheckCollisionPointRec(mouse, new Rectangle(ScreenWidth - 160, ScreenHeight - 250, 140, 195)))
             skillsOpen = false;
     }
 
@@ -155,6 +265,8 @@ namespace OpenWorldRPG
     {
         Rectangle wcBtn = new Rectangle(ScreenWidth - 160, ScreenHeight - 130, 140, 40);
         Rectangle fishBtn = new Rectangle(ScreenWidth - 160, ScreenHeight - 180, 140, 40);
+        Rectangle combatBtn = new Rectangle(ScreenWidth - 160, ScreenHeight - 230, 140, 40);
+        hoverCombat = Raylib.CheckCollisionPointRec(mouse, combatBtn);
 
         hoverWoodcutting = Raylib.CheckCollisionPointRec(mouse, wcBtn);
         hoverFishing = Raylib.CheckCollisionPointRec(mouse, fishBtn);
@@ -207,6 +319,22 @@ namespace OpenWorldRPG
             Raylib.DrawRectangle(ScreenWidth - 160, ScreenHeight - 143, (int)(140 * fishProgress), 8, new Color((byte)0, (byte)0, (byte)0, (byte)210));
         }
 
+    // Combat button
+        Rectangle combatBtn = new Rectangle(ScreenWidth - 160, ScreenHeight - 230, 140, 40);
+        Color combatColor = hoverCombat ? Color.Gold : Color.White;
+        Raylib.DrawRectangleRec(combatBtn, new Color((byte)0, (byte)0, (byte)0, (byte)200));
+        Raylib.DrawRectangleLinesEx(combatBtn, 2, combatColor);
+        Raylib.DrawText($"Combat Lv {player.CombatLevel}", ScreenWidth - 155, ScreenHeight - 218, 20, combatColor);
+
+        // Combat progress bar
+        if (!hoverCombat)
+        {
+            int combatRequired = player.CombatLevel * player.CombatLevel * 50;
+            float combatProgress = (float)player.CombatXP / combatRequired;
+            Raylib.DrawRectangle(ScreenWidth - 160, ScreenHeight - 193, 140, 8, new Color((byte)40, (byte)40, (byte)40, (byte)255));
+            Raylib.DrawRectangle(ScreenWidth - 160, ScreenHeight - 193, (int)(140 * combatProgress), 8, Color.Red);
+        }
+
     // XP tooltip on hover
     if (hoverWoodcutting)
     {
@@ -220,6 +348,14 @@ namespace OpenWorldRPG
         int required = player.FishingLevel * player.FishingLevel * 50;
         Raylib.DrawRectangle(ScreenWidth - 320, ScreenHeight - 180, 150, 40, new Color((byte)0, (byte)0, (byte)0, (byte)210));
         Raylib.DrawText($"XP: {player.FishingXP}/{required}", ScreenWidth - 315, ScreenHeight - 168, 20, Color.LightGray);
+    }
+
+    // Combat XP tooltip on hover
+    if (hoverCombat)
+    {
+        int required = player.CombatLevel * player.CombatLevel * 50;
+        Raylib.DrawRectangle(ScreenWidth - 320, ScreenHeight - 230, 150, 40, new Color((byte)0, (byte)0, (byte)0, (byte)210));
+        Raylib.DrawText($"XP: {player.CombatXP}/{required}", ScreenWidth - 315, ScreenHeight - 218, 20, Color.LightGray);
     }
 }
         static void DrawMinimap()
@@ -255,10 +391,19 @@ namespace OpenWorldRPG
         Raylib.DrawCircle(nx, ny, 3, Color.Red);
     }
 
+    // enemies
+    foreach (Enemy enemy in enemies)
+{
+    if (enemy.Dead) continue;
+    int ex = cx + (int)((enemy.Position.X - player.Position.X) * minimapScale);
+    int ey = cy + (int)((enemy.Position.Y - player.Position.Y) * minimapScale);
+    Raylib.DrawCircle(ex, ey, 3, Color.Red);
+}
+
     // player dot
     Raylib.DrawCircle(cx, cy, 4, Color.White);
 
-    Raylib.DrawText("MAP", minimapX + 80, minimapY + 185, 18, Color.LightGray);
+    Raylib.DrawText(playerName, minimapX, minimapY + 208, 18, Color.LightGray);
 }
         static void Main()
         {
@@ -291,12 +436,29 @@ namespace OpenWorldRPG
             {
                 case SceneState.MainMenu:
 
-                    if (Raylib.IsKeyPressed(KeyboardKey.Enter))
-                    {
-                        currentScene = SceneState.World;
-                    }
+                      if (!nameEntered)
+    {
+        int key = Raylib.GetCharPressed();
+        while (key > 0)
+        {
+            if (playerName.Length < 12)
+                playerName += (char)key;
+            key = Raylib.GetCharPressed();
+        }
 
-                    break;
+        if (Raylib.IsKeyPressed(KeyboardKey.Backspace) && playerName.Length > 0)
+            playerName = playerName.Substring(0, playerName.Length - 1);
+
+        if (Raylib.IsKeyPressed(KeyboardKey.Enter) && playerName.Length > 0)
+            nameEntered = true;
+    }
+    else
+    {
+        if (Raylib.IsKeyPressed(KeyboardKey.Enter))
+            currentScene = SceneState.World;
+    }
+
+    break;
 
                 case SceneState.World:
 
@@ -304,6 +466,17 @@ namespace OpenWorldRPG
                     if (levelUpTimer > 0) levelUpTimer -= dt;
                     timeOfDay += daySpeed * dt;
                     UpdateWeather(dt);
+                    UpdateQuests();
+                    player.UpdateHealth(dt);
+                    bool nearEnemy = false;
+
+                    if (player.Health <= 0)
+                    {
+                    player.Health = player.MaxHealth;
+                    player.Position = new Vector2(400, 400);
+                    player.Money = Math.Max(0, player.Money - 50);
+                    ShowLevelUp("You died! Lost $50", 0);
+                    }
 
                     if (timeOfDay > 1f)
                     {
@@ -318,7 +491,111 @@ namespace OpenWorldRPG
                         ft.Position.Y -= 40f * dt;
                         floatingTexts[i] = ft;
                         if (ft.Timer <= 0) floatingTexts.RemoveAt(i);
-}
+                    }
+
+                    for (int i = lootDrops.Count - 1; i >= 0; i--)
+                    {
+                        LootDrop drop = lootDrops[i];
+
+                        if (!drop.Collected && Raylib.CheckCollisionRecs(player.Bounds, drop.Bounds))
+                        {
+                            drop.Collected = true;
+
+                            switch (drop.ItemType)
+                            {
+                                case "Bone":
+                                    player.Bones++;
+                                    break;
+                                case "Fur":
+                                    player.Fur++;
+                                    break;
+                                case "Stinger":
+                                    player.Stingers++;
+                                    break;
+                                case "Bear Pelt":
+                                    player.BearPelts++;
+                                    break;
+                            }
+
+                            floatingTexts.Add(new FloatingText {
+                                Position = player.Position - new Vector2(0, 40),
+                                Text = $"+1 {drop.ItemType}",
+                                Timer = 1.5f,
+                                TextColor = Color.Gold
+                            });
+
+                            lootDrops.RemoveAt(i);
+                        }
+                    }
+
+                    foreach (Enemy enemy in enemies)
+                    {
+                        enemy.Update(dt);
+                        if (!enemy.Dead && Raylib.CheckCollisionRecs(player.Bounds, enemy.Bounds))
+            {
+                int damage = 0;
+                if (enemy.Type == "Wild Dog") damage = 5;
+                else if (enemy.Type == "Wolf") damage = 10;
+                else if (enemy.Type == "Scorpion") damage = 8;
+                else if (enemy.Type == "Bear") damage = 15;
+
+                player.TakeDamage(damage);
+                TriggerShake(0.2f);
+
+                floatingTexts.Add(new FloatingText {
+                    Position = player.Position - new Vector2(0, 20),
+                    Text = $"-{damage}",
+                    Timer = 1f,
+                    TextColor = Color.Red
+                });
+            }
+                        if (!enemy.Dead && Vector2.Distance(player.Position, enemy.Position) < 80)
+                {
+                    nearEnemy = true;
+
+                    if (Raylib.IsKeyPressed(KeyboardKey.Space) || Raylib.IsMouseButtonPressed(MouseButton.Left))
+                    {
+                        int attackDamage = 1 + (player.CombatLevel / 10);
+                        enemy.Health -= attackDamage;
+                        floatingTexts.Add(new FloatingText {
+                            Position = enemy.Position - new Vector2(0, 20),
+                            Text = $"-{attackDamage}",
+                            Timer = 1f,
+                            TextColor = Color.Red
+                        });
+
+                        TriggerShake(0.1f);
+                        floatingTexts.Add(new FloatingText {
+                            Position = enemy.Position - new Vector2(0, 20),
+                            Text = "-1",
+                            Timer = 1f,
+                            TextColor = Color.Red
+                        });
+
+                        if (enemy.Health <= 0)
+                        {
+                            enemy.Dead = true;
+
+                            if (enemy.Type == "Wild Dog") player.AddCombatXP(20);
+                                else if (enemy.Type == "Wolf") player.AddCombatXP(35);
+                                else if (enemy.Type == "Scorpion") player.AddCombatXP(30);
+                                else if (enemy.Type == "Bear") player.AddCombatXP(50);
+
+                           if (enemy.Type == "Wild Dog")
+                                lootDrops.Add(new LootDrop(enemy.Position, "Bone"));
+
+                            else if (enemy.Type == "Wolf")
+                                lootDrops.Add(new LootDrop(enemy.Position, "Fur"));
+
+                            else if (enemy.Type == "Scorpion")
+                                lootDrops.Add(new LootDrop(enemy.Position, "Stinger"));
+
+                            else if (enemy.Type == "Bear")
+                                lootDrops.Add(new LootDrop(enemy.Position, "Bear Pelt"));
+                        }
+                    }
+                }
+            }
 
                     player.Update(dt, buildings, trees);
 
@@ -346,35 +623,35 @@ namespace OpenWorldRPG
                         npc.Update(dt);
                     }
 
-                    foreach (TreeObject tree in trees)
-                    {
-                        tree.Update(dt);
+                   foreach (TreeObject tree in trees)
+{
+    tree.Update(dt);
 
-                        if (!tree.Chopped)
-                        {
-                            if (Vector2.Distance(player.Position, tree.Position) < 80)
-                            {
-                                if (Raylib.IsKeyPressed(KeyboardKey.Space))
-                                {
-                                    tree.Health--;
+    if (!tree.Chopped && !nearEnemy)
+    {
+        if (Vector2.Distance(player.Position, tree.Position) < 80)
+        {
+            if (Raylib.IsKeyPressed(KeyboardKey.Space))
+            {
+                tree.Health--;
 
-                                    if (tree.Health <= 0)
-                                    {
-                                        tree.Chopped = true;
-                                        player.AddWoodcuttingXP(25);
-                                        player.Logs += Raylib.GetRandomValue(1, 3);
-                                        TriggerShake(0.15f);
-                                        floatingTexts.Add(new FloatingText {   // 👈 add this
-                                        Position = player.Position - new Vector2(0, 20),
-                                        Text = "+25 WC XP",
-                                        Timer = 1.2f,
-                                        TextColor = Color.Yellow
-                                    });
-                                    }
-                                }
-                            }
-                        }
-                    }
+                if (tree.Health <= 0)
+                {
+                    tree.Chopped = true;
+                    player.AddWoodcuttingXP(25);
+                    player.Logs += Raylib.GetRandomValue(1, 3);
+                    TriggerShake(0.15f);
+                    floatingTexts.Add(new FloatingText {
+                        Position = player.Position - new Vector2(0, 20),
+                        Text = "+25 WC XP",
+                        Timer = 1.2f,
+                        TextColor = Color.Yellow
+                    });
+                }
+            }
+        }
+    }
+}
 
                     foreach (Lake lake in lakes)
                    {
@@ -433,6 +710,45 @@ namespace OpenWorldRPG
 
 if (Vector2.Distance(player.Position, currentBuilding.InteriorNPC.Position) < 120)
 {
+    if (currentBuilding.BuildingName == "HOSPITAL")
+{
+    if (Raylib.IsKeyPressed(KeyboardKey.E))
+    {
+        if (player.Money >= 20)
+        {
+            player.Money -= 20;
+            player.Health = player.MaxHealth;
+            shopMessage = "Full health restored for $20!";
+            shopMessageTimer = 1.5f;
+        }
+        else
+        {
+            shopMessage = "Need $20 to heal!";
+            shopMessageTimer = 1.5f;
+        }
+    }
+}
+
+if (currentBuilding.BuildingName == "WEAPONS")
+{
+    if (Raylib.IsKeyPressed(KeyboardKey.E))
+    {
+        int upgradeCost = player.CombatLevel * 50;
+        if (player.Money >= upgradeCost)
+        {
+            player.Money -= upgradeCost;
+            player.MaxHealth += 10;
+            shopMessage = $"Weapon upgraded! Damage increased.";
+            shopMessageTimer = 1.5f;
+        }
+        else
+        {
+            shopMessage = $"Need ${upgradeCost} to upgrade!";
+            shopMessageTimer = 1.5f;
+        }
+    }
+}
+
     if (currentBuilding.BuildingName == "STORE")
     {
         if (Raylib.IsKeyPressed(KeyboardKey.E))
@@ -466,7 +782,28 @@ if (Vector2.Distance(player.Position, currentBuilding.InteriorNPC.Position) < 12
                 shopMessageTimer = 1.5f;
             }
         }
-    }
+
+        if (Raylib.IsKeyPressed(KeyboardKey.G))
+            {
+                int earned = 0;
+                earned += player.Bones * 8; player.Bones = 0;
+                earned += player.Fur * 15; player.Fur = 0;
+                earned += player.Stingers * 12; player.Stingers = 0;
+                earned += player.BearPelts * 25; player.BearPelts = 0;
+
+                if (earned > 0)
+                {
+                    player.Money += earned;
+                    shopMessage = $"Sold all loot for ${earned}!";
+                    shopMessageTimer = 1.5f;
+                }
+                else
+                {
+                    shopMessage = "No loot to sell!";
+                    shopMessageTimer = 1.5f;
+                }
+            }
+        }
 
     if (currentBuilding.BuildingName == "BANK")
 {
@@ -536,24 +873,44 @@ if (Vector2.Distance(player.Position, currentBuilding.InteriorNPC.Position) < 12
             }
             
             UpdateSkillsUI();
+            Vector2 mouse = Raylib.GetMousePosition();
+            Rectangle questsBtn = new Rectangle(ScreenWidth - 320, ScreenHeight - 60, 140, 40);
+                if (Raylib.IsMouseButtonPressed(MouseButton.Left))
+                    {
+    if (Raylib.CheckCollisionPointRec(mouse, questsBtn))
+        questsOpen = !questsOpen;
+}
             Raylib.EndDrawing();
         }
 
         static void DrawMenu()
-        {
-             Raylib.ClearBackground(new Color(20, 20, 30, 255));
+{
+    Raylib.ClearBackground(new Color(10, 10, 20, 255));
 
-    // Subtle animated background pulse
-    float pulse = MathF.Sin((float)Raylib.GetTime() * 1.5f) * 10f;
-
-            Raylib.DrawRectangle(0, 0, ScreenWidth, ScreenHeight, new Color(10, 10, 20, 255));
+    Raylib.DrawText("OPEN WORLD RPG", 312, 182, 64, new Color((byte)255, (byte)200, (byte)0, (byte)80));
     Raylib.DrawText("OPEN WORLD RPG", 310, 180, 64, Color.Gold);
-    Raylib.DrawText("OPEN WORLD RPG", 312, 182, 64, new Color(255,200,0,80)); // shadow
 
-    // Blinking "press enter"
-    if ((int)(Raylib.GetTime() * 2) % 2 == 0)
-        Raylib.DrawText("PRESS ENTER TO START", 390, 360, 34, Color.White);
-        }
+    if (!nameEntered)
+    {
+        Raylib.DrawText("ENTER YOUR NAME:", 440, 320, 28, Color.LightGray);
+        Raylib.DrawRectangle(420, 360, 440, 50, new Color((byte)40, (byte)40, (byte)40, (byte)255));
+        Raylib.DrawRectangleLines(420, 360, 440, 50, Color.White);
+        Raylib.DrawText(playerName, 440, 375, 28, Color.White);
+
+        // blinking cursor
+        if ((int)(Raylib.GetTime() * 2) % 2 == 0)
+            Raylib.DrawText("|", 440 + Raylib.MeasureText(playerName, 28), 375, 28, Color.White);
+
+        Raylib.DrawText("PRESS ENTER TO CONFIRM", 420, 430, 22, Color.LightGray);
+    }
+    else
+    {
+        Raylib.DrawText($"Welcome, {playerName}!", 420, 320, 34, Color.White);
+
+        if ((int)(Raylib.GetTime() * 2) % 2 == 0)
+            Raylib.DrawText("PRESS ENTER TO START", 390, 390, 34, Color.White);
+    }
+}
 
         static void DrawWorld()
         {
@@ -572,9 +929,44 @@ if (Vector2.Distance(player.Position, currentBuilding.InteriorNPC.Position) < 12
         }
             Raylib.BeginMode2D(camera);
 
-            Raylib.DrawRectangle(-5000, -5000, 10000, 10000, new Color(90,170,90,255));
+           // base grasslands
+            Raylib.DrawRectangle(-5000, -5000, 10000, 10000, new Color(90, 170, 90, 255));
 
+            // forest top
+            Raylib.DrawRectangle(-5000, -5000, 10000, 400, new Color(40, 100, 40, 255));
+
+            // forest bottom
+            Raylib.DrawRectangle(-5000, 1000, 10000, 4000, new Color(40, 100, 40, 255));
+
+            // desert (right of safe zone)
+            Raylib.DrawRectangle(2100, -5000, 7900, 10000, new Color(210, 180, 100, 255));
+
+            // snow (left of safe zone)
+            Raylib.DrawRectangle(-5000, -5000, 3500, 10000, new Color(220, 235, 255, 255));
+
+            // safe zone (middle)
+            Raylib.DrawRectangle(-1500, -800, 3600, 2200, new Color(90, 170, 90, 255));
+
+            // main horizontal road
             Raylib.DrawRectangle(-4000, 550, 8000, 180, Color.DarkGray);
+
+            // vertical road to bank
+            Raylib.DrawRectangle(1020, -200, 120, 760, Color.DarkGray);
+
+            // vertical road to store
+            Raylib.DrawRectangle(-1260, -200, 120, 760, Color.DarkGray);
+
+            // vertical road to hospital
+            Raylib.DrawRectangle(200, -200, 120, 760, Color.DarkGray);
+
+            // vertical road to weapons shop
+            Raylib.DrawRectangle(500, -200, 120, 760, Color.DarkGray);
+
+            // road markings
+            for (int i = -4000; i < 4000; i += 200)
+            {
+                Raylib.DrawRectangle(i, 630, 100, 12, Color.Yellow);
+            }
 
             foreach (var ft in floatingTexts)
             {
@@ -608,6 +1000,16 @@ if (Vector2.Distance(player.Position, currentBuilding.InteriorNPC.Position) < 12
                 vehicle.Draw();
             }
 
+             foreach (Enemy enemy in enemies)
+            {
+                enemy.Draw();
+            }
+
+            foreach (LootDrop drop in lootDrops)
+            {
+                drop.Draw();
+            }
+
             player.Draw();
 
             Raylib.EndMode2D();
@@ -632,6 +1034,7 @@ if (Vector2.Distance(player.Position, currentBuilding.InteriorNPC.Position) < 12
                 Raylib.DrawRectangleRec(obj, Color.DarkBrown);
             }
             currentBuilding.InteriorNPC.Draw();
+
             player.Draw();
 
             Raylib.EndMode2D();
@@ -661,9 +1064,20 @@ if (Vector2.Distance(player.Position, currentBuilding.InteriorNPC.Position) < 12
     Raylib.DrawText(currentBuilding.BuildingName, 20, 630, 30, Color.Gold);
     Raylib.DrawText(currentBuilding.InteriorNPC.Name + ": " + currentBuilding.InteriorNPC.Dialogue, 20, 670, 24, Color.White);
 
+            if (currentBuilding.BuildingName == "HOSPITAL")
+        {
+            Raylib.DrawText("E = Restore Health ($20)", 20, 600, 22, Color.LightGray);
+        }
+
+            if (currentBuilding.BuildingName == "WEAPONS")
+        {
+            int upgradeCost = player.CombatLevel * 50;
+            Raylib.DrawText($"E = Upgrade Weapon (${upgradeCost})", 20, 600, 22, Color.LightGray);
+        }
+
     if (currentBuilding.BuildingName == "STORE")
     {
-        Raylib.DrawText("E = Sell Log ($5) | F = Sell Fish ($10)", 20, 600, 22, Color.LightGray);
+        Raylib.DrawText("E = Sell Log ($5) | F = Sell Fish ($10) | G = Sell Loot", 20, 600, 22, Color.LightGray);
     }
 
     if (currentBuilding.BuildingName == "BANK")
@@ -676,59 +1090,65 @@ if (Vector2.Distance(player.Position, currentBuilding.InteriorNPC.Position) < 12
         static void DrawHUD()
         {
             DrawSkillsUI();
+            DrawQuestsUI();
+
+            // health bar
+            int hbWidth = 300;
+            int hbX = ScreenWidth / 2 - hbWidth / 2;
+            Raylib.DrawRectangle(hbX, 10, hbWidth, 24, new Color((byte)40, (byte)40, (byte)40, (byte)220));
+            float healthPercent = (float)player.Health / player.MaxHealth;
+            Color hpColor = healthPercent > 0.5f ? Color.Green : healthPercent > 0.25f ? Color.Orange : Color.Red;
+            Raylib.DrawRectangle(hbX, 10, (int)(hbWidth * healthPercent), 24, hpColor);
+            Raylib.DrawRectangleLines(hbX, 10, hbWidth, 24, Color.White);
+            Raylib.DrawText($"HP: {player.Health}/{player.MaxHealth}", hbX + hbWidth / 2 - 40, 13, 18, Color.White);
 
            Raylib.DrawRectangle(0, ScreenHeight - 34, ScreenWidth, 34, new Color((byte)0, (byte)0, (byte)0, (byte)170));
             Raylib.DrawText("SPACE = Chop Tree | R = Fish | TAB = Inventory | E = Enter Building | F = Drive Vehicle", 20, ScreenHeight - 28, 20, Color.White);
            
-            if (player.InventoryOpen)
+ if (player.InventoryOpen)
 {
-    Raylib.DrawRectangle(
-        420,
-        120,
-        440,
-        420,
-        new Color(0,0,0,220)
-    );
+    int invX = ScreenWidth - 380;
+    int invY = 100;
+    int slotSize = 80;
+    int padding = 10;
+    int cols = 4;
 
-    Raylib.DrawText(
-        "INVENTORY",
-        540,
-        150,
-        40,
-        Color.Gold
-    );
+    // build dynamic item list
+    List<(string name, int count)> items = new();
+    if (player.Logs > 0) items.Add(("Logs", player.Logs));
+    if (player.Fish > 0) items.Add(("Fish", player.Fish));
+    if (player.Bones > 0) items.Add(("Bones", player.Bones));
+    if (player.Fur > 0) items.Add(("Fur", player.Fur));
+    if (player.Stingers > 0) items.Add(("Stingers", player.Stingers));
+    if (player.BearPelts > 0) items.Add(("Pelts", player.BearPelts));
+    if (player.Money > 0) items.Add(("Money", player.Money));
 
-    Raylib.DrawText(
-        $"Logs: {player.Logs}",
-        500,
-        240,
-        32,
-        Color.White
-    );
+    // background panel
+    Raylib.DrawRectangle(invX - 20, invY - 20, cols * (slotSize + padding) + 30, 5 * (slotSize + padding) + 60, new Color((byte)0, (byte)0, (byte)0, (byte)220));
+    Raylib.DrawText("INVENTORY", invX, invY - 10, 24, Color.Gold);
 
-    Raylib.DrawText(
-        $"Fish: {player.Fish}",
-        500,
-        290,
-        32,
-        Color.White
-    );
+    for (int i = 0; i < 20; i++)
+    {
+        int col = i % cols;
+        int row = i / cols;
+        int x = invX + col * (slotSize + padding);
+        int y = invY + 20 + row * (slotSize + padding);
 
-    Raylib.DrawText(
-        $"Money: ${player.Money}",
-        500,
-        340,
-        32,
-        Color.White
-    );
+        // slot background
+        Raylib.DrawRectangle(x, y, slotSize, slotSize, new Color((byte)40, (byte)40, (byte)40, (byte)255));
+        Raylib.DrawRectangleLines(x, y, slotSize, slotSize, new Color((byte)100, (byte)100, (byte)100, (byte)255));
 
-    Raylib.DrawText(
-        "TAB = Close Inventory",
-        470,
-        470,
-        24,
-        Color.LightGray
-    );
+        if (i >= items.Count) continue;
+
+        // draw icon
+        DrawInventoryIcon(items[i].name, x, y, slotSize);
+
+        // item name and count top left
+        Raylib.DrawText($"{items[i].count}", x + 6, y + 6, 16, Color.White);
+        Raylib.DrawText(items[i].name, x + 4, y + slotSize - 20, 13, Color.LightGray);
+    }
+
+    Raylib.DrawText("TAB = Close", invX, invY + 5 * (slotSize + padding) + 30, 20, Color.LightGray);
 }
    if (levelUpTimer > 0)
 {
@@ -757,6 +1177,7 @@ if (Vector2.Distance(player.Position, currentBuilding.InteriorNPC.Position) < 12
                 trees.Add(new TreeObject(new Vector2(i, -300)));
                 trees.Add(new TreeObject(new Vector2(i, 1200)));
             }
+            
 
             lakes.Add(new Lake(new Vector2(700, 1200)));
             lakes.Add(new Lake(new Vector2(-900, -600)));
@@ -800,6 +1221,34 @@ if (Vector2.Distance(player.Position, currentBuilding.InteriorNPC.Position) < 12
     )
 ));
 
+            // Hospital
+            buildings.Add(new Building(
+                new Rectangle(200, 200, 280, 240),
+                new Color(220, 50, 50, 255),
+                new Color(200, 220, 220, 255),
+                new Vector2(340, 550),
+                "HOSPITAL",
+                new NPC(
+                    new Vector2(600, 420),
+                    "Doctor",
+                    "Kia ora! I can patch you up for $20."
+                )
+            ));
+
+            // Weapons Shop
+            buildings.Add(new Building(
+                new Rectangle(500, 200, 280, 240),
+                new Color(80, 80, 80, 255),
+                new Color(50, 50, 60, 255),
+                new Vector2(640, 550),
+                "WEAPONS",
+                new NPC(
+                    new Vector2(600, 420),
+                    "Weapons Dealer",
+                    "Need a sharper blade bro? I got you."
+                )
+            ));
+
             npcs.Add(new NPC(
                 new Vector2(500,500),
                     "Local Resident",
@@ -810,14 +1259,39 @@ if (Vector2.Distance(player.Position, currentBuilding.InteriorNPC.Position) < 12
                 new Vector2(1400,900),
                     "Fisherman",
                     "The lakes nearby have good fishing."
-));
+            ));
 
             vehicles.Add(new Vehicle(new Vector2(300,800), Color.Red, 650));
             vehicles.Add(new Vehicle(new Vector2(1200,700), Color.Yellow, 900));
             vehicles.Add(new Vehicle(new Vector2(-400,650), Color.DarkBlue, 500));
-        }
 
-    }
+            quests.Add(new Quest("Lumberjack", "Chop 10 trees", 10, 50));
+            quests.Add(new Quest("Fisher", "Catch 10 fish", 10, 75));
+            quests.Add(new Quest("Big Money", "Earn $100", 100, 200));
+
+            // Grasslands - Wild Dogs
+            enemies.Add(new Enemy(new Vector2(2300, 600), "Wild Dog", 3, Color.Brown));
+            enemies.Add(new Enemy(new Vector2(2600, 400), "Wild Dog", 3, Color.Brown));
+            enemies.Add(new Enemy(new Vector2(2400, 900), "Wild Dog", 3, Color.Brown));
+
+            // Forest - Wolves
+            enemies.Add(new Enemy(new Vector2(-300, -400), "Wolf", 5, Color.DarkGray));
+            enemies.Add(new Enemy(new Vector2(400, -400), "Wolf", 5, Color.DarkGray));
+            enemies.Add(new Enemy(new Vector2(-200, 1300), "Wolf", 5, Color.DarkGray));
+            enemies.Add(new Enemy(new Vector2(500, 1300), "Wolf", 5, Color.DarkGray));
+
+            // Desert - Scorpions
+            enemies.Add(new Enemy(new Vector2(2500, 300), "Scorpion", 4, new Color((byte)180, (byte)120, (byte)0, (byte)255)));
+            enemies.Add(new Enemy(new Vector2(2800, 700), "Scorpion", 4, new Color((byte)180, (byte)120, (byte)0, (byte)255)));
+            enemies.Add(new Enemy(new Vector2(3000, 200), "Scorpion", 4, new Color((byte)180, (byte)120, (byte)0, (byte)255)));
+
+            // Snow - Bears
+            enemies.Add(new Enemy(new Vector2(-2000, 300), "Bear", 8, new Color((byte)100, (byte)100, (byte)120, (byte)255)));
+            enemies.Add(new Enemy(new Vector2(-2500, 600), "Bear", 8, new Color((byte)100, (byte)100, (byte)120, (byte)255)));
+            enemies.Add(new Enemy(new Vector2(-2200, 900), "Bear", 8, new Color((byte)100, (byte)100, (byte)120, (byte)255)));
+                    }
+
+                }
     struct FloatingText
     {
     public Vector2 Position;
@@ -825,6 +1299,141 @@ if (Vector2.Distance(player.Position, currentBuilding.InteriorNPC.Position) < 12
     public float Timer;
     public Color TextColor;
     }
+
+    class LootDrop
+{
+    public Vector2 Position;
+    public string ItemType;
+    public bool Collected = false;
+
+    public LootDrop(Vector2 pos, string itemType)
+    {
+        Position = pos;
+        ItemType = itemType;
+    }
+
+    public Rectangle Bounds =>
+        new Rectangle(Position.X - 10, Position.Y - 10, 20, 20);
+
+    public void Draw()
+    {
+        if (Collected) return;
+
+        Raylib.DrawCircle((int)Position.X, (int)Position.Y, 10, Color.Gold);
+
+        switch (ItemType)
+        {
+            case "Bone":
+                Raylib.DrawRectangle((int)Position.X - 3, (int)Position.Y - 8, 6, 16, Color.White);
+                break;
+            case "Fur":
+                Raylib.DrawCircle((int)Position.X, (int)Position.Y, 7, new Color((byte)139, (byte)90, (byte)43, (byte)255));
+                break;
+            case "Stinger":
+                Raylib.DrawTriangle(
+                    new Vector2(Position.X, Position.Y - 10),
+                    new Vector2(Position.X - 6, Position.Y + 6),
+                    new Vector2(Position.X + 6, Position.Y + 6),
+                    new Color((byte)180, (byte)120, (byte)0, (byte)255)
+                );
+                break;
+            case "Bear Pelt":
+                Raylib.DrawRectangle((int)Position.X - 8, (int)Position.Y - 8, 16, 16, new Color((byte)100, (byte)100, (byte)120, (byte)255));
+                break;
+        }
+    }
+}
+    class Enemy
+{
+    public Vector2 Position;
+    public int Health;
+    public int MaxHealth;
+    public string Type;
+    public Color EnemyColor;
+    public bool Dead = false;
+    float respawnTimer = 0f;
+    Vector2 wanderTarget;
+    float wanderTimer = 0f;
+    float speed = 40f;
+    public Vector2 SpawnPosition;
+
+    public Rectangle Bounds =>
+        new Rectangle(Position.X, Position.Y, 40, 40);
+
+    public Enemy(Vector2 pos, string type, int health, Color color)
+    {
+        Position = pos;
+        SpawnPosition = pos;
+        Type = type;
+        Health = health;
+        MaxHealth = health;
+        EnemyColor = color;
+        wanderTarget = pos;
+    }
+
+    public void Update(float dt)
+    {
+        if (Dead)
+        {
+            respawnTimer += dt;
+            if (respawnTimer >= 10f)
+            {
+                Dead = false;
+                Health = MaxHealth;
+                Position = SpawnPosition;
+                respawnTimer = 0f;
+            }
+            return;
+        }
+
+        wanderTimer -= dt;
+
+        if (wanderTimer <= 0)
+        {
+            wanderTarget = Position + new Vector2(
+                Raylib.GetRandomValue(-100, 100),
+                Raylib.GetRandomValue(-100, 100)
+            );
+            wanderTimer = Raylib.GetRandomValue(2, 5);
+        }
+
+        Position = Vector2.Lerp(Position, wanderTarget, dt * 1.2f);
+    }
+
+    public void Draw()
+    {
+        if (Dead) return;
+
+        Raylib.DrawRectangleRec(Bounds, EnemyColor);
+        Raylib.DrawText(Type, (int)Position.X - 10, (int)Position.Y - 20, 16, Color.White);
+
+        // health bar background
+        Raylib.DrawRectangle((int)Position.X, (int)Position.Y - 10, 40, 6, Color.DarkGray);
+
+        // health bar fill
+        float healthPercent = (float)Health / MaxHealth;
+        Raylib.DrawRectangle((int)Position.X, (int)Position.Y - 10, (int)(40 * healthPercent), 6, Color.Red);
+    }
+}
+    class Quest
+{
+    public string Title;
+    public string Description;
+    public int Target;
+    public int Progress;
+    public bool Completed;
+    public int Reward;
+
+    public Quest(string title, string description, int target, int reward)
+    {
+        Title = title;
+        Description = description;
+        Target = target;
+        Reward = reward;
+        Progress = 0;
+        Completed = false;
+    }
+}
     class Player
     {
         public Vector2 Position;
@@ -843,6 +1452,16 @@ if (Vector2.Distance(player.Position, currentBuilding.InteriorNPC.Position) < 12
         public int Fish = 0;
         public int Money = 0;
         public int BankBalance = 0;
+        public int Bones = 0;
+        public int Fur = 0;
+        public int Stingers = 0;
+        public int BearPelts = 0;
+        public int Health = 100;
+        public int MaxHealth = 100;
+        public int CombatLevel = 1;
+        public int CombatXP = 0;
+        float regenTimer = 0f;
+        float damageCooldown = 0f;
 
         public bool InventoryOpen = false;
 
@@ -852,6 +1471,28 @@ if (Vector2.Distance(player.Position, currentBuilding.InteriorNPC.Position) < 12
         public Player(Vector2 position)
         {
             Position = position;
+        }
+        public void TakeDamage(int damage)
+{
+    if (damageCooldown > 0) return;
+    Health -= damage;
+    damageCooldown = 1f;
+    if (Health < 0) Health = 0;
+}
+
+        public void UpdateHealth(float dt)
+        {
+            if (damageCooldown > 0) damageCooldown -= dt;
+
+            if (damageCooldown <= 0 && Health < MaxHealth)
+            {
+                regenTimer += dt;
+                if (regenTimer >= 2f)
+                {
+                    Health++;
+                    regenTimer = 0f;
+                }
+            }
         }
 
         public void Update(float dt, List<Building> buildings, List<TreeObject> trees)
@@ -959,6 +1600,23 @@ if (Vector2.Distance(player.Position, currentBuilding.InteriorNPC.Position) < 12
                 Program.ShowLevelUp("Fishing", FishingLevel);
             }
         }
+
+        public void AddCombatXP(int xp)
+        {
+            if (CombatLevel >= 100) return;
+
+            CombatXP += xp;
+
+            int requiredXP = CombatLevel * CombatLevel * 50;
+
+            if (CombatXP >= requiredXP)
+            {
+                CombatXP = 0;
+                CombatLevel++;
+                Program.ShowLevelUp("Combat", CombatLevel);
+            }
+        }
+
 
         public void Draw()
         {
