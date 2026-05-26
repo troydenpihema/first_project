@@ -31,13 +31,19 @@ namespace OpenWorldRPG
         static float totalPlayTime = 0f;
         static SceneState currentScene = SceneState.MainMenu;
         static Camera2D camera = new Camera2D();
-        static Player player = new Player(new Vector2(0, 650));
+        public static Player player = new Player(new Vector2(0, 650));
         static int dayOfWeek = 0; // 0-6, Monday to Sunday
         static string[] dayNames = { "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday" };
         static float dayCounter = 0f; // tracks full day cycles
         static string currentBiome = "SAFE ZONE";
         static string lastBiome = "";
         static float biomeMessageTimer = 0f;
+        static bool strengthMinigameActive = false;
+        static float strengthBarPos = 0f;       // 0 to 1, position of the moving block
+        static float strengthBarDir = 1f;       // direction of travel
+        static float strengthBarSpeed = 0.8f;   // speed, increases with level
+        static int strengthMinigameXP = 0;      // XP to award on success
+        static float strengthMinigameCooldown = 0f;
         static Vector2 barCounterPos = new Vector2(250, 170);
         static Vector2 pump1Pos = new Vector2(580, -700);
         static Vector2 pump2Pos = new Vector2(780, -700);
@@ -51,6 +57,9 @@ namespace OpenWorldRPG
         static bool skillsOpen = false;
         static bool hoverWoodcutting = false;
         static bool hoverFishing = false;
+        static bool hoverStrength = false;
+        static bool hoverAthletics = false;
+        static bool hoverDriving = false;
         static bool questsOpen = false;
         static List<Quest> quests = new();
         static string playerName = "";
@@ -639,7 +648,7 @@ static void DrawBiomeTextures()
         player.FishingLevel.ToString(),
         player.FishingXP.ToString(),
         player.CombatLevel.ToString(),
-        player.CombatXP.ToString(),
+        player.CombatXP.ToString(),   
         player.Health.ToString(),
         player.MaxHealth.ToString(),
         playerName,
@@ -665,6 +674,12 @@ static void DrawBiomeTextures()
         quests[2].Progress.ToString(),
         quests[2].Completed ? "1" : "0",
         totalPlayTime.ToString(),
+        player.StrengthLevel.ToString(),
+        player.StrengthXP.ToString(),
+        player.DrivingLevel.ToString(),
+        player.DrivingXP.ToString(),
+        player.AthleticsLevel.ToString(),
+        player.AthleticsXP.ToString(),
     };
 
     System.IO.File.WriteAllLines(savePath, lines);
@@ -720,6 +735,12 @@ static void DrawBiomeTextures()
     quests[2].Completed = lines[44] == "1";
 
     if (lines.Length > 45) totalPlayTime = float.Parse(lines[45]);
+    if (lines.Length > 46) player.StrengthLevel = int.Parse(lines[46]);
+    if (lines.Length > 47) player.StrengthXP    = int.Parse(lines[47]);
+    if (lines.Length > 48) player.DrivingLevel   = int.Parse(lines[48]);
+    if (lines.Length > 49) player.DrivingXP      = int.Parse(lines[49]);
+    if (lines.Length > 50) player.AthleticsLevel = int.Parse(lines[50]);
+    if (lines.Length > 51) player.AthleticsXP    = int.Parse(lines[51]);
 }
         static void DrawWardrobe()
 {
@@ -1308,8 +1329,8 @@ static int GetItemCount(string itemName)
     {
         if (Raylib.CheckCollisionPointRec(mouse, skillsBtn))
             skillsOpen = !skillsOpen;
-        else if (!Raylib.CheckCollisionPointRec(mouse, new Rectangle(ScreenWidth - 160, ScreenHeight - 250, 140, 195)))
-            skillsOpen = false;
+        else if (!Raylib.CheckCollisionPointRec(mouse, new Rectangle(ScreenWidth - 160, ScreenHeight - 390, 140, 335)))
+        skillsOpen = false;
     }
 
     if (skillsOpen)
@@ -1317,8 +1338,14 @@ static int GetItemCount(string itemName)
         Rectangle wcBtn = new Rectangle(ScreenWidth - 160, ScreenHeight - 130, 140, 40);
         Rectangle fishBtn = new Rectangle(ScreenWidth - 160, ScreenHeight - 180, 140, 40);
         Rectangle combatBtn = new Rectangle(ScreenWidth - 160, ScreenHeight - 230, 140, 40);
-        hoverCombat = Raylib.CheckCollisionPointRec(mouse, combatBtn);
+        Rectangle strengthBtn  = new Rectangle(ScreenWidth - 160, ScreenHeight - 380, 140, 40);
+        Rectangle athleticsBtn = new Rectangle(ScreenWidth - 160, ScreenHeight - 330, 140, 40);
+        Rectangle drivingBtn   = new Rectangle(ScreenWidth - 160, ScreenHeight - 280, 140, 40);
 
+        hoverStrength  = Raylib.CheckCollisionPointRec(mouse, strengthBtn);
+        hoverAthletics = Raylib.CheckCollisionPointRec(mouse, athleticsBtn);
+        hoverDriving   = Raylib.CheckCollisionPointRec(mouse, drivingBtn);
+        hoverCombat = Raylib.CheckCollisionPointRec(mouse, combatBtn);
         hoverWoodcutting = Raylib.CheckCollisionPointRec(mouse, wcBtn);
         hoverFishing = Raylib.CheckCollisionPointRec(mouse, fishBtn);
     }
@@ -1326,11 +1353,14 @@ static int GetItemCount(string itemName)
     {
         hoverWoodcutting = false;
         hoverFishing = false;
-    }
+        hoverCombat = false;
+        hoverStrength  = false;
+        hoverAthletics = false;
+        hoverDriving   = false;
+            }
 }
-        static void DrawSkillsUI()
+    static void DrawSkillsUI()
 {
-    // SKILLS button
     Rectangle skillsBtn = new Rectangle(ScreenWidth - 160, ScreenHeight - 60, 140, 40);
     Raylib.DrawRectangleRec(skillsBtn, new Color((byte)0, (byte)0, (byte)0, (byte)200));
     Raylib.DrawRectangleLinesEx(skillsBtn, 2, skillsOpen ? Color.Gold : Color.White);
@@ -1338,75 +1368,122 @@ static int GetItemCount(string itemName)
 
     if (!skillsOpen) return;
 
-    // Woodcutting button
+    // Woodcutting
     Rectangle wcBtn = new Rectangle(ScreenWidth - 160, ScreenHeight - 130, 140, 40);
     Color wcColor = hoverWoodcutting ? Color.Gold : Color.White;
     Raylib.DrawRectangleRec(wcBtn, new Color((byte)0, (byte)0, (byte)0, (byte)200));
     Raylib.DrawRectangleLinesEx(wcBtn, 2, wcColor);
     Raylib.DrawText($"WC Lv {player.WoodcuttingLevel}", ScreenWidth - 155, ScreenHeight - 118, 20, wcColor);
-
-    // Woodcutting progress bar
     if (!hoverWoodcutting)
-        {
-            int wcRequired = player.WoodcuttingLevel * player.WoodcuttingLevel * 50;
-            float wcProgress = (float)player.WoodcuttingXP / wcRequired;
-            Raylib.DrawRectangle(ScreenWidth - 160, ScreenHeight - 93, 140, 8, new Color((byte)40, (byte)40, (byte)40, (byte)255));
-            Raylib.DrawRectangle(ScreenWidth - 160, ScreenHeight - 93, (int)(140 * wcProgress), 8, Color.Green);
-        }
+    {
+        int wcRequired = player.WoodcuttingLevel * player.WoodcuttingLevel * 50;
+        float wcProgress = (float)player.WoodcuttingXP / wcRequired;
+        Raylib.DrawRectangle(ScreenWidth - 160, ScreenHeight - 93, 140, 8, new Color((byte)40, (byte)40, (byte)40, (byte)255));
+        Raylib.DrawRectangle(ScreenWidth - 160, ScreenHeight - 93, (int)(140 * wcProgress), 8, Color.Green);
+    }
 
-    // Fishing button
+    // Fishing
     Rectangle fishBtn = new Rectangle(ScreenWidth - 160, ScreenHeight - 180, 140, 40);
     Color fishColor = hoverFishing ? Color.Gold : Color.White;
     Raylib.DrawRectangleRec(fishBtn, new Color((byte)0, (byte)0, (byte)0, (byte)200));
     Raylib.DrawRectangleLinesEx(fishBtn, 2, fishColor);
     Raylib.DrawText($"Fish Lv {player.FishingLevel}", ScreenWidth - 155, ScreenHeight - 168, 20, fishColor);
-
-    // Fishing progress bar
     if (!hoverFishing)
-        {
-            int fishRequired = player.FishingLevel * player.FishingLevel * 50;
-            float fishProgress = (float)player.FishingXP / fishRequired;
-            Raylib.DrawRectangle(ScreenWidth - 160, ScreenHeight - 143, 140, 8, new Color((byte)40, (byte)40, (byte)40, (byte)255));
-            Raylib.DrawRectangle(ScreenWidth - 160, ScreenHeight - 143, (int)(140 * fishProgress), 8, new Color((byte)0, (byte)0, (byte)0, (byte)210));
-        }
+    {
+        int fishRequired = player.FishingLevel * player.FishingLevel * 50;
+        float fishProgress = (float)player.FishingXP / fishRequired;
+        Raylib.DrawRectangle(ScreenWidth - 160, ScreenHeight - 143, 140, 8, new Color((byte)40, (byte)40, (byte)40, (byte)255));
+        Raylib.DrawRectangle(ScreenWidth - 160, ScreenHeight - 143, (int)(140 * fishProgress), 8, new Color((byte)0, (byte)150, (byte)255, (byte)210));
+    }
 
-    // Combat button
-        Rectangle combatBtn = new Rectangle(ScreenWidth - 160, ScreenHeight - 230, 140, 40);
-        Color combatColor = hoverCombat ? Color.Gold : Color.White;
-        Raylib.DrawRectangleRec(combatBtn, new Color((byte)0, (byte)0, (byte)0, (byte)200));
-        Raylib.DrawRectangleLinesEx(combatBtn, 2, combatColor);
-        Raylib.DrawText($"Combat Lv {player.CombatLevel}", ScreenWidth - 155, ScreenHeight - 218, 20, combatColor);
+    // Combat
+    Rectangle combatBtn = new Rectangle(ScreenWidth - 160, ScreenHeight - 230, 140, 40);
+    Color combatColor = hoverCombat ? Color.Gold : Color.White;
+    Raylib.DrawRectangleRec(combatBtn, new Color((byte)0, (byte)0, (byte)0, (byte)200));
+    Raylib.DrawRectangleLinesEx(combatBtn, 2, combatColor);
+    Raylib.DrawText($"Combat Lv {player.CombatLevel}", ScreenWidth - 155, ScreenHeight - 218, 20, combatColor);
+    if (!hoverCombat)
+    {
+        int combatRequired = player.CombatLevel * player.CombatLevel * 50;
+        float combatProgress = (float)player.CombatXP / combatRequired;
+        Raylib.DrawRectangle(ScreenWidth - 160, ScreenHeight - 193, 140, 8, new Color((byte)40, (byte)40, (byte)40, (byte)255));
+        Raylib.DrawRectangle(ScreenWidth - 160, ScreenHeight - 193, (int)(140 * combatProgress), 8, Color.Red);
+    }
 
-        // Combat progress bar
-        if (!hoverCombat)
-        {
-            int combatRequired = player.CombatLevel * player.CombatLevel * 50;
-            float combatProgress = (float)player.CombatXP / combatRequired;
-            Raylib.DrawRectangle(ScreenWidth - 160, ScreenHeight - 193, 140, 8, new Color((byte)40, (byte)40, (byte)40, (byte)255));
-            Raylib.DrawRectangle(ScreenWidth - 160, ScreenHeight - 193, (int)(140 * combatProgress), 8, Color.Red);
-        }
+   Rectangle drivingBtn = new Rectangle(ScreenWidth - 160, ScreenHeight - 280, 140, 40);
+    Color drivingColor = hoverDriving ? Color.Gold : Color.White;
+    Raylib.DrawRectangleRec(drivingBtn, new Color((byte)0,(byte)0,(byte)0,(byte)200));
+    Raylib.DrawRectangleLinesEx(drivingBtn, 2, drivingColor);
+    Raylib.DrawText($"Drive Lv {player.DrivingLevel}", ScreenWidth - 155, ScreenHeight - 268, 20, drivingColor);
+    if (!hoverDriving)
+    {
+        int drivingRequired = player.DrivingLevel * player.DrivingLevel * 50;
+        float drivingProgress = (float)player.DrivingXP / drivingRequired;
+        Raylib.DrawRectangle(ScreenWidth - 160, ScreenHeight - 243, 140, 8, new Color((byte)40,(byte)40,(byte)40,(byte)255));
+        Raylib.DrawRectangle(ScreenWidth - 160, ScreenHeight - 243, (int)(140 * drivingProgress), 8, new Color((byte)255,(byte)200,(byte)0,(byte)255));
+    }
 
-    // XP tooltip on hover
+    Rectangle athleticsBtn = new Rectangle(ScreenWidth - 160, ScreenHeight - 330, 140, 40);
+    Color athleticsColor = hoverAthletics ? Color.Gold : Color.White;
+    Raylib.DrawRectangleRec(athleticsBtn, new Color((byte)0,(byte)0,(byte)0,(byte)200));
+    Raylib.DrawRectangleLinesEx(athleticsBtn, 2, athleticsColor);
+    Raylib.DrawText($"Ath Lv {player.AthleticsLevel}", ScreenWidth - 155, ScreenHeight - 318, 20, athleticsColor);
+    if (!hoverAthletics)
+    {
+        int athleticsRequired = player.AthleticsLevel * player.AthleticsLevel * 50;
+        float athleticsProgress = (float)player.AthleticsXP / athleticsRequired;
+        Raylib.DrawRectangle(ScreenWidth - 160, ScreenHeight - 293, 140, 8, new Color((byte)40,(byte)40,(byte)40,(byte)255));
+        Raylib.DrawRectangle(ScreenWidth - 160, ScreenHeight - 293, (int)(140 * athleticsProgress), 8, new Color((byte)0,(byte)200,(byte)255,(byte)255));
+    }
+
+    Rectangle strengthBtn = new Rectangle(ScreenWidth - 160, ScreenHeight - 380, 140, 40);
+    Color strengthColor = hoverStrength ? Color.Gold : Color.White;
+    Raylib.DrawRectangleRec(strengthBtn, new Color((byte)0,(byte)0,(byte)0,(byte)200));
+    Raylib.DrawRectangleLinesEx(strengthBtn, 2, strengthColor);
+    Raylib.DrawText($"Str Lv {player.StrengthLevel}", ScreenWidth - 155, ScreenHeight - 368, 20, strengthColor);
+    if (!hoverStrength)
+    {
+        int strengthRequired = player.StrengthLevel * player.StrengthLevel * 50;
+        float strengthProgress = (float)player.StrengthXP / strengthRequired;
+        Raylib.DrawRectangle(ScreenWidth - 160, ScreenHeight - 343, 140, 8, new Color((byte)40,(byte)40,(byte)40,(byte)255));
+        Raylib.DrawRectangle(ScreenWidth - 160, ScreenHeight - 343, (int)(140 * strengthProgress), 8, new Color((byte)255,(byte)80,(byte)80,(byte)255));
+    }
+    // XP tooltips
     if (hoverWoodcutting)
     {
         int required = player.WoodcuttingLevel * player.WoodcuttingLevel * 50;
         Raylib.DrawRectangle(ScreenWidth - 320, ScreenHeight - 130, 150, 40, new Color((byte)0, (byte)0, (byte)0, (byte)210));
         Raylib.DrawText($"XP: {player.WoodcuttingXP}/{required}", ScreenWidth - 315, ScreenHeight - 118, 20, Color.LightGray);
     }
-
     if (hoverFishing)
     {
         int required = player.FishingLevel * player.FishingLevel * 50;
         Raylib.DrawRectangle(ScreenWidth - 320, ScreenHeight - 180, 150, 40, new Color((byte)0, (byte)0, (byte)0, (byte)210));
         Raylib.DrawText($"XP: {player.FishingXP}/{required}", ScreenWidth - 315, ScreenHeight - 168, 20, Color.LightGray);
     }
-
-    // Combat XP tooltip on hover
     if (hoverCombat)
     {
         int required = player.CombatLevel * player.CombatLevel * 50;
         Raylib.DrawRectangle(ScreenWidth - 320, ScreenHeight - 230, 150, 40, new Color((byte)0, (byte)0, (byte)0, (byte)210));
         Raylib.DrawText($"XP: {player.CombatXP}/{required}", ScreenWidth - 315, ScreenHeight - 218, 20, Color.LightGray);
+    }
+    if (hoverDriving)
+    {
+        int required = player.DrivingLevel * player.DrivingLevel * 50;
+        Raylib.DrawRectangle(ScreenWidth - 320, ScreenHeight - 280, 150, 40, new Color((byte)0,(byte)0,(byte)0,(byte)210));
+        Raylib.DrawText($"XP: {player.DrivingXP}/{required}", ScreenWidth - 315, ScreenHeight - 268, 20, Color.LightGray);
+    }
+    if (hoverAthletics)
+    {
+        int required = player.AthleticsLevel * player.AthleticsLevel * 50;
+        Raylib.DrawRectangle(ScreenWidth - 320, ScreenHeight - 330, 150, 40, new Color((byte)0,(byte)0,(byte)0,(byte)210));
+        Raylib.DrawText($"XP: {player.AthleticsXP}/{required}", ScreenWidth - 315, ScreenHeight - 318, 20, Color.LightGray);
+    }
+    if (hoverStrength)
+    {
+        int required = player.StrengthLevel * player.StrengthLevel * 50;
+        Raylib.DrawRectangle(ScreenWidth - 320, ScreenHeight - 380, 150, 40, new Color((byte)0,(byte)0,(byte)0,(byte)210));
+        Raylib.DrawText($"XP: {player.StrengthXP}/{required}", ScreenWidth - 315, ScreenHeight - 368, 20, Color.LightGray);
     }
 }
  
@@ -1862,6 +1939,9 @@ static int GetItemCount(string itemName)
                 vehicle.Update(dt, buildings, trees, vehicles);
                 vehicle.OnRoad = IsOnRoad(vehicle.Position);
 
+                if (vehicle.Driving && vehicle.Fuel > 0)
+                player.AddDrivingXP(1);
+
                 if (vehicle.Driving)
 {
     // sync player to vehicle every frame while driving
@@ -2146,6 +2226,57 @@ if (currentBuilding.BuildingName == "GAS STATION")
         {
             shopMessage = "No unpaid fuel. Drive up to a pump first!";
             shopMessageTimer = 1.5f;
+        }
+    }
+}
+
+if (currentBuilding.BuildingName == "GYM")
+{
+    if (strengthMinigameCooldown > 0) strengthMinigameCooldown -= dt;
+
+    Vector2 dumbbellPos = new Vector2(250, 210);
+    Vector2 benchPos    = new Vector2(590, 330);
+    bool nearDumbbells  = Vector2.Distance(player.Position, dumbbellPos) < 120;
+    bool nearBench      = Vector2.Distance(player.Position, benchPos) < 120;
+
+    // start minigame with F
+    if ((nearDumbbells || nearBench) && Raylib.IsKeyPressed(KeyboardKey.F) 
+        && !strengthMinigameActive && strengthMinigameCooldown <= 0)
+    {
+        strengthMinigameActive = true;
+        strengthBarPos = 0f;
+        strengthBarDir = 1f;
+        strengthBarSpeed = 0.5f + (player.StrengthLevel * 0.01f); // gets faster with level
+        strengthMinigameXP = nearBench ? 30 : 15;
+    }
+
+    // update bar position
+    if (strengthMinigameActive)
+    {
+        strengthBarPos += strengthBarDir * strengthBarSpeed * dt;
+
+        if (strengthBarPos >= 1f) { strengthBarPos = 1f; strengthBarDir = -1f; }
+        if (strengthBarPos <= 0f) { strengthBarPos = 0f; strengthBarDir = 1f; }
+
+        if (Raylib.IsKeyPressed(KeyboardKey.Space))
+        {
+            // green zones are 0.0-0.15 and 0.85-1.0
+            bool inGreenZone = strengthBarPos <= 0.15f || strengthBarPos >= 0.85f;
+
+            if (inGreenZone)
+            {
+                player.AddStrengthXP(strengthMinigameXP);
+                shopMessage = $"Perfect rep! +{strengthMinigameXP} Strength XP";
+                shopMessageTimer = 1.5f;
+            }
+            else
+            {
+                shopMessage = "Too early! Hit SPACE when the block is in the green zone.";
+                shopMessageTimer = 1.5f;
+            }
+
+            strengthMinigameActive = false;
+            strengthMinigameCooldown = 0.8f;
         }
     }
 }
@@ -2924,6 +3055,9 @@ static void DrawCheatsMenu()
                     player.WoodcuttingLevel = 99;
                     player.FishingLevel = 99;
                     player.CombatLevel = 99;
+                    player.DrivingLevel = 99;
+                    player.AthleticsLevel = 99;
+                    player.StrengthLevel = 99;
                     ShowNotification("All skills maxed!");
                     break;
                 case 4:
@@ -3276,6 +3410,15 @@ static void DrawCheatsMenu()
         Raylib.DrawRectangle(926, 220, 10, 30, new Color((byte)255, (byte)200, (byte)0, (byte)255));
         Raylib.DrawRectangle(900, 272, 40, 10, new Color((byte)200, (byte)160, (byte)40, (byte)255));
         Raylib.DrawText("$", 916, 274, 14, Color.Black);
+
+        // pokie machine 4
+        Raylib.DrawRectangle(880, 320, 60, 90, new Color((byte)30, (byte)30, (byte)80, (byte)255));
+        Raylib.DrawRectangle(886, 330, 48, 50, new Color((byte)0, (byte)0, (byte)40, (byte)255));
+        Raylib.DrawRectangle(896, 340, 10, 30, new Color((byte)255, (byte)50, (byte)50, (byte)255));
+        Raylib.DrawRectangle(911, 340, 10, 30, new Color((byte)50, (byte)255, (byte)50, (byte)255));
+        Raylib.DrawRectangle(926, 340, 10, 30, new Color((byte)255, (byte)200, (byte)0, (byte)255));
+        Raylib.DrawRectangle(900, 392, 40, 10, new Color((byte)200, (byte)160, (byte)40, (byte)255));
+        Raylib.DrawText("$", 916, 394, 14, Color.Black);
     }
 
     if (currentBuilding.BuildingName != "DBar")
@@ -3302,6 +3445,26 @@ static void DrawCheatsMenu()
         Raylib.DrawText("CHEST", 298, 406, 16, Color.White);
     }
 
+    if (currentBuilding.BuildingName == "GYM")
+{
+    // dumbbell rack - matches collision rect (180,180,140,60)
+    Raylib.DrawRectangle(180, 180, 140, 60, new Color((byte)60,(byte)60,(byte)60,(byte)255));
+    Raylib.DrawRectangle(185, 168, 22, 72, new Color((byte)40,(byte)40,(byte)40,(byte)255));
+    Raylib.DrawRectangle(215, 168, 22, 72, new Color((byte)40,(byte)40,(byte)40,(byte)255));
+    Raylib.DrawRectangle(245, 168, 22, 72, new Color((byte)40,(byte)40,(byte)40,(byte)255));
+    Raylib.DrawText("DUMBBELLS", 180, 248, 16, Color.White);
+
+    // bench press - matches collision rect (480,285,220,55)
+    Raylib.DrawRectangle(480, 310, 220, 40, new Color((byte)80,(byte)40,(byte)10,(byte)255));  // bench seat
+    Raylib.DrawRectangle(540, 270, 100, 20, new Color((byte)60,(byte)60,(byte)60,(byte)255)); // barbell bar
+    Raylib.DrawRectangle(528, 258, 24, 38, new Color((byte)40,(byte)40,(byte)40,(byte)255)); // left plate
+    Raylib.DrawRectangle(628, 258, 24, 38, new Color((byte)40,(byte)40,(byte)40,(byte)255)); // right plate
+    Raylib.DrawRectangle(552, 248, 16, 20, new Color((byte)30,(byte)30,(byte)30,(byte)255)); // left upright
+    Raylib.DrawRectangle(612, 248, 16, 20, new Color((byte)30,(byte)30,(byte)30,(byte)255)); // right upright
+    Raylib.DrawText("BENCH PRESS", 490, 358, 16, Color.White);
+}
+   
+
     currentBuilding.InteriorNPC.Draw();
     player.Draw();
 
@@ -3327,6 +3490,53 @@ static void DrawCheatsMenu()
         }
     }
 
+    if (currentBuilding.BuildingName == "GYM")
+{
+    Vector2 dumbbellPos = new Vector2(250, 210);
+    Vector2 benchPos    = new Vector2(590, 330);
+    bool nearDumbbells  = Vector2.Distance(player.Position, dumbbellPos) < 120;
+    bool nearBench      = Vector2.Distance(player.Position, benchPos) < 120;
+
+    if (nearDumbbells || nearBench)
+    {
+        string equipName = nearBench ? "BENCH PRESS" : "DUMBBELLS";
+
+        Raylib.DrawRectangle(0, 620, 1280, 100, new Color((byte)0,(byte)0,(byte)0,(byte)180));
+        Raylib.DrawText(equipName, 20, 625, 28, Color.Gold);
+
+        if (strengthMinigameActive)
+        {
+            // bar background
+            int barX = 200;
+            int barY = 660;
+            int barW = 880;
+            int barH = 36;
+
+            Raylib.DrawRectangle(barX, barY, barW, barH, new Color((byte)40,(byte)40,(byte)40,(byte)255));
+
+            // green zones at each end
+            int greenW = (int)(barW * 0.15f);
+            Raylib.DrawRectangle(barX, barY, greenW, barH, new Color((byte)0,(byte)180,(byte)0,(byte)255));
+            Raylib.DrawRectangle(barX + barW - greenW, barY, greenW, barH, new Color((byte)0,(byte)180,(byte)0,(byte)255));
+
+            // moving block
+            int blockW = 30;
+            int blockX = barX + (int)(strengthBarPos * (barW - blockW));
+            Raylib.DrawRectangle(blockX, barY - 4, blockW, barH + 8, Color.White);
+            Raylib.DrawRectangleLines(blockX, barY - 4, blockW, barH + 8, Color.Gold);
+
+            // bar outline
+            Raylib.DrawRectangleLines(barX, barY, barW, barH, Color.White);
+
+            Raylib.DrawText("SPACE = Hit when block is in GREEN zone!", 200, 638, 20, Color.LightGray);
+        }
+        else
+        {
+            int xpAmount = nearBench ? 30 : 15;
+            Raylib.DrawText($"F = Start rep (+{xpAmount} Strength XP) | Str Lv {player.StrengthLevel}", 20, 665, 24, Color.White);
+        }
+    }
+}
         if (currentBuilding.BuildingName == "DBar")
 {
     Vector2[] pokiePositions = {
@@ -3788,14 +3998,22 @@ buildings.Add(new Building(
     new NPC(new Vector2(600, 420), "Attendant", "Pay for your fuel here bro.")
 ));
 
-buildings.Add(new Building(
+var gym = new Building(
     new Rectangle(2700, 410, 160, 120),
-    new Color(50, 100, 180, 255),   // blue gym exterior
+    new Color(50, 100, 180, 255),
     new Color(40, 40, 60, 255),
     new Vector2(2800, 650),
     "GYM",
     new NPC(new Vector2(600, 420), "Trainer", "You wanna get big? Train hard every day bro.")
-));
+);
+
+// dumbbell rack collision
+gym.InteriorObjects.Add(new Rectangle(180, 180, 140, 60));
+
+// bench press collision
+gym.InteriorObjects.Add(new Rectangle(480, 285, 220, 55));
+
+buildings.Add(gym);
 
 buildings.Add(new Building(
     new Rectangle(-1600, 410, 180, 130),
@@ -4019,8 +4237,7 @@ buildings.Add(new Building(
         public Vector2 Position;
 
         public bool Hidden = false;
-
-        float speed = 300;
+        float speed => 300 + (AthleticsLevel * 2);
 
         public int WoodcuttingLevel = 1;
         public int FishingLevel = 1;
@@ -4045,6 +4262,12 @@ buildings.Add(new Building(
         public int MaxHealth = 100;
         public int CombatLevel = 1;
         public int CombatXP = 0;
+        public int DrivingLevel = 1;
+        public int DrivingXP = 0;
+        public int AthleticsLevel = 1;
+        public int AthleticsXP = 0;
+        public int StrengthLevel = 1;
+        public int StrengthXP = 0;
         float regenTimer = 0f;
         float damageCooldown = 0f;
         public Color ShirtColor = Color.Blue;
@@ -4171,7 +4394,10 @@ buildings.Add(new Building(
                 move.X += 1;
 
             if (move != Vector2.Zero)
+            {
                 move = Vector2.Normalize(move);
+                AddAthleticsXP(1);
+            }
 
             return move * DrunkSpeedMultiplier;
         }
@@ -4223,6 +4449,51 @@ buildings.Add(new Building(
                 Program.ShowLevelUp("Combat", CombatLevel);
             }
         }
+
+        public void AddDrivingXP(int xp)
+{
+    if (DrivingLevel >= 100) return;
+
+    DrivingXP += xp;
+
+    int requiredXP = DrivingLevel * DrivingLevel * 50;
+
+    if (DrivingXP >= requiredXP)
+    {
+        DrivingXP = 0;
+        DrivingLevel++;
+        Program.ShowLevelUp("Driving", DrivingLevel);
+    }
+}
+
+public void AddAthleticsXP(int xp)
+{
+    if (AthleticsLevel >= 100) return;
+
+    AthleticsXP += xp;
+
+    int requiredXP = AthleticsLevel * AthleticsLevel * 50;
+
+    if (AthleticsXP >= requiredXP)
+    {
+        AthleticsXP = 0;
+        AthleticsLevel++;
+        Program.ShowLevelUp("Athletics", AthleticsLevel);
+    }
+}
+
+public void AddStrengthXP(int xp)
+{
+    if (StrengthLevel >= 100) return;
+    StrengthXP += xp;
+    int requiredXP = StrengthLevel * StrengthLevel * 50;
+    if (StrengthXP >= requiredXP)
+    {
+        StrengthXP = 0;
+        StrengthLevel++;
+        Program.ShowLevelUp("Strength", StrengthLevel);
+    }
+}
 
 
         public void Draw()
@@ -4524,7 +4795,7 @@ public NPC(Vector2 pos)
 
             if (Fuel <= 0) move = Vector2.Zero;
 
-            float speedMultiplier = OnRoad ? 1f : 0.4f;
+            float speedMultiplier = OnRoad ? 1f + (Program.player.DrivingLevel * 0.01f) : 0.4f;
             Vector2 targetVelocity = move * speed * speedMultiplier;
             velocity = Vector2.Lerp(velocity, targetVelocity, dt * (OnRoad ? 5f : 2f));
 
