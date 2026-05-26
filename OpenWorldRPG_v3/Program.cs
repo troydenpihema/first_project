@@ -38,6 +38,12 @@ namespace OpenWorldRPG
         static string currentBiome = "SAFE ZONE";
         static string lastBiome = "";
         static float biomeMessageTimer = 0f;
+        static Vector2 pump1Pos = new Vector2(580, -700);
+        static Vector2 pump2Pos = new Vector2(780, -700);
+        static float pump1FuelRate = 20f;
+        static float pump2FuelRate = 20f;
+        static bool pump1Active = false;
+        static bool pump2Active = false;
         static bool isFishing = false;
         static float fishingTimer = 0f;
         static float fishingDuration = 3f;
@@ -94,7 +100,9 @@ namespace OpenWorldRPG
         static List<FloatingText> floatingTexts = new();
         static List<Enemy> enemies = new();
         static List<LootDrop> lootDrops = new();
-
+        static List<(Vector2 pos, float radius, Color color)> grassPatches = new();
+        static List<(Vector2 pos, Color color)> flowers = new();
+        static bool worldTextureGenerated = false;
         static Building currentBuilding = null;
         static float shakeDuration = 0f;
         static float shakeMagnitude = 6f;
@@ -117,11 +125,264 @@ namespace OpenWorldRPG
 
             return (true, name, $"WC:{wcLv} Fish:{fishLv} Combat:{combatLv} | {hours}h {minutes}m");
         }
+
+        static bool IsNearRoad(Vector2 pos, int buffer = 80)
+        {
+            // main horizontal road
+            if (pos.Y >= 540 - buffer && pos.Y <= 743 + buffer) return true;
+
+            // north/south highway
+            if (pos.X >= 188 - buffer && pos.X <= 333 + buffer) return true;
+
+            // desert side road
+            if (pos.Y >= 188 - buffer && pos.Y <= 333 + buffer && pos.X >= 4000 - buffer) return true;
+
+            // snow side road
+            if (pos.Y >= 188 - buffer && pos.Y <= 333 + buffer && pos.X <= -3000 + buffer) return true;
+
+            // ring road top
+            if (pos.Y >= -38020 - buffer && pos.Y <= -37820 + buffer) return true;
+
+            // ring road bottom
+            if (pos.Y >= 38000 - buffer && pos.Y <= 38200 + buffer) return true;
+
+            // ring road left
+            if (pos.X >= -40000 - buffer && pos.X <= -39820 + buffer) return true;
+
+            // ring road right
+            if (pos.X >= 39820 - buffer && pos.X <= 40000 + buffer) return true;
+
+            // snow vertical connectors
+            if (pos.X >= -20015 - buffer && pos.X <= -19865 + buffer) return true;
+            if (pos.X >= -10015 - buffer && pos.X <= -9865 + buffer) return true;
+
+            // desert vertical connectors
+            if (pos.X >= 14985 - buffer && pos.X <= 15135 + buffer) return true;
+            if (pos.X >= 24985 - buffer && pos.X <= 25135 + buffer) return true;
+
+            // vertical roads to buildings
+            if (pos.X >= 1020 - buffer && pos.X <= 1140 + buffer) return true;
+            if (pos.X >= -1260 - buffer && pos.X <= -1140 + buffer) return true;
+            if (pos.X >= 200 - buffer && pos.X <= 320 + buffer && pos.Y <= 550 + buffer) return true;
+            if (pos.X >= 500 - buffer && pos.X <= 620 + buffer && pos.Y <= 550 + buffer) return true;
+
+            return false;
+        }
+
+        static bool IsOnRoadOrSafeZone(Vector2 pos)
+        {
+            // gas station forecourt
+            if (pos.X >= 300 && pos.X <= 1000 && pos.Y >= -1000 && pos.Y <= -420) return true;
+
+            // main horizontal road
+            if (pos.Y >= 540 && pos.Y <= 743) return true;
+
+            // north/south highway
+            if (pos.X >= 188 && pos.X <= 333) return true;
+
+            // desert side road
+            if (pos.Y >= 188 && pos.Y <= 333 && pos.X >= 4000) return true;
+
+            // snow side road
+            if (pos.Y >= 188 && pos.Y <= 333 && pos.X <= -3000) return true;
+
+            // ring road top
+            if (pos.Y >= -38020 && pos.Y <= -37820) return true;
+
+            // ring road bottom
+            if (pos.Y >= 38000 && pos.Y <= 38200) return true;
+
+            // ring road left
+            if (pos.X >= -40000 && pos.X <= -39820) return true;
+
+            // ring road right
+            if (pos.X >= 39820 && pos.X <= 40000) return true;
+
+            // snow vertical connectors - scoped to Y range between side road and ring road
+            if (pos.X >= -20015 && pos.X <= -19865 && (pos.Y <= 188 || pos.Y >= 333)) return true;
+            if (pos.X >= -10015 && pos.X <= -9865 && (pos.Y <= 188 || pos.Y >= 333)) return true;
+
+            // desert vertical connectors - scoped to Y range
+            if (pos.X >= 14985 && pos.X <= 15135 && (pos.Y <= 188 || pos.Y >= 333)) return true;
+            if (pos.X >= 24985 && pos.X <= 25135 && (pos.Y <= 188 || pos.Y >= 333)) return true;
+
+            return false;
+        }
+
+        static void GenerateSafeZoneTexture()
+        {
+            // grass patches
+            for (int i = 0; i < 200; i++)
+            {
+                float x = Raylib.GetRandomValue(-2900, 3900);
+                float y = Raylib.GetRandomValue(-1400, 2400);
+                float radius = Raylib.GetRandomValue(15, 50);
+                byte green = (byte)Raylib.GetRandomValue(120, 160);
+                grassPatches.Add((new Vector2(x, y), radius, new Color((byte)60, green, (byte)60, (byte)100)));
+            }
+
+            // flowers
+            Color[] flowerColors = { Color.Red, Color.Yellow, Color.White, Color.Pink, Color.Orange, Color.Purple };
+            for (int i = 0; i < 150; i++)
+            {
+                float x = Raylib.GetRandomValue(-2900, 3900);
+                float y = Raylib.GetRandomValue(-1400, 2400);
+                Color fc = flowerColors[Raylib.GetRandomValue(0, flowerColors.Length - 1)];
+                flowers.Add((new Vector2(x, y), fc));
+            }
+        }
         static void ShowNotification(string message)
         {
             levelUpMessage = message;
             levelUpTimer = 2.5f;
         }
+
+        static bool IsOnRoad(Vector2 pos)
+{
+
+    // gas station forecourt
+    if (pos.X >= 300 && pos.X <= 1000 && pos.Y >= -1000 && pos.Y <= -420) return true;
+
+    // main horizontal road + sidewalks
+    if (pos.Y >= 540 && pos.Y <= 743) return true;
+
+    // north/south highway + sidewalks
+    if (pos.X >= 188 && pos.X <= 333) return true;
+
+    // desert side road + sidewalks
+    if (pos.Y >= 188 && pos.Y <= 333 && pos.X >= 4000) return true;
+
+    // snow side road + sidewalks
+    if (pos.Y >= 188 && pos.Y <= 333 && pos.X <= -3000) return true;
+
+    // ring road top
+    if (pos.Y >= -38020 && pos.Y <= -37820) return true;
+
+    // ring road bottom
+    if (pos.Y >= 38000 && pos.Y <= 38200) return true;
+
+    // ring road left
+    if (pos.X >= -40000 && pos.X <= -39800) return true;
+
+    // ring road right
+    if (pos.X >= 39800 && pos.X <= 40000) return true;
+
+    // snow vertical connectors
+    if (pos.X >= -20015 && pos.X <= -19865) return true;
+    if (pos.X >= -10015 && pos.X <= -9865) return true;
+
+    // desert vertical connectors
+    if (pos.X >= 14985 && pos.X <= 15135) return true;
+    if (pos.X >= 24985 && pos.X <= 25135) return true;
+
+    return false;
+}
+
+        static void DrawSafeZoneTexture()
+        {
+            // grass patches
+            foreach (var patch in grassPatches)
+            {
+                Raylib.DrawCircle((int)patch.pos.X, (int)patch.pos.Y, patch.radius, patch.color);
+            }
+
+            // flowers
+            foreach (var flower in flowers)
+            {
+                Raylib.DrawCircle((int)flower.pos.X, (int)flower.pos.Y, 5, flower.color);
+                Raylib.DrawCircle((int)flower.pos.X + 10, (int)flower.pos.Y + 7, 4, flower.color);
+                Raylib.DrawCircle((int)flower.pos.X - 9, (int)flower.pos.Y + 5, 4, flower.color);
+                Raylib.DrawCircle((int)flower.pos.X + 5, (int)flower.pos.Y - 10, 4, flower.color);
+            }
+
+            // footpaths
+            Raylib.DrawRectangle(1255, 530, 50, 80, new Color((byte)160,(byte)160,(byte)140,(byte)200));
+            Raylib.DrawRectangle(-945, 530, 50, 80, new Color((byte)160,(byte)160,(byte)140,(byte)200));
+            Raylib.DrawRectangle(395, 530, 50, 80, new Color((byte)160,(byte)160,(byte)140,(byte)200));
+            Raylib.DrawRectangle(715, 530, 50, 80, new Color((byte)160,(byte)160,(byte)140,(byte)200));
+            Raylib.DrawRectangle(-345, 530, 50, 80, new Color((byte)160,(byte)160,(byte)140,(byte)200));
+            Raylib.DrawRectangle(1755, 530, 50, 80, new Color((byte)160,(byte)160,(byte)140,(byte)200));
+
+            // fence
+            Raylib.DrawRectangle(-3000, -1500, 7000, 20, new Color((byte)120,(byte)80,(byte)40,(byte)255));
+            Raylib.DrawRectangle(-3000, 2480, 7000, 20, new Color((byte)120,(byte)80,(byte)40,(byte)255));
+            Raylib.DrawRectangle(-3000, -1500, 20, 4000, new Color((byte)120,(byte)80,(byte)40,(byte)255));
+            Raylib.DrawRectangle(3980, -1500, 20, 4000, new Color((byte)120,(byte)80,(byte)40,(byte)255));
+
+            // fence posts
+            for (int i = -3000; i < 4000; i += 120)
+            {
+                Raylib.DrawRectangle(i, -1500, 12, 30, new Color((byte)100,(byte)60,(byte)20,(byte)255));
+                Raylib.DrawRectangle(i, 2470, 12, 30, new Color((byte)100,(byte)60,(byte)20,(byte)255));
+            }
+            for (int i = -1500; i < 2500; i += 120)
+            {
+                Raylib.DrawRectangle(-3000, i, 30, 12, new Color((byte)100,(byte)60,(byte)20,(byte)255));
+                Raylib.DrawRectangle(3970, i, 30, 12, new Color((byte)100,(byte)60,(byte)20,(byte)255));
+            }
+        }
+
+        static void DrawStreetLight(float x, float y)
+{
+    // pole
+    Raylib.DrawRectangle((int)x, (int)y, 6, 40, new Color((byte)80,(byte)80,(byte)80,(byte)255));
+
+    // lamp head
+    Raylib.DrawRectangle((int)x - 8, (int)y - 8, 22, 10, new Color((byte)60,(byte)60,(byte)60,(byte)255));
+
+    // glow at night
+    float night = MathF.Sin(timeOfDay * MathF.PI);
+    if (night < 0.4f)
+    {
+        byte glowAlpha = (byte)(180 * (1f - night / 0.4f));
+        Raylib.DrawCircle((int)x + 3, (int)y - 3, 60, new Color((byte)255,(byte)220,(byte)100,(byte)(glowAlpha / 4)));
+        Raylib.DrawCircle((int)x + 3, (int)y - 3, 30, new Color((byte)255,(byte)220,(byte)100,(byte)(glowAlpha / 2)));
+        Raylib.DrawRectangle((int)x - 8, (int)y - 8, 22, 10, new Color((byte)255,(byte)220,(byte)100,(byte)glowAlpha));
+    }
+}
+
+        static void DrawStreetLights()
+    {
+        // main horizontal road - north side
+        for (int i = -40000; i < 40000; i += 600)
+            DrawStreetLight(i, 520);
+
+        // main horizontal road - south side
+        for (int i = -40000; i < 40000; i += 600)
+            DrawStreetLight(i, 740);
+
+        // north highway - west side
+        for (int i = -40000; i < 550; i += 600)
+            DrawStreetLight(180, i);
+
+        // north highway - east side
+        for (int i = -40000; i < 550; i += 600)
+            DrawStreetLight(326, i);
+
+        // south highway - west side
+        for (int i = 730; i < 40000; i += 600)
+            DrawStreetLight(180, i);
+
+        // south highway - east side
+        for (int i = 730; i < 40000; i += 600)
+            DrawStreetLight(326, i);
+
+        // desert side road
+        for (int i = 4000; i < 40000; i += 600)
+            DrawStreetLight(i, 180);
+
+        // snow side road
+        for (int i = -40000; i < -3000; i += 600)
+            DrawStreetLight(i, 180);
+
+        // ring road top
+        for (int i = -40000; i < 40000; i += 600)
+            DrawStreetLight(i, -38020);
+
+        // ring road bottom
+        for (int i = -40000; i < 40000; i += 600)
+            DrawStreetLight(i, 38020);
+    }
 
         static void SaveGame()
 {
@@ -1367,6 +1628,7 @@ static int GetItemCount(string itemName)
                     foreach (Vehicle vehicle in vehicles)
                     {
                         vehicle.Update(dt);
+                        vehicle.OnRoad = IsOnRoad(vehicle.Position);
 
                         if (Raylib.CheckCollisionRecs(player.Bounds, vehicle.Bounds))
                         {
@@ -1382,6 +1644,37 @@ static int GetItemCount(string itemName)
                             }
                         }
                     }
+
+                    // gas pump interaction
+    pump1Active = false;
+    pump2Active = false;
+
+    foreach (Vehicle vehicle in vehicles)
+    {
+        float distVehicleP1 = Vector2.Distance(vehicle.Position, pump1Pos);
+        float distVehicleP2 = Vector2.Distance(vehicle.Position, pump2Pos);
+        float distPlayerP1 = Vector2.Distance(player.Position, pump1Pos);
+        float distPlayerP2 = Vector2.Distance(player.Position, pump2Pos);
+
+        // vehicle must be on the pump, then either player is nearby or is driving it
+        bool canFuelP1 = distVehicleP1 < 120 && (distPlayerP1 < 150 || vehicle.Driving);
+        bool canFuelP2 = distVehicleP2 < 120 && (distPlayerP2 < 150 || vehicle.Driving);
+
+        if (distVehicleP1 < 120) pump1Active = true;
+        if (distVehicleP2 < 120) pump2Active = true;
+
+        if (canFuelP1 && Raylib.IsKeyDown(KeyboardKey.R) && vehicle.Fuel < vehicle.MaxFuel)
+        {
+            vehicle.Refuel(pump1FuelRate * dt);
+            vehicle.NeedsPayment = true;
+        }
+
+        if (canFuelP2 && Raylib.IsKeyDown(KeyboardKey.R) && vehicle.Fuel < vehicle.MaxFuel)
+        {
+            vehicle.Refuel(pump2FuelRate * dt);
+            vehicle.NeedsPayment = true;
+        }
+    }
 
                     foreach (NPC npc in npcs)
                     {
@@ -1480,6 +1773,7 @@ static int GetItemCount(string itemName)
     }
 }
 
+
                     foreach (Building building in buildings)
                     {
                         if (Raylib.CheckCollisionRecs(player.Bounds, building.Bounds))
@@ -1557,6 +1851,36 @@ static int GetItemCount(string itemName)
     }
 }
 
+if (currentBuilding.BuildingName == "GAS STATION")
+{
+    if (Raylib.IsKeyPressed(KeyboardKey.E))
+    {
+        Vehicle unpaid = vehicles.FirstOrDefault(v => v.NeedsPayment);
+        if (unpaid != null)
+        {
+            int cost = Math.Max(1, (int)(unpaid.FuelPumped * 0.5f));
+            if (player.Money >= cost)
+            {
+                player.Money -= cost;
+                unpaid.NeedsPayment = false;
+                unpaid.FuelPumped = 0f;
+                shopMessage = $"Paid ${cost} for fuel. Cheers bro!";
+                shopMessageTimer = 2f;
+            }
+            else
+            {
+                shopMessage = $"Need ${cost} to pay for fuel!";
+                shopMessageTimer = 1.5f;
+            }
+        }
+        else
+        {
+            shopMessage = "No unpaid fuel. Drive up to a pump first!";
+            shopMessageTimer = 1.5f;
+        }
+    }
+}
+
     // All other buildings - NPC distance check
     if (Vector2.Distance(player.Position, currentBuilding.InteriorNPC.Position) < 120)
     {
@@ -1598,6 +1922,56 @@ static int GetItemCount(string itemName)
                 }
             }
         }
+
+if (currentBuilding.BuildingName == "GYM")
+{
+    if (Raylib.IsKeyPressed(KeyboardKey.E))
+    {
+        int cost = player.CombatLevel * 25;
+        if (player.Money >= cost)
+        {
+            player.Money -= cost;
+            player.MaxHealth += 5;
+            player.Health = player.MaxHealth;
+            shopMessage = $"Trained hard! Max health +5. Now at {player.MaxHealth}HP";
+            shopMessageTimer = 2f;
+        }
+        else
+        {
+            shopMessage = $"Need ${cost} to train!";
+            shopMessageTimer = 1.5f;
+        }
+    }
+}
+
+if (currentBuilding.BuildingName == "MARAE")
+{
+    if (Raylib.IsKeyPressed(KeyboardKey.E))
+    {
+        player.Health = player.MaxHealth;
+        shopMessage = "The marae restores your spirit. Full health!";
+        shopMessageTimer = 2f;
+    }
+}
+
+if (currentBuilding.BuildingName == "POLICE STATION")
+{
+    if (Raylib.IsKeyPressed(KeyboardKey.E))
+    {
+        if (player.Money >= 50)
+        {
+            player.Money -= 50;
+            foreach (Enemy e in Program.enemies) e.Dead = true;
+            shopMessage = "Police cleared all enemies! Cost $50.";
+            shopMessageTimer = 2f;
+        }
+        else
+        {
+            shopMessage = "Need $50 to call in a sweep!";
+            shopMessageTimer = 1.5f;
+        }
+    }
+}
 
         if (currentBuilding.BuildingName == "BANK")
         {
@@ -1731,11 +2105,14 @@ static int GetItemCount(string itemName)
             overwriteSlot = -1;
         }
 
-    if (hoverCancel && Raylib.IsMouseButtonPressed(MouseButton.Left))
-    {
-        overwriteConfirmOpen = false;
-        overwriteSlot = -1;
-    }
+   if (hoverCancel && Raylib.IsMouseButtonPressed(MouseButton.Left))
+        {
+            overwriteConfirmOpen = false;
+            overwriteSlot = -1;
+            slotSelected = false;
+            playerName = "";
+            nameEntered = false;
+        }
 }
        static void DrawMenu()
 {
@@ -2236,6 +2613,37 @@ static void DrawCheatsMenu()
 
             // safe zone
             Raylib.DrawRectangle(-3000, -1500, 7000, 4000, new Color(90, 170, 90, 255));
+            DrawSafeZoneTexture();
+
+            // sidewalk - main horizontal road top
+            Raylib.DrawRectangle(-40000, 540, 80000, 15, new Color((byte)180,(byte)180,(byte)180,(byte)255));
+
+            // sidewalk - main horizontal road bottom
+            Raylib.DrawRectangle(-40000, 728, 80000, 15, new Color((byte)180,(byte)180,(byte)180,(byte)255));
+
+            // sidewalk - north highway left
+            Raylib.DrawRectangle(188, -40000, 15, 40000, new Color((byte)180,(byte)180,(byte)180,(byte)255));
+
+            // sidewalk - north highway right
+            Raylib.DrawRectangle(318, -40000, 15, 40000, new Color((byte)180,(byte)180,(byte)180,(byte)255));
+
+            // sidewalk - south highway left
+            Raylib.DrawRectangle(188, 730, 15, 39270, new Color((byte)180,(byte)180,(byte)180,(byte)255));
+
+            // sidewalk - south highway right
+            Raylib.DrawRectangle(318, 730, 15, 39270, new Color((byte)180,(byte)180,(byte)180,(byte)255));
+
+            // sidewalk - desert side road top
+            Raylib.DrawRectangle(4000, 188, 36000, 15, new Color((byte)180,(byte)180,(byte)180,(byte)255));
+
+            // sidewalk - desert side road bottom
+            Raylib.DrawRectangle(4000, 318, 36000, 15, new Color((byte)180,(byte)180,(byte)180,(byte)255));
+
+            // sidewalk - snow side road top
+            Raylib.DrawRectangle(-40000, 188, 37000, 15, new Color((byte)180,(byte)180,(byte)180,(byte)255));
+
+            // sidewalk - snow side road bottom
+            Raylib.DrawRectangle(-40000, 318, 37000, 15, new Color((byte)180,(byte)180,(byte)180,(byte)255));
 
             // main horizontal road
             Raylib.DrawRectangle(-40000, 550, 80000, 180, Color.DarkGray);
@@ -2331,6 +2739,8 @@ static void DrawCheatsMenu()
                 Raylib.DrawRectangle(15080, i, 12, 100, Color.Yellow);
                 Raylib.DrawRectangle(25080, i, 12, 100, Color.Yellow);
             }
+            // forecourt road surface - same grey as roads so physics treat it normally
+            Raylib.DrawRectangle(300, -1000, 700, 580, Color.DarkGray);
 
             foreach (var ft in floatingTexts)
             {
@@ -2373,6 +2783,44 @@ static void DrawCheatsMenu()
             {
                 drop.Draw();
             }
+
+            DrawStreetLights();
+
+            // lane dividers
+            Raylib.DrawRectangle(490, -980, 12, 540, new Color((byte)255,(byte)255,(byte)0,(byte)120));
+            Raylib.DrawRectangle(690, -980, 12, 540, new Color((byte)255,(byte)255,(byte)0,(byte)120));
+
+            // entry markings south side
+            Raylib.DrawRectangle(380, -440, 80, 20, Color.Yellow);
+            Raylib.DrawRectangle(580, -440, 80, 20, Color.Yellow);
+            Raylib.DrawRectangle(780, -440, 80, 20, Color.Yellow);
+
+            // canopy over pumps - transparent so vehicles visible underneath
+            Raylib.DrawRectangle(340, -780, 620, 160, new Color((byte)80,(byte)80,(byte)80,(byte)60));
+            Raylib.DrawRectangle(340, -780, 620, 10, new Color((byte)255,(byte)255,(byte)0,(byte)150));
+            Raylib.DrawRectangle(340, -630, 620, 10, new Color((byte)255,(byte)255,(byte)0,(byte)150));
+
+            // canopy support pillars - keep these solid so it looks grounded
+            Raylib.DrawRectangle(350, -770, 20, 140, new Color((byte)60,(byte)60,(byte)60,(byte)255));
+            Raylib.DrawRectangle(590, -770, 20, 140, new Color((byte)60,(byte)60,(byte)60,(byte)255));
+            Raylib.DrawRectangle(830, -770, 20, 140, new Color((byte)60,(byte)60,(byte)60,(byte)255));
+
+            // pump 1
+            Raylib.DrawRectangle((int)pump1Pos.X - 18, (int)pump1Pos.Y - 35, 36, 60,
+                new Color((byte)60,(byte)60,(byte)60,(byte)255));
+            Raylib.DrawRectangle((int)pump1Pos.X - 12, (int)pump1Pos.Y - 28, 24, 36,
+                pump1Active ? Color.Green : new Color((byte)200,(byte)50,(byte)50,(byte)255));
+            Raylib.DrawText("PUMP 1", (int)pump1Pos.X - 24, (int)pump1Pos.Y + 30, 16, Color.White);
+            Raylib.DrawText("R = Fuel", (int)pump1Pos.X - 24, (int)pump1Pos.Y + 48, 14, Color.LightGray);
+
+            // pump 2
+            Raylib.DrawRectangle((int)pump2Pos.X - 18, (int)pump2Pos.Y - 35, 36, 60,
+                new Color((byte)60,(byte)60,(byte)60,(byte)255));
+            Raylib.DrawRectangle((int)pump2Pos.X - 12, (int)pump2Pos.Y - 28, 24, 36,
+                pump2Active ? Color.Green : new Color((byte)200,(byte)50,(byte)50,(byte)255));
+            Raylib.DrawText("PUMP 2", (int)pump2Pos.X - 24, (int)pump2Pos.Y + 30, 16, Color.White);
+            Raylib.DrawText("R = Fuel", (int)pump2Pos.X - 24, (int)pump2Pos.Y + 48, 14, Color.LightGray);
+            
 
             player.Draw();
 
@@ -2439,8 +2887,8 @@ static void DrawCheatsMenu()
         }
     }
 
-    if (Vector2.Distance(player.Position, currentBuilding.InteriorNPC.Position) < 120)
-    {
+        if (Vector2.Distance(player.Position, currentBuilding.InteriorNPC.Position) < 120)
+        {
         Raylib.DrawRectangle(0, 620, 1280, 100, new Color((byte)0, (byte)0, (byte)0, (byte)180));
         Raylib.DrawText(currentBuilding.BuildingName, 20, 630, 30, Color.Gold);
         Raylib.DrawText(currentBuilding.InteriorNPC.Name + ": " + currentBuilding.InteriorNPC.Dialogue, 20, 670, 24, Color.White);
@@ -2453,6 +2901,21 @@ static void DrawCheatsMenu()
             int upgradeCost = player.CombatLevel * 50;
             Raylib.DrawText($"E = Upgrade Weapon (${upgradeCost})", 20, 600, 22, Color.LightGray);
         }
+        
+        if (currentBuilding.BuildingName == "GAS STATION")
+        Raylib.DrawText("E = Pay for fuel", 20, 600, 22, Color.LightGray);
+
+        if (currentBuilding.BuildingName == "GYM")
+        {
+            int cost = player.CombatLevel * 25;
+            Raylib.DrawText($"E = Train (+5 Max HP) (${cost})", 20, 600, 22, Color.LightGray);
+        }
+
+        if (currentBuilding.BuildingName == "MARAE")
+            Raylib.DrawText("E = Rest and Restore Health (Free)", 20, 600, 22, Color.LightGray);
+
+        if (currentBuilding.BuildingName == "POLICE STATION")
+            Raylib.DrawText("E = Call Sweep - Clear All Enemies ($50)", 20, 600, 22, Color.LightGray);
 
         if (currentBuilding.BuildingName == "STORE")
               Raylib.DrawText("E = Open Shop", 20, 600, 22, Color.LightGray);
@@ -2473,7 +2936,39 @@ static void DrawCheatsMenu()
         {
             DrawSkillsUI();
             DrawQuestsUI();
-            
+
+            foreach (Vehicle vehicle in vehicles)
+            {
+                if (vehicle.Driving)
+                {
+                    Color roadColor = vehicle.OnRoad ? Color.Green : Color.Orange;
+                    string roadText = vehicle.OnRoad ? "ON ROAD" : "OFF ROAD";
+                    Raylib.DrawText(roadText, ScreenWidth / 2 - 40, ScreenHeight - 60, 22, roadColor);
+
+                    // fuel bar
+                    int fbWidth = 200;
+                    int fbX = ScreenWidth / 2 - fbWidth / 2;
+                    int fbY = ScreenHeight - 100;
+                    float fuelPercent = vehicle.Fuel / vehicle.MaxFuel;
+                    Color fuelColor = fuelPercent > 0.5f ? Color.Green :
+                                    fuelPercent > 0.25f ? Color.Orange : Color.Red;
+
+                    Raylib.DrawRectangle(fbX - 60, fbY - 4, 55, 28, new Color((byte)0,(byte)0,(byte)0,(byte)180));
+                    Raylib.DrawText("FUEL", fbX - 55, fbY, 20, Color.LightGray);
+                    Raylib.DrawRectangle(fbX, fbY, fbWidth, 24, new Color((byte)40,(byte)40,(byte)40,(byte)220));
+                    Raylib.DrawRectangle(fbX, fbY, (int)(fbWidth * fuelPercent), 24, fuelColor);
+                    Raylib.DrawRectangleLines(fbX, fbY, fbWidth, 24, Color.White);
+
+                    if (vehicle.Fuel <= 0)
+                    {
+                        Raylib.DrawText("OUT OF FUEL!", ScreenWidth / 2 - 70, fbY - 30, 24, Color.Red);
+                    }
+                    else if (vehicle.NeedsPayment)
+                    {
+                        Raylib.DrawText("Go inside to pay for fuel!", ScreenWidth / 2 - 120, fbY - 30, 22, Color.Yellow);
+                    }
+                }
+            }
 
             // health bar
             int hbWidth = 300;
@@ -2577,42 +3072,59 @@ static void DrawCheatsMenu()
 
         static void GenerateWorld()
         {
-          // Forest top and bottom - Oak trees
-        for (int i = -30000; i < 30000; i += 250)
-        {
-            trees.Add(TreeObject.Oak(new Vector2(i, -300)));
-            trees.Add(TreeObject.Oak(new Vector2(i, 1200)));
-        }
+            // Forest top - Oak trees scattered
+            for (int i = -30000; i < 30000; i += 200)
+            {
+                Vector2 pos = new Vector2(i + Raylib.GetRandomValue(-80, 80), -300 + Raylib.GetRandomValue(-200, 0));
+                if (!IsNearRoad(pos)) trees.Add(TreeObject.Oak(pos));
+            }
 
-        // Safe zone - Normal trees scattered
-        for (int i = -2800; i < 3800; i += 400)
-        {
-            trees.Add(TreeObject.Normal(new Vector2(i, 50)));
-            trees.Add(TreeObject.Normal(new Vector2(i, 900)));
-        }
+            // Forest bottom - Oak trees scattered
+            for (int i = -30000; i < 30000; i += 200)
+            {
+                Vector2 pos = new Vector2(i + Raylib.GetRandomValue(-80, 80), 1200 + Raylib.GetRandomValue(0, 200));
+                if (!IsNearRoad(pos)) trees.Add(TreeObject.Oak(pos));
+            }
 
-        // Grasslands - Birch trees
-        for (int i = 4200; i < 10000; i += 300)
-        {
-            trees.Add(TreeObject.Birch(new Vector2(i, 200)));
-            trees.Add(TreeObject.Birch(new Vector2(i, 500)));
-            trees.Add(TreeObject.Birch(new Vector2(i, 800)));
-        }
+            // Safe zone - Normal trees scattered naturally
+            for (int i = -2800; i < 3800; i += 300)
+            {
+                Vector2 pos1 = new Vector2(i + Raylib.GetRandomValue(-80, 80), Raylib.GetRandomValue(-1400, 2400));
+                Vector2 pos2 = new Vector2(i + Raylib.GetRandomValue(-80, 80), Raylib.GetRandomValue(-1400, 2400));
+                if (!IsNearRoad(pos1)) trees.Add(TreeObject.Normal(pos1));
+                if (!IsNearRoad(pos2)) trees.Add(TreeObject.Normal(pos2));
+            }
 
-        // Snow zone - Pine and Arctic trees
-        for (int i = -30000; i < -3100; i += 300)
-        {
-            trees.Add(TreeObject.Pine(new Vector2(i, 200)));
-            trees.Add(TreeObject.Pine(new Vector2(i, 500)));
-            trees.Add(TreeObject.Arctic(new Vector2(i + 150, 350)));
-        }
+            // Grasslands - Birch trees scattered
+            for (int i = 4200; i < 12000; i += 250)
+            {
+                Vector2 pos1 = new Vector2(i + Raylib.GetRandomValue(-80, 80), Raylib.GetRandomValue(350, 750));
+                Vector2 pos2 = new Vector2(i + Raylib.GetRandomValue(-80, 80), Raylib.GetRandomValue(-350, 150));
+                Vector2 pos3 = new Vector2(i + Raylib.GetRandomValue(-80, 80), Raylib.GetRandomValue(800, 950));
+                if (!IsNearRoad(pos1)) trees.Add(TreeObject.Birch(pos1));
+                if (!IsNearRoad(pos2)) trees.Add(TreeObject.Birch(pos2));
+                if (!IsNearRoad(pos3)) trees.Add(TreeObject.Birch(pos3));
+            }
 
-        // Desert - Dead trees scattered
-        for (int i = 4200; i < 30000; i += 500)
-        {
-            trees.Add(TreeObject.Dead(new Vector2(i, 100)));
-            trees.Add(TreeObject.Dead(new Vector2(i + 200, 700)));
-        }
+            // Snow zone - Pine and Arctic trees scattered
+            for (int i = -30000; i < -3100; i += 250)
+            {
+                Vector2 pos1 = new Vector2(i + Raylib.GetRandomValue(-80, 80), Raylib.GetRandomValue(400, 530));
+                Vector2 pos2 = new Vector2(i + Raylib.GetRandomValue(-80, 80), Raylib.GetRandomValue(750, 950));
+                Vector2 pos3 = new Vector2(i + Raylib.GetRandomValue(-80, 80), Raylib.GetRandomValue(-350, 150));
+                if (!IsNearRoad(pos1)) trees.Add(TreeObject.Pine(pos1));
+                if (!IsNearRoad(pos2)) trees.Add(TreeObject.Arctic(pos2));
+                if (!IsNearRoad(pos3)) trees.Add(TreeObject.Pine(pos3));
+            }
+
+            // Desert - Dead trees scattered
+            for (int i = 4200; i < 30000; i += 400)
+            {
+                Vector2 pos1 = new Vector2(i + Raylib.GetRandomValue(-100, 100), Raylib.GetRandomValue(400, 530));
+                Vector2 pos2 = new Vector2(i + Raylib.GetRandomValue(-100, 100), Raylib.GetRandomValue(750, 950));
+                if (!IsNearRoad(pos1)) trees.Add(TreeObject.Dead(pos1));
+                if (!IsNearRoad(pos2)) trees.Add(TreeObject.Dead(pos2));
+            }
             
 
             lakes.Add(new Lake(new Vector2(700, 1200)));
@@ -2649,7 +3161,7 @@ buildings.Add(new Building(
     new Rectangle(340, -200, 160, 120),
     new Color(220,50,50,255),
     new Color(200,220,220,255),
-    new Vector2(420,650),
+    new Vector2(420,-150),
     "HOSPITAL",
     new NPC(new Vector2(600,420), "Doctor", "Kia ora! I can patch you up for $20.")
 ));
@@ -2658,7 +3170,7 @@ buildings.Add(new Building(
     new Rectangle(660, 150, 160, 120),
     new Color(80,80,80,255),
     new Color(50,50,60,255),
-    new Vector2(740,650),
+    new Vector2(740,250),
     "WEAPONS",
     new NPC(new Vector2(600,420), "Weapons Dealer", "Need a sharper blade bro? I got you.")
 ));
@@ -2670,6 +3182,42 @@ buildings.Add(new Building(
     new Vector2(-320,650),
     "MY HOUSE",
     new NPC(new Vector2(800,420), "Mirror", "Check yourself out bro.")
+));
+
+buildings.Add(new Building(
+    new Rectangle(450, -1200, 260, 160),
+    new Color(220, 220, 180, 255),
+    new Color(200, 200, 160, 255),
+    new Vector2(580, -1050),
+    "GAS STATION",
+    new NPC(new Vector2(600, 420), "Attendant", "Pay for your fuel here bro.")
+));
+
+buildings.Add(new Building(
+    new Rectangle(2700, 410, 160, 120),
+    new Color(50, 100, 180, 255),   // blue gym exterior
+    new Color(40, 40, 60, 255),
+    new Vector2(2800, 650),
+    "GYM",
+    new NPC(new Vector2(600, 420), "Trainer", "You wanna get big? Train hard every day bro.")
+));
+
+buildings.Add(new Building(
+    new Rectangle(-1600, 410, 180, 130),
+    new Color(180, 60, 40, 255),    // red/brown marae exterior
+    new Color(100, 60, 30, 255),
+    new Vector2(-1500, 650),
+    "MARAE",
+    new NPC(new Vector2(600, 420), "Kaumatua", "Haere mai, haere mai, haere mai. You are welcome here.")
+));
+
+buildings.Add(new Building(
+    new Rectangle(3200, 410, 160, 120),
+    new Color(30, 30, 120, 255),    // dark blue police exterior
+    new Color(40, 40, 80, 255),
+    new Vector2(3300, 650),
+    "POLICE STATION",
+    new NPC(new Vector2(600, 420), "Officer", "Keep it legal out there, no funny business.")
 ));
 
             npcs.Add(new NPC(
@@ -2722,6 +3270,9 @@ buildings.Add(new Building(
             enemies.Add(new Enemy(new Vector2(-15000, 400), "Bear", 8, new Color((byte)100, (byte)100, (byte)120, (byte)255)));
             enemies.Add(new Enemy(new Vector2(-20000, 700), "Bear", 8, new Color((byte)100, (byte)100, (byte)120, (byte)255)));
             enemies.Add(new Enemy(new Vector2(-25000, 300), "Bear", 8, new Color((byte)100, (byte)100, (byte)120, (byte)255)));
+
+            GenerateSafeZoneTexture();
+
                     }
 
                 }
@@ -3313,11 +3864,14 @@ public NPC(Vector2 pos)
     class Vehicle
     {
         public Vector2 Position;
-
         public bool Driving = false;
-
+        public bool OnRoad = false;
+        public void Refuel() { speed = 1200f; }
+        public float Fuel = 100f;
+        public float MaxFuel = 100f;
+        public bool NeedsPayment = false;
+        public float FuelPumped = 0f;
         float speed;
-
         Color color;
         Vector2 velocity = Vector2.Zero;
 
@@ -3352,9 +3906,23 @@ public NPC(Vector2 pos)
             if (move != Vector2.Zero)
                 move = Vector2.Normalize(move);
 
-            Vector2 targetVelocity = move * speed;
-            velocity = Vector2.Lerp(velocity, targetVelocity, dt * 5f);
+            // drain fuel while driving
+            if (move != Vector2.Zero && Fuel > 0)
+                Fuel = Math.Max(0, Fuel - dt * 2f);
+
+            // cant drive with no fuel
+            if (Fuel <= 0) move = Vector2.Zero;
+
+            float speedMultiplier = OnRoad ? 1f : 0.4f;
+            Vector2 targetVelocity = move * speed * speedMultiplier;
+            velocity = Vector2.Lerp(velocity, targetVelocity, dt * (OnRoad ? 5f : 2f));
             Position += velocity * dt;
+        }
+        public void Refuel(float amount)
+        {
+            float actualAmount = Math.Min(amount, MaxFuel - Fuel);
+            FuelPumped += actualAmount;
+            Fuel = Math.Min(MaxFuel, Fuel + actualAmount);
         }
 
         public void Draw()
