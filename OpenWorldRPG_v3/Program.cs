@@ -58,12 +58,6 @@ namespace OpenWorldRPG
         static float bbGreenPos = 0f;
         static int bbConsecutiveHits = 0;
         static Vector2 barCounterPos = new Vector2(250, 170);
-        static Vector2 pump1Pos = new Vector2(580, -700);
-        static Vector2 pump2Pos = new Vector2(780, -700);
-        static float pump1FuelRate = 20f;
-        static float pump2FuelRate = 20f;
-        static bool pump1Active = false;
-        static bool pump2Active = false;
         static bool isFishing = false;
         static float fishingTimer = 0f;
         static float fishingDuration = 3f;
@@ -74,6 +68,7 @@ namespace OpenWorldRPG
         static bool hoverAthletics = false;
         static bool hoverDriving = false;
         static bool questsOpen = false;
+        static List<GasStation> gasStations = new();
         static List<Quest> quests = new();
         static string playerName = "";
         static bool nameEntered = false;
@@ -115,6 +110,13 @@ namespace OpenWorldRPG
         static bool isLoadingGame = false;
         static bool slotSelected = false;
         static NPC gymCounterNPC = null;
+        static bool trolleyPickedUp = false;
+        static bool basketPickedUp = false;
+        static List<string> trolleyInventory = new List<string>(new string[20]);
+        static List<string> basketInventory = new List<string>(new string[10]);
+        static int trolleySelectedSlot = -1;
+        static int basketSelectedSlot = -1;
+        static bool supermarketInventoryOpen = false;
         static List<(Vector2 pos, float radius, Color color)> desertPatches = new();
         static List<(Vector2 pos, Color color)> desertRocks = new();
         static List<(Vector2 pos, float radius)> snowPatches = new();
@@ -158,6 +160,234 @@ namespace OpenWorldRPG
 
             return (true, name, $"WC:{wcLv} Fish:{fishLv} Combat:{combatLv} | {hours}h {minutes}m");
         }
+        static void AddGasStation(float x, float y)
+{
+    // add to buildings list for entering
+    buildings.Add(new Building(
+        new Rectangle(x + 300, y - 780, 260, 160),
+        new Color(220, 220, 180, 255),
+        new Color(200, 200, 160, 255),
+        new Vector2(x + 280, y - 700),
+        "GAS STATION",
+        new NPC(new Vector2(600, 420), "Attendant", "Pay for your fuel here bro.")
+    ));
+
+    // add to gas stations list for pump logic
+    gasStations.Add(new GasStation(x, y));
+}
+static void AddBank(float x, float y)
+{
+    buildings.Add(new Building(
+        new Rectangle(x, y, 160, 120),
+        new Color(180, 120, 90, 255),
+        new Color(90, 70, 50, 255),
+        new Vector2(x + 50, y + 290),
+        "BANK",
+        new NPC(new Vector2(700, 450), "Bank Manager", "Chur maori. Welcome to Waikato Bank.")
+    ));
+}
+
+static void AddDBar(float x, float y)
+{
+    var dbar = new Building(
+        new Rectangle(x, y, 160, 120),
+        Color.DarkBlue,
+        new Color(50, 60, 90, 255),
+        new Vector2(x + 100, y + 240),
+        "DBar",
+        new NPC(new Vector2(600, 420), "Dbar Owner", "Grab a woodys and relax at Dbar.")
+    );
+
+    dbar.InteriorObjects.Clear();
+    dbar.InteriorObjects.Add(new Rectangle(100, 150, 300, 40));  // bar counter
+    dbar.InteriorObjects.Add(new Rectangle(148, 278, 184, 104)); // pool table 1
+    dbar.InteriorObjects.Add(new Rectangle(448, 278, 184, 104)); // pool table 2
+    dbar.InteriorObjects.Add(new Rectangle(750, 150, 8, 400));   // divider
+    dbar.InteriorObjects.Add(new Rectangle(780, 200, 60, 90));   // pokie 1
+    dbar.InteriorObjects.Add(new Rectangle(780, 320, 60, 90));   // pokie 2
+    dbar.InteriorObjects.Add(new Rectangle(880, 200, 60, 90));   // pokie 3
+
+    buildings.Add(dbar);
+}
+
+static void AddSupermarket(float x, float y)
+{
+    var supermarket = new Building(
+        new Rectangle(x, y, 160, 120),
+        new Color(200, 220, 200, 255),
+        new Color(210, 225, 210, 255),
+        new Vector2(x + 100, y + 240),
+        "SUPERMARKET",
+        new NPC(new Vector2(1280, 60), "Cashier", "Welcome! Grab a trolley or basket at the entrance.")
+    );
+
+    supermarket.InteriorObjects.Clear();
+
+    // --- entrance barrier ---
+    supermarket.InteriorObjects.Add(new Rectangle(0, 900, 380, 20));     // left barrier
+    supermarket.InteriorObjects.Add(new Rectangle(650, 900, 750, 20));   // right barrier
+
+    // --- checkout counters ---
+    supermarket.InteriorObjects.Add(new Rectangle(50,  30, 140, 45));    // checkout 1
+    supermarket.InteriorObjects.Add(new Rectangle(250, 30, 140, 45));    // checkout 2
+    supermarket.InteriorObjects.Add(new Rectangle(450, 30, 140, 45));    // checkout 3
+    supermarket.InteriorObjects.Add(new Rectangle(650, 30, 140, 45));    // checkout 4
+    supermarket.InteriorObjects.Add(new Rectangle(850, 30, 140, 45));    // checkout 5
+    supermarket.InteriorObjects.Add(new Rectangle(1050,30, 140, 45));    // checkout 6
+
+    // --- aisle shelves (pairs of shelves with walking gap) ---
+    // aisle column 1
+    supermarket.InteriorObjects.Add(new Rectangle(50,  150, 220, 35));
+    supermarket.InteriorObjects.Add(new Rectangle(50,  205, 220, 35));
+    supermarket.InteriorObjects.Add(new Rectangle(50,  290, 220, 35));
+    supermarket.InteriorObjects.Add(new Rectangle(50,  345, 220, 35));
+    supermarket.InteriorObjects.Add(new Rectangle(50,  430, 220, 35));
+    supermarket.InteriorObjects.Add(new Rectangle(50,  485, 220, 35));
+    supermarket.InteriorObjects.Add(new Rectangle(50,  570, 220, 35));
+    supermarket.InteriorObjects.Add(new Rectangle(50,  625, 220, 35));
+
+    // aisle column 2
+    supermarket.InteriorObjects.Add(new Rectangle(340, 150, 220, 35));
+    supermarket.InteriorObjects.Add(new Rectangle(340, 205, 220, 35));
+    supermarket.InteriorObjects.Add(new Rectangle(340, 290, 220, 35));
+    supermarket.InteriorObjects.Add(new Rectangle(340, 345, 220, 35));
+    supermarket.InteriorObjects.Add(new Rectangle(340, 430, 220, 35));
+    supermarket.InteriorObjects.Add(new Rectangle(340, 485, 220, 35));
+    supermarket.InteriorObjects.Add(new Rectangle(340, 570, 220, 35));
+    supermarket.InteriorObjects.Add(new Rectangle(340, 625, 220, 35));
+
+    // aisle column 3
+    supermarket.InteriorObjects.Add(new Rectangle(630, 150, 220, 35));
+    supermarket.InteriorObjects.Add(new Rectangle(630, 205, 220, 35));
+    supermarket.InteriorObjects.Add(new Rectangle(630, 290, 220, 35));
+    supermarket.InteriorObjects.Add(new Rectangle(630, 345, 220, 35));
+    supermarket.InteriorObjects.Add(new Rectangle(630, 430, 220, 35));
+    supermarket.InteriorObjects.Add(new Rectangle(630, 485, 220, 35));
+    supermarket.InteriorObjects.Add(new Rectangle(630, 570, 220, 35));
+    supermarket.InteriorObjects.Add(new Rectangle(630, 625, 220, 35));
+
+    // --- meat fridges (right wall) ---
+    supermarket.InteriorObjects.Add(new Rectangle(1310, 150, 55, 110));
+    supermarket.InteriorObjects.Add(new Rectangle(1310, 280, 55, 110));
+    supermarket.InteriorObjects.Add(new Rectangle(1310, 410, 55, 110));
+    supermarket.InteriorObjects.Add(new Rectangle(1310, 540, 55, 110));
+    supermarket.InteriorObjects.Add(new Rectangle(1310, 670, 55, 110));
+
+    // --- fruit & veg bins (back wall) ---
+    supermarket.InteriorObjects.Add(new Rectangle(50,  750, 90, 90));
+    supermarket.InteriorObjects.Add(new Rectangle(160, 750, 90, 90));
+    supermarket.InteriorObjects.Add(new Rectangle(270, 750, 90, 90));
+    supermarket.InteriorObjects.Add(new Rectangle(380, 750, 90, 90));
+    supermarket.InteriorObjects.Add(new Rectangle(490, 750, 90, 90));
+
+    // --- deli station (back right) ---
+    supermarket.InteriorObjects.Add(new Rectangle(650, 750, 300, 45));   // deli counter
+    supermarket.InteriorObjects.Add(new Rectangle(650, 808, 120, 70));   // display case
+    supermarket.InteriorObjects.Add(new Rectangle(790, 808, 70, 70));    // slicer/equipment
+    supermarket.InteriorObjects.Add(new Rectangle(878, 808, 70, 70));    // warmer
+
+    buildings.Add(supermarket);
+}
+
+static void AddStore(float x, float y)
+{
+    buildings.Add(new Building(
+        new Rectangle(x, y, 160, 120),
+        Color.DarkGreen,
+        new Color(40, 90, 50, 255),
+        new Vector2(x + 60, y + 190),
+        "STORE",
+        new NPC(new Vector2(500, 420), "Store Clerk", "Need supplies? Show me the moolack.")
+    ));
+}
+
+static void AddHospital(float x, float y)
+{
+    buildings.Add(new Building(
+        new Rectangle(x, y, 160, 120),
+        new Color(220, 50, 50, 255),
+        new Color(200, 220, 220, 255),
+        new Vector2(x + 80, y + 150),
+        "HOSPITAL",
+        new NPC(new Vector2(600, 420), "Doctor", "Kia ora! I can patch you up for $20.")
+    ));
+}
+
+static void AddWeapons(float x, float y)
+{
+    buildings.Add(new Building(
+        new Rectangle(x, y, 160, 120),
+        new Color(80, 80, 80, 255),
+        new Color(50, 50, 60, 255),
+        new Vector2(x + 80, y + 100),
+        "WEAPONS",
+        new NPC(new Vector2(600, 420), "Weapons Dealer", "Need a sharper blade bro? I got you.")
+    ));
+}
+
+static void AddMyHouse(float x, float y)
+{
+    buildings.Add(new Building(
+        new Rectangle(x, y, 160, 120),
+        new Color(200, 160, 100, 255),
+        new Color(180, 140, 100, 255),
+        new Vector2(x + 80, y + 240),
+        "MY HOUSE",
+        new NPC(new Vector2(800, 420), "Mirror", "Check yourself out bro.")
+    ));
+}
+
+static void AddGym(float x, float y)
+{
+    var gym = new Building(
+        new Rectangle(x, y, 160, 120),
+        new Color(50, 100, 180, 255),
+        new Color(40, 40, 60, 255),
+        new Vector2(x + 100, y + 240),
+        "GYM",
+        new NPC(new Vector2(950, 125), "Trainer", "You wanna get big? Train hard every day bro.")
+    );
+
+    gym.InteriorObjects.Clear();
+    gym.InteriorObjects.Add(new Rectangle(180, 180, 140, 60));   // dumbbell rack
+    gym.InteriorObjects.Add(new Rectangle(480, 285, 220, 55));   // bench press
+    gym.InteriorObjects.Add(new Rectangle(180, 920, 100, 60));   // treadmill 1
+    gym.InteriorObjects.Add(new Rectangle(380, 920, 100, 60));   // treadmill 2
+    gym.InteriorObjects.Add(new Rectangle(580, 920, 100, 60));   // treadmill 3
+    gym.InteriorObjects.Add(new Rectangle(10, 200, 80, 60));     // bike 1
+    gym.InteriorObjects.Add(new Rectangle(10, 400, 80, 60));     // bike 2
+    gym.InteriorObjects.Add(new Rectangle(10, 600, 80, 60));     // bike 3
+    gym.InteriorObjects.Add(new Rectangle(700, 150, 200, 40));   // counter
+    gym.InteriorObjects.Add(new Rectangle(1310, 200, 60, 80));   // toilet 1
+    gym.InteriorObjects.Add(new Rectangle(1310, 340, 60, 80));   // toilet 2
+    gym.InteriorObjects.Add(new Rectangle(1310, 480, 80, 80));   // shower
+
+    buildings.Add(gym);
+}
+
+static void AddMarae(float x, float y)
+{
+    buildings.Add(new Building(
+        new Rectangle(x, y, 180, 130),
+        new Color(180, 60, 40, 255),
+        new Color(100, 60, 30, 255),
+        new Vector2(x + 90, y + 240),
+        "MARAE",
+        new NPC(new Vector2(600, 420), "Kaumatua", "Haere mai, haere mai, haere mai.")
+    ));
+}
+
+static void AddPoliceStation(float x, float y)
+{
+    buildings.Add(new Building(
+        new Rectangle(x, y, 160, 120),
+        new Color(30, 30, 120, 255),
+        new Color(40, 40, 80, 255),
+        new Vector2(x + 80, y + 240),
+        "POLICE STATION",
+        new NPC(new Vector2(600, 420), "Officer", "Keep it legal out there, no funny business.")
+    ));
+}
 
         static void DrawSpeechBubble(Vector2 npcPos, string text, Color bubbleColor)
 {
@@ -1844,7 +2074,7 @@ static int GetItemCount(string itemName)
                     if (player.Health <= 0)
                     {
                     player.Health = player.MaxHealth;
-                    player.Position = new Vector2(400, 400);
+                    player.Position = new Vector2(400, -50);
                     player.Money = Math.Max(0, player.Money - 50);
                     ShowLevelUp("You died! Lost $50", 0);
                     }
@@ -2043,37 +2273,40 @@ else
 }
             }
 
-                    // gas pump interaction
-    pump1Active = false;
-    pump2Active = false;
+ // gas pump interaction
+foreach (GasStation station in gasStations)
+{
+    station.Pump1Active = false;
+    station.Pump2Active = false;
 
     foreach (Vehicle vehicle in vehicles)
     {
-        float distVehicleP1 = Vector2.Distance(vehicle.Position, pump1Pos);
-        float distVehicleP2 = Vector2.Distance(vehicle.Position, pump2Pos);
-        float distPlayerP1 = Vector2.Distance(player.Position, pump1Pos);
-        float distPlayerP2 = Vector2.Distance(player.Position, pump2Pos);
+        float distVehicleP1 = Vector2.Distance(vehicle.Position, station.Pump1Pos);
+        float distVehicleP2 = Vector2.Distance(vehicle.Position, station.Pump2Pos);
+        float distPlayerP1  = Vector2.Distance(player.Position,  station.Pump1Pos);
+        float distPlayerP2  = Vector2.Distance(player.Position,  station.Pump2Pos);
 
         bool canFuelP1 = distVehicleP1 < 120 && (distPlayerP1 < 150 || vehicle.Driving);
         bool canFuelP2 = distVehicleP2 < 120 && (distPlayerP2 < 150 || vehicle.Driving);
 
-        if (distVehicleP1 < 120) pump1Active = true;
-        if (distVehicleP2 < 120) pump2Active = true;
+        if (distVehicleP1 < 120) station.Pump1Active = true;
+        if (distVehicleP2 < 120) station.Pump2Active = true;
 
         if (canFuelP1 && Raylib.IsKeyDown(KeyboardKey.R) && vehicle.Fuel < vehicle.MaxFuel)
         {
-            vehicle.Refuel(pump1FuelRate * dt);
+            vehicle.Refuel(station.PumpFuelRate * dt);
             vehicle.NeedsPayment = true;
-            vehicle.FuelLocked = true;  // lock vehicle
+            vehicle.FuelLocked = true;
         }
 
         if (canFuelP2 && Raylib.IsKeyDown(KeyboardKey.R) && vehicle.Fuel < vehicle.MaxFuel)
         {
-            vehicle.Refuel(pump2FuelRate * dt);
+            vehicle.Refuel(station.PumpFuelRate * dt);
             vehicle.NeedsPayment = true;
-            vehicle.FuelLocked = true;  // lock vehicle
+            vehicle.FuelLocked = true;
         }
     }
+}   
 
                     foreach (NPC npc in npcs)
                     {
@@ -2397,6 +2630,66 @@ if (currentBuilding.BuildingName == "GYM")
     }
 }
 
+ if (currentBuilding.BuildingName == "SUPERMARKET")
+{
+    // pick up trolley
+    Vector2 trolleyPos = new Vector2(80, 945);
+    if (!player.HasTrolley && !player.HasBasket &&
+        Vector2.Distance(player.Position, trolleyPos) < 100 &&
+        Raylib.IsKeyPressed(KeyboardKey.Space))
+    {
+        player.HasTrolley = true;
+        trolleyPickedUp = true;
+        shopMessage = "Trolley grabbed! Speed reduced. Holds 20 items.";
+        shopMessageTimer = 2f;
+    }
+
+    // pick up basket
+    Vector2 basketPos = new Vector2(1000, 945);
+    if (!player.HasBasket && !player.HasTrolley &&
+        Vector2.Distance(player.Position, basketPos) < 100 &&
+        Raylib.IsKeyPressed(KeyboardKey.Space))
+    {
+        player.HasBasket = true;
+        basketPickedUp = true;
+        shopMessage = "Basket grabbed! Holds 10 items.";
+        shopMessageTimer = 2f;
+    }
+
+   // put down - anywhere south of the entrance barrier
+    if ((player.HasTrolley || player.HasBasket) &&
+        player.Position.Y > 900 &&
+        Raylib.IsKeyPressed(KeyboardKey.Space))
+    {
+        Vector2 trolleySpot = new Vector2(80, 945);
+        Vector2 basketSpot = new Vector2(1000, 945);
+        bool nearTrolleySpot = Vector2.Distance(player.Position, trolleySpot) < 100;
+        bool nearBasketSpot = Vector2.Distance(player.Position, basketSpot) < 100;
+
+        if (!nearTrolleySpot && !nearBasketSpot)
+        {
+            if (player.HasTrolley)
+            {
+                player.HasTrolley = false;
+                trolleyPickedUp = false;
+                shopMessage = "Trolley returned.";
+            }
+            else
+            {
+                player.HasBasket = false;
+                basketPickedUp = false;
+                shopMessage = "Basket returned.";
+            }
+            shopMessageTimer = 1.5f;
+            supermarketInventoryOpen = false;
+        }
+    }
+
+    // open/close inventory
+    if ((player.HasTrolley || player.HasBasket) && Raylib.IsKeyPressed(KeyboardKey.I))
+        supermarketInventoryOpen = !supermarketInventoryOpen;
+}
+
         if (currentBuilding.BuildingName == "DBar")
 {
 if (Raylib.IsKeyPressed(KeyboardKey.E) && !barMenuOpen && Vector2.Distance(player.Position, barCounterPos) < 120)
@@ -2649,6 +2942,15 @@ if (currentBuilding.BuildingName == "POLICE STATION")
     shopUIOpen = false;
     shopSelectedItem = -1;
     shopSelectedItemName = "";
+
+    if (currentBuilding.BuildingName == "SUPERMARKET")
+    {
+        player.HasTrolley = false;
+        player.HasBasket = false;
+        trolleyPickedUp = false;
+        basketPickedUp = false;
+        supermarketInventoryOpen = false;
+    }
 }
 
     camera.Target = player.Position;
@@ -3252,6 +3554,9 @@ static void DrawCheatsMenu()
             DrawSafeZoneTexture();
             DrawBiomeTextures();
 
+            // forecourt road surface - same grey as roads so physics treat it normally
+            Raylib.DrawRectangle(300, -1000, 700, 580, Color.DarkGray);
+
             // sidewalk - main horizontal road top
             Raylib.DrawRectangle(-40000, 540, 80000, 15, new Color((byte)180,(byte)180,(byte)180,(byte)255));
 
@@ -3376,8 +3681,7 @@ static void DrawCheatsMenu()
                 Raylib.DrawRectangle(15080, i, 12, 100, Color.Yellow);
                 Raylib.DrawRectangle(25080, i, 12, 100, Color.Yellow);
             }
-            // forecourt road surface - same grey as roads so physics treat it normally
-            Raylib.DrawRectangle(300, -1000, 700, 580, Color.DarkGray);
+            
 
             foreach (var ft in floatingTexts)
             {
@@ -3390,6 +3694,59 @@ static void DrawCheatsMenu()
             {
                 building.Draw();
             }
+
+                     static void DrawGasStation(GasStation station, float x, float y)
+{
+    // forecourt
+    Raylib.DrawRectangle((int)x + 30, (int)y - 580, 700, 580, Color.DarkGray);
+
+    // canopy
+    Raylib.DrawRectangle((int)x + 40, (int)y - 360, 620, 160,
+        new Color((byte)80,(byte)80,(byte)80,(byte)60));
+    Raylib.DrawRectangle((int)x + 40, (int)y - 360, 620, 10,
+        new Color((byte)255,(byte)255,(byte)0,(byte)150));
+    Raylib.DrawRectangle((int)x + 40, (int)y - 210, 620, 10,
+        new Color((byte)255,(byte)255,(byte)0,(byte)150));
+
+    // canopy pillars
+    Raylib.DrawRectangle((int)x + 50,  (int)y - 350, 20, 140,
+        new Color((byte)60,(byte)60,(byte)60,(byte)255));
+    Raylib.DrawRectangle((int)x + 290, (int)y - 350, 20, 140,
+        new Color((byte)60,(byte)60,(byte)60,(byte)255));
+    Raylib.DrawRectangle((int)x + 530, (int)y - 350, 20, 140,
+        new Color((byte)60,(byte)60,(byte)60,(byte)255));
+
+    // lane dividers
+    Raylib.DrawRectangle((int)x + 190, (int)y - 560, 12, 540,
+        new Color((byte)255,(byte)255,(byte)0,(byte)120));
+    Raylib.DrawRectangle((int)x + 390, (int)y - 560, 12, 540,
+        new Color((byte)255,(byte)255,(byte)0,(byte)120));
+
+    // entry markings
+    Raylib.DrawRectangle((int)x + 80,  (int)y - 20, 80, 20, Color.Yellow);
+    Raylib.DrawRectangle((int)x + 280, (int)y - 20, 80, 20, Color.Yellow);
+    Raylib.DrawRectangle((int)x + 480, (int)y - 20, 80, 20, Color.Yellow);
+
+    // pump 1
+    Vector2 p1 = station.Pump1Pos;
+    Raylib.DrawRectangle((int)p1.X - 18, (int)p1.Y - 35, 36, 60,
+        new Color((byte)60,(byte)60,(byte)60,(byte)255));
+    Raylib.DrawRectangle((int)p1.X - 12, (int)p1.Y - 28, 24, 36,
+        station.Pump1Active ? Color.Green : new Color((byte)200,(byte)50,(byte)50,(byte)255));
+    Raylib.DrawText("PUMP 1", (int)p1.X - 24, (int)p1.Y + 30, 16, Color.White);
+    Raylib.DrawText("R = Fuel", (int)p1.X - 24, (int)p1.Y + 48, 14, Color.LightGray);
+
+    // pump 2
+    Vector2 p2 = station.Pump2Pos;
+    Raylib.DrawRectangle((int)p2.X - 18, (int)p2.Y - 35, 36, 60,
+        new Color((byte)60,(byte)60,(byte)60,(byte)255));
+    Raylib.DrawRectangle((int)p2.X - 12, (int)p2.Y - 28, 24, 36,
+        station.Pump2Active ? Color.Green : new Color((byte)200,(byte)50,(byte)50,(byte)255));
+    Raylib.DrawText("PUMP 2", (int)p2.X - 24, (int)p2.Y + 30, 16, Color.White);
+    Raylib.DrawText("R = Fuel", (int)p2.X - 24, (int)p2.Y + 48, 14, Color.LightGray);
+}
+foreach (GasStation gs in gasStations)
+    DrawGasStation(gs, gs.OriginX, gs.OriginY);
 
             foreach (TreeObject tree in trees)
             {
@@ -3426,40 +3783,7 @@ static void DrawCheatsMenu()
 
             DrawStreetLights();
 
-            // lane dividers
-            Raylib.DrawRectangle(490, -980, 12, 540, new Color((byte)255,(byte)255,(byte)0,(byte)120));
-            Raylib.DrawRectangle(690, -980, 12, 540, new Color((byte)255,(byte)255,(byte)0,(byte)120));
-
-            // entry markings south side
-            Raylib.DrawRectangle(380, -440, 80, 20, Color.Yellow);
-            Raylib.DrawRectangle(580, -440, 80, 20, Color.Yellow);
-            Raylib.DrawRectangle(780, -440, 80, 20, Color.Yellow);
-
-            // canopy over pumps - transparent so vehicles visible underneath
-            Raylib.DrawRectangle(340, -780, 620, 160, new Color((byte)80,(byte)80,(byte)80,(byte)60));
-            Raylib.DrawRectangle(340, -780, 620, 10, new Color((byte)255,(byte)255,(byte)0,(byte)150));
-            Raylib.DrawRectangle(340, -630, 620, 10, new Color((byte)255,(byte)255,(byte)0,(byte)150));
-
-            // canopy support pillars - keep these solid so it looks grounded
-            Raylib.DrawRectangle(350, -770, 20, 140, new Color((byte)60,(byte)60,(byte)60,(byte)255));
-            Raylib.DrawRectangle(590, -770, 20, 140, new Color((byte)60,(byte)60,(byte)60,(byte)255));
-            Raylib.DrawRectangle(830, -770, 20, 140, new Color((byte)60,(byte)60,(byte)60,(byte)255));
-
-            // pump 1
-            Raylib.DrawRectangle((int)pump1Pos.X - 18, (int)pump1Pos.Y - 35, 36, 60,
-                new Color((byte)60,(byte)60,(byte)60,(byte)255));
-            Raylib.DrawRectangle((int)pump1Pos.X - 12, (int)pump1Pos.Y - 28, 24, 36,
-                pump1Active ? Color.Green : new Color((byte)200,(byte)50,(byte)50,(byte)255));
-            Raylib.DrawText("PUMP 1", (int)pump1Pos.X - 24, (int)pump1Pos.Y + 30, 16, Color.White);
-            Raylib.DrawText("R = Fuel", (int)pump1Pos.X - 24, (int)pump1Pos.Y + 48, 14, Color.LightGray);
-
-            // pump 2
-            Raylib.DrawRectangle((int)pump2Pos.X - 18, (int)pump2Pos.Y - 35, 36, 60,
-                new Color((byte)60,(byte)60,(byte)60,(byte)255));
-            Raylib.DrawRectangle((int)pump2Pos.X - 12, (int)pump2Pos.Y - 28, 24, 36,
-                pump2Active ? Color.Green : new Color((byte)200,(byte)50,(byte)50,(byte)255));
-            Raylib.DrawText("PUMP 2", (int)pump2Pos.X - 24, (int)pump2Pos.Y + 30, 16, Color.White);
-            Raylib.DrawText("R = Fuel", (int)pump2Pos.X - 24, (int)pump2Pos.Y + 48, 14, Color.LightGray);
+           
             
 
             player.Draw();
@@ -3480,6 +3804,230 @@ static void DrawCheatsMenu()
     Raylib.BeginMode2D(camera);
 
     Raylib.DrawRectangle(0,0,1400,1000,currentBuilding.InteriorColor);
+    static void DrawSupermarketInterior()
+{
+    // --- floor tiles ---
+    for (int tx = 0; tx < 1400; tx += 70)
+        for (int ty = 0; ty < 1000; ty += 70)
+        {
+            Color tileColor = ((tx / 70 + ty / 70) % 2 == 0)
+                ? new Color((byte)230, (byte)235, (byte)230, (byte)255)
+                : new Color((byte)215, (byte)222, (byte)215, (byte)255);
+            Raylib.DrawRectangle(tx, ty, 70, 70, tileColor);
+        }
+
+    // --- entrance barrier with gap for trolleys/baskets ---
+    Raylib.DrawRectangle(0, 900, 380, 20, new Color((byte)160,(byte)160,(byte)160,(byte)255));
+    Raylib.DrawRectangle(650, 900, 750, 20, new Color((byte)160,(byte)160,(byte)160,(byte)255));
+    
+
+    // --- checkout counters ---
+    int[] checkoutX = { 50, 250, 450, 650, 850, 1050 };
+    for (int i = 0; i < checkoutX.Length; i++)
+    {
+        int cx = checkoutX[i];
+        Raylib.DrawRectangle(cx, 30, 140, 45, new Color((byte)60,(byte)100,(byte)60,(byte)255));
+        Raylib.DrawRectangle(cx, 30, 140, 8, new Color((byte)80,(byte)130,(byte)80,(byte)255));
+        // conveyor belt
+        Raylib.DrawRectangle(cx + 8, 42, 80, 22, new Color((byte)40,(byte)40,(byte)40,(byte)255));
+        for (int line = cx + 12; line < cx + 88; line += 12)
+            Raylib.DrawRectangle(line, 42, 2, 22, new Color((byte)60,(byte)60,(byte)60,(byte)255));
+        // register screen
+        Raylib.DrawRectangle(cx + 98, 20, 32, 28, new Color((byte)20,(byte)20,(byte)80,(byte)255));
+        Raylib.DrawRectangle(cx + 100, 22, 28, 20, new Color((byte)0,(byte)180,(byte)220,(byte)255));
+        Raylib.DrawText($"#{i+1}", cx + 56, 50, 14, Color.White);
+    }
+    Raylib.DrawText("CHECKOUTS", 540, 10, 22, Color.DarkGreen);
+
+    // --- aisle shelves with colored products ---
+    Color[][] aisleColors = {
+        new Color[] { new Color((byte)220,(byte)50,(byte)50,(byte)255),   new Color((byte)255,(byte)160,(byte)0,(byte)255) },   // red/orange - canned goods
+        new Color[] { new Color((byte)200,(byte)200,(byte)50,(byte)255),  new Color((byte)80,(byte)150,(byte)230,(byte)255) },  // yellow/blue - cereal/drinks
+        new Color[] { new Color((byte)180,(byte)100,(byte)50,(byte)255),  new Color((byte)230,(byte)230,(byte)230,(byte)255) }, // brown/white - bread/dairy
+        new Color[] { new Color((byte)50,(byte)180,(byte)50,(byte)255),   new Color((byte)220,(byte)180,(byte)220,(byte)255) }, // green/purple - snacks
+    };
+    string[] aisleLabels = { "CANNED GOODS", "CEREAL & DRINKS", "BREAD & DAIRY", "SNACKS" };
+
+    int[] aisleStartX = { 50, 340, 630 };
+    int[] shelfY = { 150, 205, 290, 345, 430, 485, 570, 625 };
+
+    for (int col = 0; col < 3; col++)
+    {
+        int ax = aisleStartX[col];
+        for (int row = 0; row < 8; row++)
+        {
+            int sy = shelfY[row];
+            Color shelfProduct = aisleColors[(row / 2) % aisleColors.Length][row % 2];
+            // shelf backing
+            Raylib.DrawRectangle(ax, sy, 220, 35, new Color((byte)150,(byte)120,(byte)80,(byte)255));
+            // products
+            for (int p = 0; p < 10; p++)
+            {
+                int px = ax + 4 + p * 21;
+                byte shade = (byte)(150 + (p * 7) % 60);
+                Raylib.DrawRectangle(px, sy + 4, 16, 26, new Color(
+                    (byte)Math.Min(255, shelfProduct.R + (p % 3) * 20),
+                    (byte)Math.Min(255, shelfProduct.G + (p % 2) * 15),
+                    (byte)Math.Min(255, shelfProduct.B + (p % 4) * 10),
+                    (byte)255));
+                Raylib.DrawRectangle(px, sy + 4, 16, 5, new Color((byte)255,(byte)255,(byte)255,(byte)80));
+            }
+            // shelf label strip
+            Raylib.DrawRectangle(ax, sy + 30, 220, 5, new Color((byte)255,(byte)255,(byte)255,(byte)120));
+        }
+        // aisle number sign
+        Raylib.DrawRectangle(ax + 70, 118, 80, 25, new Color((byte)0,(byte)80,(byte)0,(byte)255));
+        Raylib.DrawText($"AISLE {col+1}", ax + 74, 122, 16, Color.White);
+    }
+
+    // --- meat fridges (right wall) ---
+    int[] fridgeY = { 150, 280, 410, 540, 670 };
+    string[] meatTypes = { "BEEF", "CHICKEN", "LAMB", "PORK", "FISH" };
+    Color[] meatColors = {
+        new Color((byte)180,(byte)60,(byte)60,(byte)255),
+        new Color((byte)240,(byte)180,(byte)120,(byte)255),
+        new Color((byte)200,(byte)100,(byte)80,(byte)255),
+        new Color((byte)220,(byte)150,(byte)100,(byte)255),
+        new Color((byte)180,(byte)200,(byte)220,(byte)255)
+    };
+    for (int i = 0; i < fridgeY.Length; i++)
+    {
+        int fy = fridgeY[i];
+        // fridge body
+        Raylib.DrawRectangle(1310, fy, 55, 110, new Color((byte)180,(byte)210,(byte)230,(byte)255));
+        Raylib.DrawRectangle(1310, fy, 55, 10, new Color((byte)140,(byte)170,(byte)200,(byte)255));
+        // glass door
+        Raylib.DrawRectangle(1316, fy + 14, 43, 85, new Color((byte)200,(byte)220,(byte)240,(byte)180));
+        // meat packages
+        for (int p = 0; p < 3; p++)
+            Raylib.DrawRectangle(1318, fy + 18 + p * 24, 39, 18, meatColors[i]);
+        // frost effect
+        Raylib.DrawRectangle(1316, fy + 14, 43, 6, new Color((byte)220,(byte)235,(byte)255,(byte)120));
+        // handle
+        Raylib.DrawRectangle(1357, fy + 50, 4, 20, new Color((byte)100,(byte)100,(byte)110,(byte)255));
+        Raylib.DrawText(meatTypes[i], 1310, fy + 100, 11, Color.DarkBlue);
+    }
+    Raylib.DrawText("MEAT & SEAFOOD", 1295, 120, 14, Color.DarkBlue);
+
+    // --- fruit & veg bins ---
+    int[] binX = { 50, 160, 270, 380, 490 };
+    Color[] binColors = {
+        new Color((byte)255,(byte)80,(byte)80,(byte)255),   // red - apples
+        new Color((byte)255,(byte)200,(byte)0,(byte)255),   // yellow - bananas
+        new Color((byte)80,(byte)180,(byte)80,(byte)255),   // green - vegs
+        new Color((byte)255,(byte)140,(byte)0,(byte)255),   // orange - oranges
+        new Color((byte)100,(byte)180,(byte)100,(byte)255)  // green - leafy veg
+    };
+    string[] binLabels = { "APPLES", "BANANAS", "BROCCOLI", "ORANGES", "LETTUCE" };
+    for (int i = 0; i < binX.Length; i++)
+    {
+        int bx = binX[i];
+        // wooden bin
+        Raylib.DrawRectangle(bx, 750, 90, 90, new Color((byte)140,(byte)90,(byte)40,(byte)255));
+        Raylib.DrawRectangle(bx + 4, 754, 82, 82, new Color((byte)160,(byte)110,(byte)50,(byte)255));
+        // produce pile (circles to simulate produce)
+        for (int p = 0; p < 8; p++)
+        {
+            int px = bx + 8 + (p % 4) * 18;
+            int py = 758 + (p / 4) * 18;
+            Raylib.DrawCircle(px + 8, py + 8, 9, binColors[i]);
+            Raylib.DrawCircle(px + 4, py + 4, 4,
+                new Color((byte)Math.Min(255, binColors[i].R + 40),
+                          (byte)Math.Min(255, binColors[i].G + 40),
+                          (byte)Math.Min(255, binColors[i].B + 40), (byte)200));
+        }
+        Raylib.DrawText(binLabels[i], bx + 2, 844, 12, Color.DarkGreen);
+    }
+    Raylib.DrawText("FRUIT & VEG", 160, 726, 20, Color.DarkGreen);
+
+    // --- deli station ---
+    // counter
+    Raylib.DrawRectangle(650, 750, 300, 45, new Color((byte)220,(byte)200,(byte)170,(byte)255));
+    Raylib.DrawRectangle(650, 750, 300, 8, new Color((byte)240,(byte)220,(byte)190,(byte)255));
+    Raylib.DrawRectangle(650, 750, 8, 45, new Color((byte)200,(byte)180,(byte)150,(byte)255));
+    Raylib.DrawRectangle(942, 750, 8, 45, new Color((byte)200,(byte)180,(byte)150,(byte)255));
+    // glass display case
+    Raylib.DrawRectangle(650, 808, 120, 70, new Color((byte)200,(byte)220,(byte)240,(byte)180));
+    Raylib.DrawRectangle(650, 808, 120, 8, new Color((byte)160,(byte)180,(byte)200,(byte)255));
+    // deli items in case
+    Raylib.DrawRectangle(658, 820, 30, 20, new Color((byte)200,(byte)100,(byte)80,(byte)255));  // salami
+    Raylib.DrawRectangle(694, 820, 30, 20, new Color((byte)240,(byte)180,(byte)120,(byte)255)); // chicken
+    Raylib.DrawRectangle(730, 820, 30, 20, new Color((byte)180,(byte)60,(byte)60,(byte)255));   // ham
+    Raylib.DrawRectangle(658, 848, 100, 22, new Color((byte)200,(byte)220,(byte)240,(byte)100));// glass reflection
+    // meat slicer
+    Raylib.DrawRectangle(790, 808, 70, 70, new Color((byte)160,(byte)160,(byte)170,(byte)255));
+    Raylib.DrawCircle(810, 828, 16, new Color((byte)120,(byte)120,(byte)130,(byte)255));
+    Raylib.DrawCircle(810, 828, 10, new Color((byte)180,(byte)180,(byte)190,(byte)255));
+    Raylib.DrawRectangle(820, 840, 30, 8, new Color((byte)140,(byte)140,(byte)150,(byte)255));
+    // heated display
+    Raylib.DrawRectangle(878, 808, 70, 70, new Color((byte)60,(byte)40,(byte)20,(byte)255));
+    Raylib.DrawRectangle(882, 814, 62, 58, new Color((byte)40,(byte)20,(byte)10,(byte)255));
+    for (int r = 0; r < 3; r++)
+        Raylib.DrawRectangle(886, 818 + r * 14, 54, 10,
+            new Color((byte)200,(byte)80,(byte)20,(byte)(180 - r * 30)));
+    Raylib.DrawText("DELI", 762, 726, 20, Color.DarkGray);
+    Raylib.DrawText("E = Order", 688, 758, 14, Color.DarkGray);
+
+    // --- trolleys near entrance ---
+    DrawTrolley(50,  930, trolleyPickedUp && !player.HasTrolley);
+    DrawTrolley(130, 930, false);
+    DrawTrolley(210, 930, false);
+
+    // --- baskets near entrance ---
+    DrawBasket(960, 930, basketPickedUp && !player.HasBasket);
+    DrawBasket(985, 930, false);
+    DrawBasket(1010, 930, false);
+    DrawBasket(1035, 930, false);
+    
+    // labels
+    Raylib.DrawText("TROLLEYS", 150, 900, 14, Color.DarkGray);
+    Raylib.DrawText("BASKETS", 970, 900, 14, Color.DarkGray);
+
+}
+
+static void DrawTrolley(int x, int y, bool takenAway)
+{
+    if (takenAway) return;
+    // body
+    Raylib.DrawRectangle(x, y, 60, 35, new Color((byte)150,(byte)150,(byte)160,(byte)255));
+    Raylib.DrawRectangleLines(x, y, 60, 35, new Color((byte)100,(byte)100,(byte)110,(byte)255));
+    // basket mesh lines
+    for (int i = x + 10; i < x + 60; i += 10)
+        Raylib.DrawRectangle(i, y, 2, 35, new Color((byte)120,(byte)120,(byte)130,(byte)255));
+    for (int j = y + 8; j < y + 35; j += 8)
+        Raylib.DrawRectangle(x, j, 60, 2, new Color((byte)120,(byte)120,(byte)130,(byte)255));
+    // handle
+    Raylib.DrawRectangle(x, y - 12, 60, 8, new Color((byte)100,(byte)100,(byte)110,(byte)255));
+    // wheels
+    Raylib.DrawCircle(x + 12, y + 42, 6, new Color((byte)60,(byte)60,(byte)70,(byte)255));
+    Raylib.DrawCircle(x + 48, y + 42, 6, new Color((byte)60,(byte)60,(byte)70,(byte)255));
+    Raylib.DrawCircle(x + 12, y + 42, 3, new Color((byte)100,(byte)100,(byte)110,(byte)255));
+    Raylib.DrawCircle(x + 48, y + 42, 3, new Color((byte)100,(byte)100,(byte)110,(byte)255));
+}
+
+static void DrawBasket(int x, int y, bool takenAway)
+{
+    if (takenAway) return;
+    // basket body
+    Raylib.DrawRectangle(x, y + 6, 22, 18, new Color((byte)180,(byte)100,(byte)30,(byte)255));
+    // weave pattern
+    for (int i = x + 4; i < x + 22; i += 5)
+        Raylib.DrawRectangle(i, y + 6, 2, 18, new Color((byte)140,(byte)70,(byte)15,(byte)255));
+    // handle
+    Raylib.DrawRectangle(x + 4, y, 14, 8, new Color((byte)140,(byte)70,(byte)15,(byte)255));
+    Raylib.DrawRectangle(x + 4, y, 4, 8, new Color((byte)160,(byte)90,(byte)25,(byte)255));
+    Raylib.DrawRectangle(x + 14, y, 4, 8, new Color((byte)160,(byte)90,(byte)25,(byte)255));
+}
+if (currentBuilding.BuildingName == "SUPERMARKET")
+{
+    DrawSupermarketInterior();
+}
+
+if (currentBuilding.BuildingName != "DBar" && currentBuilding.BuildingName != "SUPERMARKET")
+{
+    foreach (Rectangle obj in currentBuilding.InteriorObjects)
+        Raylib.DrawRectangleRec(obj, Color.DarkBrown);
+}
 
     if (currentBuilding.BuildingName == "DBar")
     {
@@ -3573,14 +4121,13 @@ static void DrawCheatsMenu()
         Raylib.DrawRectangle(578, 497, 22, 18, new Color((byte)60,(byte)30,(byte)10,(byte)255));
             }
 
-    if (currentBuilding.BuildingName != "DBar")
+    if (currentBuilding.BuildingName != "DBar" && currentBuilding.BuildingName != "SUPERMARKET")
+{
+    foreach (Rectangle obj in currentBuilding.InteriorObjects)
     {
-        foreach (Rectangle obj in currentBuilding.InteriorObjects)
-        {
-            Raylib.DrawRectangleRec(obj, Color.DarkBrown);
-        }
+        Raylib.DrawRectangleRec(obj, Color.DarkBrown);
     }
-
+}
     if (currentBuilding.BuildingName == "GYM")
 {
     if (gymCounterNPC != null)
@@ -4024,9 +4571,72 @@ if (Vector2.Distance(player.Position, new Vector2(910, 365)) < 80)
     Raylib.DrawText("Q = Close", panelX + 190, panelY + 375, 20, Color.LightGray);
 }
 
+  static void DrawSupermarketInventoryUI()
+{
+    if (!supermarketInventoryOpen) return;
+    if (!player.HasTrolley && !player.HasBasket) return;
+
+    bool isTrolley = player.HasTrolley;
+    int capacity = isTrolley ? 20 : 10;
+    var inventory = isTrolley ? trolleyInventory : basketInventory;
+    string title = isTrolley ? "TROLLEY" : "BASKET";
+
+    int cols = isTrolley ? 5 : 5;
+    int rows = isTrolley ? 4 : 2;
+    int slotSize = 60;
+    int pad = 8;
+    int panelW = cols * (slotSize + pad) + 20;
+    int panelH = rows * (slotSize + pad) + 60;
+    int px = ScreenWidth / 2 - panelW / 2;
+    int py = 200;
+
+    Raylib.DrawRectangle(px, py, panelW, panelH, new Color((byte)20,(byte)20,(byte)30,(byte)240));
+    Raylib.DrawRectangleLines(px, py, panelW, panelH, Color.Gold);
+    Raylib.DrawText(title, px + 12, py + 10, 24, Color.Gold);
+    Raylib.DrawText($"{inventory.Count(s => s != null)}/{capacity}", px + panelW - 60, py + 12, 18, Color.LightGray);
+
+    for (int i = 0; i < capacity; i++)
+    {
+        int col = i % cols;
+        int row = i / cols;
+        int sx = px + 10 + col * (slotSize + pad);
+        int sy = py + 44 + row * (slotSize + pad);
+
+        Raylib.DrawRectangle(sx, sy, slotSize, slotSize, new Color((byte)40,(byte)40,(byte)40,(byte)255));
+        Raylib.DrawRectangleLines(sx, sy, slotSize, slotSize, new Color((byte)100,(byte)100,(byte)100,(byte)255));
+
+        if (!string.IsNullOrEmpty(inventory[i]))
+            Raylib.DrawText(inventory[i].Substring(0, Math.Min(6, inventory[i].Length)),
+                sx + 4, sy + slotSize / 2 - 8, 13, Color.White);
+    }
+
+    Raylib.DrawText("I = Close", px + panelW / 2 - 40, py + panelH - 22, 16, Color.LightGray);
+}
+
+  if (currentBuilding.BuildingName == "SUPERMARKET")
+{
+    bool nearCashier = Vector2.Distance(player.Position, currentBuilding.InteriorNPC.Position) < 120;
+
+    if (!nearCashier && (player.HasTrolley || player.HasBasket))
+    {
+        Raylib.DrawRectangle(0, 620, 1280, 100, new Color((byte)0,(byte)0,(byte)0,(byte)180));
+        if (player.HasTrolley)
+        {
+            Raylib.DrawText("TROLLEY", 20, 630, 30, Color.Gold);
+            Raylib.DrawText("I = Open Inventory | Space = Put Down near entrance", 20, 670, 24, Color.White);
+        }
+        else
+        {
+            Raylib.DrawText("BASKET", 20, 630, 30, Color.Gold);
+            Raylib.DrawText("I = Open Inventory | Space = Put Down near entrance", 20, 670, 24, Color.White);
+        }
+    }
+}
+
     DrawChestUI();
     DrawWardrobe();
     DrawShopUI();
+    DrawSupermarketInventoryUI();
 }
 
         static void DrawHUD()
@@ -4145,7 +4755,8 @@ if (Vector2.Distance(player.Position, new Vector2(910, 365)) < 80)
         Raylib.DrawText(items[i].name, x + 4, y + slotSize - 20, 13, Color.LightGray);
     }
 
-    Raylib.DrawText("TAB = Close", invX, invY + 5 * (slotSize + padding) + 30, 20, Color.LightGray);
+    if (player.HasTrolley || player.HasBasket)
+    Raylib.DrawText("SPACE = Return (anywhere near entrance)", 400, 890, 14, Color.DarkGray);
 }
 if (levelUpTimer > 0)
 {
@@ -4258,48 +4869,14 @@ for (int i = 4200; i < 30000; i += 400)
             lakes.Add(new Lake(new Vector2(700, 1200)));
             lakes.Add(new Lake(new Vector2(-900, -600)));
 
-         buildings.Add(new Building(
-    new Rectangle(1200, 410, 160, 120),
-    new Color(180,120,90,255),
-    new Color(90,70,50,255),
-    new Vector2(1100,700),
-    "BANK",
-    new NPC(new Vector2(700,450), "Bank Manager", "Chur maori. Welcome to Waikato Bank.")
-));
 
-var dbar = new Building(
-    new Rectangle(1700, 410, 160, 120),
-    Color.DarkBlue,
-    new Color(50,60,90,255),
-    new Vector2(1800,650),
-    "DBar",
-    new NPC(new Vector2(600,420), "Dbar Owner", "Grab a woodys and relax at Dbar.")
-);
+//Dbars
+AddDBar(1700, 410);
 
-dbar.InteriorObjects.Clear();
+//Banks
+AddBank(1200, 410);
+AddBank(-9850, -700); 
 
-// bar counter collision
-dbar.InteriorObjects.Add(new Rectangle(100, 150, 300, 40));
-
-// pool table 1 collision
-dbar.InteriorObjects.Add(new Rectangle(148, 278, 184, 104));
-
-// pool table 2 collision
-dbar.InteriorObjects.Add(new Rectangle(448, 278, 184, 104));
-
-// room divider collision
-dbar.InteriorObjects.Add(new Rectangle(750, 150, 8, 400));
-
-// pokie machine 1 collision
-dbar.InteriorObjects.Add(new Rectangle(780, 200, 60, 90));
-
-// pokie machine 2 collision
-dbar.InteriorObjects.Add(new Rectangle(780, 320, 60, 90));
-
-// pokie machine 3 collision
-dbar.InteriorObjects.Add(new Rectangle(880, 200, 60, 90));
-
-buildings.Add(dbar);
 
 // table 1 - left side of bar
 dbarTableNPCs.Add(new NPC(new Vector2(120, 430), "Patron", "Cheers bro!"));
@@ -4315,112 +4892,27 @@ dbarTableNPCs.Add(new NPC(new Vector2(605, 470), "Patron", "Yeah nah yeah."));
 
 dbarPokieNPC = new NPC(new Vector2(882, 340), "Bloke", "Oi back off, I'm on a winning streak bro!");
 
-buildings.Add(new Building(
-    new Rectangle(-1000, 410, 160, 120),
-    Color.DarkGreen,
-    new Color(40,90,50,255),
-    new Vector2(-1050,600),
-    "STORE",
-    new NPC(new Vector2(500,420), "Store Clerk", "Need supplies for fishing? Show me the moolack")
-));
+AddStore(-1000, 410);
 
-buildings.Add(new Building(
-    new Rectangle(340, -200, 160, 120),
-    new Color(220,50,50,255),
-    new Color(200,220,220,255),
-    new Vector2(420,-150),
-    "HOSPITAL",
-    new NPC(new Vector2(600,420), "Doctor", "Kia ora! I can patch you up for $20.")
-));
+AddHospital(340, -200);
 
-buildings.Add(new Building(
-    new Rectangle(660, 150, 160, 120),
-    new Color(80,80,80,255),
-    new Color(50,50,60,255),
-    new Vector2(740,250),
-    "WEAPONS",
-    new NPC(new Vector2(600,420), "Weapons Dealer", "Need a sharper blade bro? I got you.")
-));
+AddWeapons(660, 150);
 
-buildings.Add(new Building(
-    new Rectangle(-400, 410, 160, 120),
-    new Color(200,160,100,255),
-    new Color(180,140,100,255),
-    new Vector2(-320,650),
-    "MY HOUSE",
-    new NPC(new Vector2(800,420), "Mirror", "Check yourself out bro.")
-));
+AddMyHouse(-400, 410);
 
-buildings.Add(new Building(
-    new Rectangle(450, -1200, 260, 160),
-    new Color(220, 220, 180, 255),
-    new Color(200, 200, 160, 255),
-    new Vector2(580, -1050),
-    "GAS STATION",
-    new NPC(new Vector2(600, 420), "Attendant", "Pay for your fuel here bro.")
-));
+AddGasStation(300, -420);
+AddGasStation(7000, 540);
+AddGasStation(-9000, 540);
 
-var gym = new Building(
-    new Rectangle(2700, 410, 160, 120),
-    new Color(50, 100, 180, 255),
-    new Color(40, 40, 60, 255),
-    new Vector2(2800, 650),
-    "GYM",
-    new NPC(new Vector2(950, 125), "Trainer", "You wanna get big? Train hard every day bro.")
-);
+AddGym(2700, 410);
 
-gym.InteriorObjects.Clear();
-
-// dumbbell rack collision
-gym.InteriorObjects.Add(new Rectangle(180, 180, 140, 60));
-
-// bench press collision
-gym.InteriorObjects.Add(new Rectangle(480, 285, 220, 55));
-
-// treadmills
-gym.InteriorObjects.Add(new Rectangle(180, 920, 100, 60));
-gym.InteriorObjects.Add(new Rectangle(380, 920, 100, 60));
-gym.InteriorObjects.Add(new Rectangle(580, 920, 100, 60));
-
-// cycling machines - left wall, spaced 200 apart vertically
-gym.InteriorObjects.Add(new Rectangle(10, 200, 80, 60));
-gym.InteriorObjects.Add(new Rectangle(10, 400, 80, 60));
-gym.InteriorObjects.Add(new Rectangle(10, 600, 80, 60));
-
-// yoga mats
-//gym.InteriorObjects.Add(new Rectangle(550, 480, 70, 40));
-//gym.InteriorObjects.Add(new Rectangle(550, 530, 70, 40));
-//gym.InteriorObjects.Add(new Rectangle(550, 580, 70, 40));
-
-// counter
-gym.InteriorObjects.Add(new Rectangle(700, 150, 200, 40));
-
-// toilets and shower - right wall, running vertically
-gym.InteriorObjects.Add(new Rectangle(1310, 200, 60, 80));   // toilet 1
-gym.InteriorObjects.Add(new Rectangle(1310, 340, 60, 80));   // toilet 2
-gym.InteriorObjects.Add(new Rectangle(1310, 480, 80, 80));   // shower
-
-buildings.Add(gym);
+AddSupermarket(3600, 410);
 
 gymCounterNPC = new NPC(new Vector2(780, 130), "Staff", "Grab a protein shake bro, $3 each.");
 
-buildings.Add(new Building(
-    new Rectangle(-1600, 410, 180, 130),
-    new Color(180, 60, 40, 255),    // red/brown marae exterior
-    new Color(100, 60, 30, 255),
-    new Vector2(-1500, 650),
-    "MARAE",
-    new NPC(new Vector2(600, 420), "Kaumatua", "Haere mai, haere mai, haere mai. You are welcome here.")
-));
+AddMarae(-1600, 410);
 
-buildings.Add(new Building(
-    new Rectangle(3200, 410, 160, 120),
-    new Color(30, 30, 120, 255),    // dark blue police exterior
-    new Color(40, 40, 80, 255),
-    new Vector2(3300, 650),
-    "POLICE STATION",
-    new NPC(new Vector2(600, 420), "Officer", "Keep it legal out there, no funny business.")
-));
+AddPoliceStation(3200, 410);
 
             npcs.Add(new NPC(
                 new Vector2(500,500),
@@ -4631,7 +5123,6 @@ buildings.Add(new Building(
         bool isMoving = false;
 
         public bool Hidden = false;
-        float speed => 300 + (AthleticsLevel * 2);
 
         public int WoodcuttingLevel = 1;
         public int FishingLevel = 1;
@@ -4662,6 +5153,10 @@ buildings.Add(new Building(
         public int AthleticsXP = 0;
         public int StrengthLevel = 1;
         public int StrengthXP = 0;
+        public bool HasTrolley = false;
+        public bool HasBasket = false;
+        public float BaseSpeed => 300 + (AthleticsLevel * 2);
+        float speed => HasTrolley ? BaseSpeed * 0.65f : BaseSpeed;
         float regenTimer = 0f;
         float damageCooldown = 0f;
         public Color ShirtColor = Color.Blue;
@@ -4950,6 +5445,11 @@ public void AddStrengthXP(int xp)
             DrawFacingRight(x, y);
             break;
     }
+    // draw held item on top of player
+    if (HasBasket)
+        DrawHeldBasket(x, y);
+    else if (HasTrolley)
+        DrawPushedTrolley(x, y);
 }
 
 void DrawFacingDown(int x, int y)
@@ -5096,6 +5596,106 @@ void DrawFacingRight(int x, int y)
     {
         Raylib.DrawRectangle(x + 16, y + 54, 8, 12, PantsColor);
         Raylib.DrawRectangle(x + 24, y + 54, 8, 12, PantsColor);
+    }
+}
+void DrawHeldBasket(int x, int y)
+{
+    // basket appears on the player's side depending on facing
+    int bx, by;
+    switch (Facing)
+    {
+        case FacingDirection.Down:
+            bx = x + 28; by = y + 28;
+            // basket body
+            Raylib.DrawRectangle(bx, by, 22, 18, new Color((byte)180,(byte)100,(byte)30,(byte)255));
+            for (int i = bx + 4; i < bx + 22; i += 5)
+                Raylib.DrawRectangle(i, by, 2, 18, new Color((byte)140,(byte)70,(byte)15,(byte)255));
+            Raylib.DrawRectangle(bx + 4, by - 8, 14, 10, new Color((byte)140,(byte)70,(byte)15,(byte)255));
+            break;
+        case FacingDirection.Up:
+            bx = x + 28; by = y + 28;
+            Raylib.DrawRectangle(bx, by, 22, 18, new Color((byte)180,(byte)100,(byte)30,(byte)255));
+            for (int i = bx + 4; i < bx + 22; i += 5)
+                Raylib.DrawRectangle(i, by, 2, 18, new Color((byte)140,(byte)70,(byte)15,(byte)255));
+            Raylib.DrawRectangle(bx + 4, by - 8, 14, 10, new Color((byte)140,(byte)70,(byte)15,(byte)255));
+            break;
+        case FacingDirection.Left:
+            bx = x - 20; by = y + 30;
+            Raylib.DrawRectangle(bx, by, 22, 18, new Color((byte)180,(byte)100,(byte)30,(byte)255));
+            for (int i = bx + 4; i < bx + 22; i += 5)
+                Raylib.DrawRectangle(i, by, 2, 18, new Color((byte)140,(byte)70,(byte)15,(byte)255));
+            Raylib.DrawRectangle(bx + 4, by - 8, 14, 10, new Color((byte)140,(byte)70,(byte)15,(byte)255));
+            break;
+        case FacingDirection.Right:
+            bx = x + 38; by = y + 30;
+            Raylib.DrawRectangle(bx, by, 22, 18, new Color((byte)180,(byte)100,(byte)30,(byte)255));
+            for (int i = bx + 4; i < bx + 22; i += 5)
+                Raylib.DrawRectangle(i, by, 2, 18, new Color((byte)140,(byte)70,(byte)15,(byte)255));
+            Raylib.DrawRectangle(bx + 4, by - 8, 14, 10, new Color((byte)140,(byte)70,(byte)15,(byte)255));
+            break;
+    }
+}
+
+void DrawPushedTrolley(int x, int y)
+{
+    int tx, ty;
+    switch (Facing)
+    {
+        case FacingDirection.Down:
+            tx = x - 10; ty = y + 65;
+            // trolley body
+            Raylib.DrawRectangle(tx, ty, 60, 32, new Color((byte)150,(byte)150,(byte)160,(byte)255));
+            Raylib.DrawRectangleLines(tx, ty, 60, 32, new Color((byte)100,(byte)100,(byte)110,(byte)255));
+            // mesh
+            for (int i = tx + 10; i < tx + 60; i += 10)
+                Raylib.DrawRectangle(i, ty, 2, 32, new Color((byte)120,(byte)120,(byte)130,(byte)255));
+            for (int j = ty + 8; j < ty + 32; j += 8)
+                Raylib.DrawRectangle(tx, j, 60, 2, new Color((byte)120,(byte)120,(byte)130,(byte)255));
+            // handle connecting to player
+            Raylib.DrawRectangle(tx + 10, ty - 10, 40, 8, new Color((byte)100,(byte)100,(byte)110,(byte)255));
+            // wheels
+            Raylib.DrawCircle(tx + 12, ty + 38, 5, new Color((byte)60,(byte)60,(byte)70,(byte)255));
+            Raylib.DrawCircle(tx + 48, ty + 38, 5, new Color((byte)60,(byte)60,(byte)70,(byte)255));
+            break;
+
+        case FacingDirection.Up:
+            tx = x - 10; ty = y - 50;
+            Raylib.DrawRectangle(tx, ty, 60, 32, new Color((byte)150,(byte)150,(byte)160,(byte)255));
+            Raylib.DrawRectangleLines(tx, ty, 60, 32, new Color((byte)100,(byte)100,(byte)110,(byte)255));
+            for (int i = tx + 10; i < tx + 60; i += 10)
+                Raylib.DrawRectangle(i, ty, 2, 32, new Color((byte)120,(byte)120,(byte)130,(byte)255));
+            for (int j = ty + 8; j < ty + 32; j += 8)
+                Raylib.DrawRectangle(tx, j, 60, 2, new Color((byte)120,(byte)120,(byte)130,(byte)255));
+            Raylib.DrawRectangle(tx + 10, ty + 32, 40, 8, new Color((byte)100,(byte)100,(byte)110,(byte)255));
+            Raylib.DrawCircle(tx + 12, ty - 6, 5, new Color((byte)60,(byte)60,(byte)70,(byte)255));
+            Raylib.DrawCircle(tx + 48, ty - 6, 5, new Color((byte)60,(byte)60,(byte)70,(byte)255));
+            break;
+
+        case FacingDirection.Left:
+            tx = x - 65; ty = y + 10;
+            Raylib.DrawRectangle(tx, ty, 32, 45, new Color((byte)150,(byte)150,(byte)160,(byte)255));
+            Raylib.DrawRectangleLines(tx, ty, 32, 45, new Color((byte)100,(byte)100,(byte)110,(byte)255));
+            for (int i = tx + 8; i < tx + 32; i += 8)
+                Raylib.DrawRectangle(i, ty, 2, 45, new Color((byte)120,(byte)120,(byte)130,(byte)255));
+            for (int j = ty + 10; j < ty + 45; j += 10)
+                Raylib.DrawRectangle(tx, j, 32, 2, new Color((byte)120,(byte)120,(byte)130,(byte)255));
+            Raylib.DrawRectangle(tx + 32, ty + 12, 8, 22, new Color((byte)100,(byte)100,(byte)110,(byte)255));
+            Raylib.DrawCircle(tx - 6, ty + 10, 5, new Color((byte)60,(byte)60,(byte)70,(byte)255));
+            Raylib.DrawCircle(tx - 6, ty + 38, 5, new Color((byte)60,(byte)60,(byte)70,(byte)255));
+            break;
+
+        case FacingDirection.Right:
+            tx = x + 40; ty = y + 10;
+            Raylib.DrawRectangle(tx, ty, 32, 45, new Color((byte)150,(byte)150,(byte)160,(byte)255));
+            Raylib.DrawRectangleLines(tx, ty, 32, 45, new Color((byte)100,(byte)100,(byte)110,(byte)255));
+            for (int i = tx + 8; i < tx + 32; i += 8)
+                Raylib.DrawRectangle(i, ty, 2, 45, new Color((byte)120,(byte)120,(byte)130,(byte)255));
+            for (int j = ty + 10; j < ty + 45; j += 10)
+                Raylib.DrawRectangle(tx, j, 32, 2, new Color((byte)120,(byte)120,(byte)130,(byte)255));
+            Raylib.DrawRectangle(tx - 8, ty + 12, 8, 22, new Color((byte)100,(byte)100,(byte)110,(byte)255));
+            Raylib.DrawCircle(tx + 38, ty + 10, 5, new Color((byte)60,(byte)60,(byte)70,(byte)255));
+            Raylib.DrawCircle(tx + 38, ty + 38, 5, new Color((byte)60,(byte)60,(byte)70,(byte)255));
+            break;
     }
 }
     }
@@ -5256,6 +5856,28 @@ void DrawFacingRight(int x, int y)
             Raylib.DrawCircleLines((int)Position.X, (int)Position.Y, (int)(60 + ripple * 0.5f), Color.SkyBlue);
         }
     }
+
+    class GasStation
+{
+    public Vector2 Pump1Pos;
+    public Vector2 Pump2Pos;
+    public bool Pump1Active = false;
+    public bool Pump2Active = false;
+    public float PumpFuelRate = 20f;
+    public Rectangle BuildingBounds;
+    public float OriginX;   // add these
+    public float OriginY;
+
+    public GasStation(float x, float y)
+    {
+        // positions relative to the station's x/y origin
+        OriginX = x;
+        OriginY = y;
+        Pump1Pos = new Vector2(x + 180,  y - 280);
+        Pump2Pos = new Vector2(x + 420, y - 280);
+        BuildingBounds = new Rectangle(x + 150, y - 200, 260, 160);
+    }
+}
 
     class NPC
 {
