@@ -161,18 +161,62 @@ namespace OpenWorldRPG
 
             return (true, name, $"WC:{wcLv} Fish:{fishLv} Combat:{combatLv} | {hours}h {minutes}m");
         }
-        static void AddGasStation(float x, float y)
+      static void AddGasStation(float x, float y)
 {
-    // add to buildings list for entering
-    buildings.Add(new Building(
+    var gasBuilding = new Building(
         new Rectangle(x + 300, y - 780, 260, 160),
         new Color(220, 220, 180, 255),
-        new Color(200, 200, 160, 255),
+        new Color(200, 195, 160, 255),
         new Vector2(x + 280, y - 700),
         "GAS STATION",
-        new NPC(new Vector2(600, 420), "Attendant", "Pay for your fuel here bro.")
-    ));
-
+        new NPC(new Vector2(1000, 150), "Attendant", "Pay for your fuel here bro."),
+        entryPos: new Vector2(580, 870)
+    );
+ 
+    gasBuilding.InteriorObjects.Clear();
+ 
+    // --- service counter (right side) ---
+    gasBuilding.InteriorObjects.Add(new Rectangle(800, 80, 380, 50));   // main counter
+    gasBuilding.InteriorObjects.Add(new Rectangle(800, 80, 380, 8));    // counter top edge
+    gasBuilding.InteriorObjects.Add(new Rectangle(800, 80, 8, 50));     // left side
+    gasBuilding.InteriorObjects.Add(new Rectangle(1172, 80, 8, 50));    // right side
+ 
+    // --- shelving aisles (snack/drink shop) ---
+    // aisle 1
+    gasBuilding.InteriorObjects.Add(new Rectangle(80,  200, 180, 30));
+    gasBuilding.InteriorObjects.Add(new Rectangle(80,  260, 180, 30));
+    gasBuilding.InteriorObjects.Add(new Rectangle(80,  320, 180, 30));
+    gasBuilding.InteriorObjects.Add(new Rectangle(80,  380, 180, 30));
+    gasBuilding.InteriorObjects.Add(new Rectangle(80,  440, 180, 30));
+    gasBuilding.InteriorObjects.Add(new Rectangle(80,  500, 180, 30));
+ 
+    // aisle 2
+    gasBuilding.InteriorObjects.Add(new Rectangle(340, 200, 180, 30));
+    gasBuilding.InteriorObjects.Add(new Rectangle(340, 260, 180, 30));
+    gasBuilding.InteriorObjects.Add(new Rectangle(340, 320, 180, 30));
+    gasBuilding.InteriorObjects.Add(new Rectangle(340, 380, 180, 30));
+    gasBuilding.InteriorObjects.Add(new Rectangle(340, 440, 180, 30));
+    gasBuilding.InteriorObjects.Add(new Rectangle(340, 500, 180, 30));
+ 
+    // --- drink fridges (back wall) ---
+    gasBuilding.InteriorObjects.Add(new Rectangle(600,  80, 60, 120));
+    gasBuilding.InteriorObjects.Add(new Rectangle(680,  80, 60, 120));
+    gasBuilding.InteriorObjects.Add(new Rectangle(760,  80, 60, 120));
+ 
+    // --- oil/auto products wall (left wall) ---
+    gasBuilding.InteriorObjects.Add(new Rectangle(20, 200, 40, 400));
+ 
+    // --- toilets (back corner) ---
+    gasBuilding.InteriorObjects.Add(new Rectangle(1080, 200, 120, 120)); // toilet room
+ 
+    // --- waiting bench ---
+    gasBuilding.InteriorObjects.Add(new Rectangle(80, 620, 240, 30));
+ 
+    // entrance mat
+    //gasBuilding.InteriorObjects.Add(new Rectangle(480, 870, 200, 30));
+ 
+    buildings.Add(gasBuilding);
+ 
     // add to gas stations list for pump logic
     gasStations.Add(new GasStation(x, y));
 }
@@ -234,13 +278,14 @@ static void AddDBar(float x, float y)
 {
     var dbar = new Building(
         new Rectangle(x, y, 160, 120),
-        Color.DarkBlue,
-        new Color(50, 60, 90, 255),
+        new Color(15, 15, 15, 255),          // black exterior
+        new Color(20, 20, 25, 255),           // very dark interior
         new Vector2(x + 100, y + 240),
         "DBar",
-        new NPC(new Vector2(600, 420), "Dbar Owner", "Grab a woodys and relax at Dbar.")
+        new NPC(new Vector2(600, 420), "Dbar Owner", "Grab a woodys and relax at Dbar."),
+        entryPos: new Vector2(318, 885)
     );
-
+ 
     dbar.InteriorObjects.Clear();
     dbar.InteriorObjects.Add(new Rectangle(100, 150, 300, 40));  // bar counter
     dbar.InteriorObjects.Add(new Rectangle(148, 278, 184, 104)); // pool table 1
@@ -249,7 +294,7 @@ static void AddDBar(float x, float y)
     dbar.InteriorObjects.Add(new Rectangle(780, 200, 60, 90));   // pokie 1
     dbar.InteriorObjects.Add(new Rectangle(780, 320, 60, 90));   // pokie 2
     dbar.InteriorObjects.Add(new Rectangle(880, 200, 60, 90));   // pokie 3
-
+ 
     buildings.Add(dbar);
 }
 
@@ -454,14 +499,50 @@ static void AddStore(float x, float y)
 
 static void AddWeapons(float x, float y)
 {
-    buildings.Add(new Building(
+    var weapons = new Building(
         new Rectangle(x, y, 160, 120),
         new Color(80, 80, 80, 255),
-        new Color(50, 50, 60, 255),
+        new Color(30, 30, 35, 255),
         new Vector2(x + 80, y + 100),
         "WEAPONS",
-        new NPC(new Vector2(600, 420), "Weapons Dealer", "Need a sharper blade bro? I got you.")
-    ));
+        new NPC(new Vector2(600, 420), "Weapons Dealer", "Need a sharper blade bro? I got you."),
+        entryPos: new Vector2(600, 880)
+    );
+ 
+    weapons.InteriorObjects.Clear();
+ 
+    // front service counter
+    weapons.InteriorObjects.Add(new Rectangle(400, 80, 500, 50));
+    weapons.InteriorObjects.Add(new Rectangle(400, 80, 500, 8));
+ 
+    // --- wall-mounted weapon racks (back wall) ---
+    // rack 1 - swords/blades
+    weapons.InteriorObjects.Add(new Rectangle(50,  80, 260, 20));
+    // rack 2 - bows/ranged
+    weapons.InteriorObjects.Add(new Rectangle(50, 180, 260, 20));
+    // rack 3 - shields
+    weapons.InteriorObjects.Add(new Rectangle(50, 280, 260, 20));
+ 
+    // --- display cases (centre floor) ---
+    weapons.InteriorObjects.Add(new Rectangle(420, 280, 180, 60));  // display case 1
+    weapons.InteriorObjects.Add(new Rectangle(650, 280, 180, 60));  // display case 2
+    weapons.InteriorObjects.Add(new Rectangle(420, 400, 180, 60));  // display case 3
+    weapons.InteriorObjects.Add(new Rectangle(650, 400, 180, 60));  // display case 4
+ 
+    // --- armour stand area (right wall) ---
+    weapons.InteriorObjects.Add(new Rectangle(1100, 80, 70, 140));  // armour stand 1
+    weapons.InteriorObjects.Add(new Rectangle(1230, 80, 70, 140));  // armour stand 2
+ 
+    // --- ammo/supplies shelves (right wall lower) ---
+    weapons.InteriorObjects.Add(new Rectangle(1050, 280, 320, 30));
+    weapons.InteriorObjects.Add(new Rectangle(1050, 350, 320, 30));
+    weapons.InteriorObjects.Add(new Rectangle(1050, 420, 320, 30));
+    weapons.InteriorObjects.Add(new Rectangle(1050, 490, 320, 30));
+ 
+    // entrance mat
+    //weapons.InteriorObjects.Add(new Rectangle(500, 870, 200, 30));
+ 
+    buildings.Add(weapons);
 }
 
 static void AddMyHouse(float x, float y)
@@ -4103,176 +4184,458 @@ static void DrawCheatsMenu()
                 building.Draw();
             }
 
-   // --- MARAE EXTERIOR ---
+// ─── DRAW ALL BUILDING EXTERIORS ────────────────────────────────────────────
 foreach (Building building in buildings)
 {
-    if (building.BuildingName != "MARAE") continue;
-
     float bx = building.Bounds.X;
     float by = building.Bounds.Y;
-
-    // atea (forecourt) grass — large open field in front
-    Raylib.DrawRectangle((int)bx - 60, (int)by + 130, 340, 280,
-        new Color((byte)60, (byte)130, (byte)50, (byte)255));
-    // atea border
-    Raylib.DrawRectangleLines((int)bx - 60, (int)by + 130, 340, 280,
-        new Color((byte)40, (byte)100, (byte)30, (byte)255));
-
-    // pou (carved posts) lining the atea
-    int[] pouX = { (int)bx - 50, (int)bx + 260 };
-    int[] pouY = { (int)by + 140, (int)by + 230, (int)by + 320 };
-    foreach (int px in pouX)
-        foreach (int py in pouY)
-        {
-            Raylib.DrawRectangle(px, py, 10, 60,
-                new Color((byte)100, (byte)55, (byte)20, (byte)255));
-            // carved face suggestion
-            Raylib.DrawRectangle(px + 1, py + 5, 8, 6,
-                new Color((byte)140, (byte)80, (byte)30, (byte)255));
-            Raylib.DrawRectangle(px + 2, py + 14, 6, 4,
-                new Color((byte)80, (byte)40, (byte)10, (byte)255));
-        }
-
-    // waharoa (entrance gateway)
-    Raylib.DrawRectangle((int)bx + 50, (int)by + 390, 12, 50,
-        new Color((byte)120, (byte)60, (byte)20, (byte)255)); // left post
-    Raylib.DrawRectangle((int)bx + 148, (int)by + 390, 12, 50,
-        new Color((byte)120, (byte)60, (byte)20, (byte)255)); // right post
-    Raylib.DrawRectangle((int)bx + 50, (int)by + 390, 110, 12,
-        new Color((byte)160, (byte)70, (byte)30, (byte)255)); // crossbeam
-    // carving pattern on crossbeam
-    for (int i = (int)bx + 56; i < (int)bx + 160; i += 14)
-        Raylib.DrawRectangle(i, (int)by + 393, 8, 6,
-            new Color((byte)200, (byte)100, (byte)40, (byte)255));
-
-    // wharenui (meeting house) body
-    Raylib.DrawRectangle((int)bx, (int)by, 220, 130,
-        new Color((byte)160, (byte)55, (byte)30, (byte)255));
-    // roof
-    Raylib.DrawTriangle(
-        new Vector2(bx + 110, by - 60),
-        new Vector2(bx - 10,  by + 10),
-        new Vector2(bx + 230, by + 10),
-        new Color((byte)100, (byte)40, (byte)20, (byte)255));
-    // roof ridge (tahuhu)
-    Raylib.DrawRectangle((int)bx + 105, (int)by - 60, 10, 70,
-        new Color((byte)80, (byte)30, (byte)10, (byte)255));
-    // maihi (diagonal barge boards)
-    Raylib.DrawLine(
-        (int)bx + 110, (int)by - 60,
-        (int)bx - 10,  (int)by + 10,
-        new Color((byte)200, (byte)100, (byte)40, (byte)255));
-    Raylib.DrawLine(
-        (int)bx + 110, (int)by - 60,
-        (int)bx + 230, (int)by + 10,
-        new Color((byte)200, (byte)100, (byte)40, (byte)255));
-
-    // kowhaiwhai (scroll patterns) on front wall
-    for (int i = (int)bx + 10; i < (int)bx + 210; i += 30)
+ 
+    // ── MARAE (unchanged) ────────────────────────────────────────────────────
+    if (building.BuildingName == "MARAE")
     {
-        Raylib.DrawCircle(i + 8, (int)by + 40, 7,
-            new Color((byte)220, (byte)80, (byte)30, (byte)255));
-        Raylib.DrawCircle(i + 8, (int)by + 40, 4,
-            new Color((byte)240, (byte)160, (byte)60, (byte)255));
+        // atea (forecourt) grass
+        Raylib.DrawRectangle((int)bx - 60, (int)by + 130, 340, 280,
+            new Color((byte)60, (byte)130, (byte)50, (byte)255));
+        Raylib.DrawRectangleLines((int)bx - 60, (int)by + 130, 340, 280,
+            new Color((byte)40, (byte)100, (byte)30, (byte)255));
+ 
+        // pou lining atea
+        int[] pouX = { (int)bx - 50, (int)bx + 260 };
+        int[] pouY = { (int)by + 140, (int)by + 230, (int)by + 320 };
+        foreach (int px in pouX)
+            foreach (int py in pouY)
+            {
+                Raylib.DrawRectangle(px, py, 10, 60, new Color((byte)100,(byte)55,(byte)20,(byte)255));
+                Raylib.DrawRectangle(px + 1, py + 5, 8, 6, new Color((byte)140,(byte)80,(byte)30,(byte)255));
+                Raylib.DrawRectangle(px + 2, py + 14, 6, 4, new Color((byte)80,(byte)40,(byte)10,(byte)255));
+            }
+ 
+        // waharoa
+        Raylib.DrawRectangle((int)bx + 50, (int)by + 390, 12, 50, new Color((byte)120,(byte)60,(byte)20,(byte)255));
+        Raylib.DrawRectangle((int)bx + 148, (int)by + 390, 12, 50, new Color((byte)120,(byte)60,(byte)20,(byte)255));
+        Raylib.DrawRectangle((int)bx + 50, (int)by + 390, 110, 12, new Color((byte)160,(byte)70,(byte)30,(byte)255));
+        for (int i = (int)bx + 56; i < (int)bx + 160; i += 14)
+            Raylib.DrawRectangle(i, (int)by + 393, 8, 6, new Color((byte)200,(byte)100,(byte)40,(byte)255));
+ 
+        // wharenui body
+        Raylib.DrawRectangle((int)bx, (int)by, 220, 130, new Color((byte)160,(byte)55,(byte)30,(byte)255));
+        Raylib.DrawTriangle(
+            new Vector2(bx + 110, by - 60),
+            new Vector2(bx - 10,  by + 10),
+            new Vector2(bx + 230, by + 10),
+            new Color((byte)100,(byte)40,(byte)20,(byte)255));
+        Raylib.DrawRectangle((int)bx + 105, (int)by - 60, 10, 70, new Color((byte)80,(byte)30,(byte)10,(byte)255));
+        Raylib.DrawLine((int)bx + 110, (int)by - 60, (int)bx - 10,  (int)by + 10, new Color((byte)200,(byte)100,(byte)40,(byte)255));
+        Raylib.DrawLine((int)bx + 110, (int)by - 60, (int)bx + 230, (int)by + 10, new Color((byte)200,(byte)100,(byte)40,(byte)255));
+        for (int i = (int)bx + 10; i < (int)bx + 210; i += 30)
+        {
+            Raylib.DrawCircle(i + 8, (int)by + 40, 7, new Color((byte)220,(byte)80,(byte)30,(byte)255));
+            Raylib.DrawCircle(i + 8, (int)by + 40, 4, new Color((byte)240,(byte)160,(byte)60,(byte)255));
+        }
+        Raylib.DrawRectangle((int)bx + 85, (int)by + 65, 50, 65, new Color((byte)80,(byte)40,(byte)10,(byte)255));
+        Raylib.DrawRectangle((int)bx + 87, (int)by + 67, 46, 61, new Color((byte)100,(byte)55,(byte)20,(byte)255));
+        Raylib.DrawRectangle((int)bx + 105, (int)by + 75, 10, 45, new Color((byte)140,(byte)75,(byte)30,(byte)255));
+        Raylib.DrawRectangle((int)bx + 98,  (int)by + 90, 24, 10, new Color((byte)140,(byte)75,(byte)30,(byte)255));
+        Raylib.DrawRectangle((int)bx + 20, (int)by + 30, 40, 30, new Color((byte)60,(byte)35,(byte)10,(byte)255));
+        Raylib.DrawRectangle((int)bx + 22, (int)by + 32, 36, 26, new Color((byte)80,(byte)50,(byte)20,(byte)180));
+        Raylib.DrawRectangle((int)bx + 160, (int)by + 30, 40, 30, new Color((byte)60,(byte)35,(byte)10,(byte)255));
+        Raylib.DrawRectangle((int)bx + 162, (int)by + 32, 36, 26, new Color((byte)80,(byte)50,(byte)20,(byte)180));
+        Raylib.DrawText("MARAE", (int)bx + 55, (int)by - 20, 22, new Color((byte)220,(byte)140,(byte)60,(byte)255));
     }
-
-    // door
-    Raylib.DrawRectangle((int)bx + 85, (int)by + 65, 50, 65,
-        new Color((byte)80, (byte)40, (byte)10, (byte)255));
-    Raylib.DrawRectangle((int)bx + 87, (int)by + 67, 46, 61,
-        new Color((byte)100, (byte)55, (byte)20, (byte)255));
-    // door carving
-    Raylib.DrawRectangle((int)bx + 105, (int)by + 75, 10, 45,
-        new Color((byte)140, (byte)75, (byte)30, (byte)255));
-    Raylib.DrawRectangle((int)bx + 98,  (int)by + 90, 24, 10,
-        new Color((byte)140, (byte)75, (byte)30, (byte)255));
-
-    // windows (small, either side of door)
-    Raylib.DrawRectangle((int)bx + 20, (int)by + 30, 40, 30,
-        new Color((byte)60, (byte)35, (byte)10, (byte)255));
-    Raylib.DrawRectangle((int)bx + 22, (int)by + 32, 36, 26,
-        new Color((byte)80, (byte)50, (byte)20, (byte)180));
-    Raylib.DrawRectangle((int)bx + 160, (int)by + 30, 40, 30,
-        new Color((byte)60, (byte)35, (byte)10, (byte)255));
-    Raylib.DrawRectangle((int)bx + 162, (int)by + 32, 36, 26,
-        new Color((byte)80, (byte)50, (byte)20, (byte)180));
-
-    // building name sign
-    Raylib.DrawText("MARAE", (int)bx + 55, (int)by - 20, 22,
-        new Color((byte)220, (byte)140, (byte)60, (byte)255));
-}    
-
-// --- BANK EXTERIOR ---
-foreach (Building building in buildings)
-{
-    if (building.BuildingName != "BANK") continue;
-
-    float bx = building.Bounds.X;
-    float by = building.Bounds.Y;
-
-    // main building body
-    Raylib.DrawRectangle((int)bx, (int)by, 240, 160,
-        new Color((byte)200, (byte)175, (byte)100, (byte)255));
-
-    // roof / parapet
-    Raylib.DrawRectangle((int)bx - 10, (int)by - 18, 260, 22,
-        new Color((byte)160, (byte)130, (byte)60, (byte)255));
-    Raylib.DrawRectangleLines((int)bx - 10, (int)by - 18, 260, 22,
-        new Color((byte)120, (byte)95, (byte)40, (byte)255));
-
-    // pillars either side of entrance
-    Raylib.DrawRectangle((int)bx + 20, (int)by, 18, 160,
-        new Color((byte)220, (byte)200, (byte)130, (byte)255));
-    Raylib.DrawRectangle((int)bx + 202, (int)by, 18, 160,
-        new Color((byte)220, (byte)200, (byte)130, (byte)255));
-
-    // pillar caps
-    Raylib.DrawRectangle((int)bx + 16,  (int)by - 8, 26, 10,
-        new Color((byte)180, (byte)155, (byte)80, (byte)255));
-    Raylib.DrawRectangle((int)bx + 198, (int)by - 8, 26, 10,
-        new Color((byte)180, (byte)155, (byte)80, (byte)255));
-
-    // windows left
-    Raylib.DrawRectangle((int)bx + 45, (int)by + 20, 38, 50,
-        new Color((byte)150, (byte)190, (byte)210, (byte)255));
-    Raylib.DrawRectangleLines((int)bx + 45, (int)by + 20, 38, 50,
-        new Color((byte)120, (byte)100, (byte)50, (byte)255));
-    Raylib.DrawRectangle((int)bx + 64, (int)by + 20, 2, 50,
-        new Color((byte)120, (byte)100, (byte)50, (byte)180));
-
-    // windows right
-    Raylib.DrawRectangle((int)bx + 157, (int)by + 20, 38, 50,
-        new Color((byte)150, (byte)190, (byte)210, (byte)255));
-    Raylib.DrawRectangleLines((int)bx + 157, (int)by + 20, 38, 50,
-        new Color((byte)120, (byte)100, (byte)50, (byte)255));
-    Raylib.DrawRectangle((int)bx + 176, (int)by + 20, 2, 50,
-        new Color((byte)120, (byte)100, (byte)50, (byte)180));
-
-    // double door
-    Raylib.DrawRectangle((int)bx + 90, (int)by + 80, 60, 80,
-        new Color((byte)100, (byte)80, (byte)30, (byte)255));
-    Raylib.DrawRectangle((int)bx + 90, (int)by + 80, 28, 80,
-        new Color((byte)120, (byte)100, (byte)40, (byte)255));
-    Raylib.DrawRectangle((int)bx + 122,(int)by + 80, 28, 80,
-        new Color((byte)120, (byte)100, (byte)40, (byte)255));
-    // door handles
-    Raylib.DrawCircle((int)bx + 116, (int)by + 120, 4,
-        new Color((byte)200, (byte)160, (byte)40, (byte)255));
-    Raylib.DrawCircle((int)bx + 124, (int)by + 120, 4,
-        new Color((byte)200, (byte)160, (byte)40, (byte)255));
-
-    // bank sign
-    Raylib.DrawRectangle((int)bx + 50, (int)by - 14, 140, 14,
-        new Color((byte)140, (byte)110, (byte)50, (byte)255));
-    Raylib.DrawText("WAIKATO BANK", (int)bx + 54, (int)by - 13, 12,
-        new Color((byte)240, (byte)210, (byte)80, (byte)255));
-
-    // steps
-    Raylib.DrawRectangle((int)bx + 70, (int)by + 155, 100, 12,
-        new Color((byte)180, (byte)160, (byte)100, (byte)255));
-    Raylib.DrawRectangle((int)bx + 80, (int)by + 163, 80, 10,
-        new Color((byte)190, (byte)170, (byte)110, (byte)255));
+ 
+    // ── BANK (unchanged) ────────────────────────────────────────────────────
+    if (building.BuildingName == "BANK")
+    {
+        Raylib.DrawRectangle((int)bx, (int)by, 240, 160, new Color((byte)200,(byte)175,(byte)100,(byte)255));
+        Raylib.DrawRectangle((int)bx - 10, (int)by - 18, 260, 22, new Color((byte)160,(byte)130,(byte)60,(byte)255));
+        Raylib.DrawRectangleLines((int)bx - 10, (int)by - 18, 260, 22, new Color((byte)120,(byte)95,(byte)40,(byte)255));
+        Raylib.DrawRectangle((int)bx + 20, (int)by, 18, 160, new Color((byte)220,(byte)200,(byte)130,(byte)255));
+        Raylib.DrawRectangle((int)bx + 202, (int)by, 18, 160, new Color((byte)220,(byte)200,(byte)130,(byte)255));
+        Raylib.DrawRectangle((int)bx + 16,  (int)by - 8, 26, 10, new Color((byte)180,(byte)155,(byte)80,(byte)255));
+        Raylib.DrawRectangle((int)bx + 198, (int)by - 8, 26, 10, new Color((byte)180,(byte)155,(byte)80,(byte)255));
+        Raylib.DrawRectangle((int)bx + 45, (int)by + 20, 38, 50, new Color((byte)150,(byte)190,(byte)210,(byte)255));
+        Raylib.DrawRectangleLines((int)bx + 45, (int)by + 20, 38, 50, new Color((byte)120,(byte)100,(byte)50,(byte)255));
+        Raylib.DrawRectangle((int)bx + 64, (int)by + 20, 2, 50, new Color((byte)120,(byte)100,(byte)50,(byte)180));
+        Raylib.DrawRectangle((int)bx + 157, (int)by + 20, 38, 50, new Color((byte)150,(byte)190,(byte)210,(byte)255));
+        Raylib.DrawRectangleLines((int)bx + 157, (int)by + 20, 38, 50, new Color((byte)120,(byte)100,(byte)50,(byte)255));
+        Raylib.DrawRectangle((int)bx + 176, (int)by + 20, 2, 50, new Color((byte)120,(byte)100,(byte)50,(byte)180));
+        Raylib.DrawRectangle((int)bx + 90, (int)by + 80, 60, 80, new Color((byte)100,(byte)80,(byte)30,(byte)255));
+        Raylib.DrawRectangle((int)bx + 90, (int)by + 80, 28, 80, new Color((byte)120,(byte)100,(byte)40,(byte)255));
+        Raylib.DrawRectangle((int)bx + 122,(int)by + 80, 28, 80, new Color((byte)120,(byte)100,(byte)40,(byte)255));
+        Raylib.DrawCircle((int)bx + 116, (int)by + 120, 4, new Color((byte)200,(byte)160,(byte)40,(byte)255));
+        Raylib.DrawCircle((int)bx + 124, (int)by + 120, 4, new Color((byte)200,(byte)160,(byte)40,(byte)255));
+        Raylib.DrawRectangle((int)bx + 50, (int)by - 14, 140, 14, new Color((byte)140,(byte)110,(byte)50,(byte)255));
+        Raylib.DrawText("WAIKATO BANK", (int)bx + 54, (int)by - 13, 12, new Color((byte)240,(byte)210,(byte)80,(byte)255));
+        Raylib.DrawRectangle((int)bx + 70, (int)by + 155, 100, 12, new Color((byte)180,(byte)160,(byte)100,(byte)255));
+        Raylib.DrawRectangle((int)bx + 80, (int)by + 163, 80, 10, new Color((byte)190,(byte)170,(byte)110,(byte)255));
+    }
+ 
+    // ── DBAR — BLACK BUILDING + SMOKING AREA ────────────────────────────────
+    if (building.BuildingName == "DBar")
+    {
+        // main building body - black
+        Raylib.DrawRectangle((int)bx, (int)by, 160, 120, new Color((byte)15,(byte)15,(byte)15,(byte)255));
+        // roof trim - dark red neon glow effect
+        Raylib.DrawRectangle((int)bx - 4, (int)by - 6, 168, 8, new Color((byte)140,(byte)10,(byte)10,(byte)255));
+        Raylib.DrawRectangle((int)bx - 4, (int)by - 6, 168, 3, new Color((byte)220,(byte)20,(byte)20,(byte)255));
+        // neon sign
+        Raylib.DrawRectangle((int)bx + 20, (int)by - 22, 120, 18, new Color((byte)10,(byte)10,(byte)10,(byte)255));
+        Raylib.DrawRectangleLines((int)bx + 20, (int)by - 22, 120, 18, new Color((byte)180,(byte)10,(byte)10,(byte)255));
+        Raylib.DrawText("DBar", (int)bx + 42, (int)by - 20, 16, new Color((byte)255,(byte)30,(byte)30,(byte)255));
+        // windows — dark tinted
+        Raylib.DrawRectangle((int)bx + 10, (int)by + 20, 40, 30, new Color((byte)20,(byte)20,(byte)30,(byte)255));
+        Raylib.DrawRectangleLines((int)bx + 10, (int)by + 20, 40, 30, new Color((byte)80,(byte)10,(byte)10,(byte)255));
+        Raylib.DrawRectangle((int)bx + 110, (int)by + 20, 40, 30, new Color((byte)20,(byte)20,(byte)30,(byte)255));
+        Raylib.DrawRectangleLines((int)bx + 110, (int)by + 20, 40, 30, new Color((byte)80,(byte)10,(byte)10,(byte)255));
+        // door
+        Raylib.DrawRectangle((int)bx + 60, (int)by + 70, 40, 50, new Color((byte)30,(byte)30,(byte)30,(byte)255));
+        Raylib.DrawRectangleLines((int)bx + 60, (int)by + 70, 40, 50, new Color((byte)100,(byte)10,(byte)10,(byte)255));
+        // door handle
+        Raylib.DrawCircle((int)bx + 96, (int)by + 96, 3, new Color((byte)160,(byte)160,(byte)160,(byte)255));
+ 
+        // ── SMOKING AREA — front right of building entrance ──────────────────
+        // Positioned to the right of the door (bx+100 to bx+340, by+60 to by+240)
+        int sx = (int)bx + 105;   // smoking area left edge
+        int sy = (int)by + 55;    // smoking area top edge
+        int sw = 230;              // width
+        int sh = 200;              // height
+ 
+        // concrete/paving slab floor
+        Raylib.DrawRectangle(sx, sy, sw, sh, new Color((byte)90,(byte)90,(byte)90,(byte)255));
+        for (int tx = sx; tx < sx + sw; tx += 40)
+            for (int ty = sy; ty < sy + sh; ty += 40)
+            {
+                Raylib.DrawRectangle(tx, ty, 40, 40,
+                    ((tx + ty) / 40 % 2 == 0)
+                        ? new Color((byte)88,(byte)88,(byte)88,(byte)255)
+                        : new Color((byte)78,(byte)78,(byte)78,(byte)255));
+                Raylib.DrawRectangle(tx, ty, 40, 1, new Color((byte)60,(byte)60,(byte)60,(byte)120));
+                Raylib.DrawRectangle(tx, ty, 1, 40, new Color((byte)60,(byte)60,(byte)60,(byte)120));
+            }
+ 
+        // barriers — metal posts + rope/chain (3 sides, open toward building)
+        // left barrier
+        for (int py = sy; py <= sy + sh; py += 50)
+        {
+            Raylib.DrawRectangle(sx - 6, py, 6, 45, new Color((byte)80,(byte)80,(byte)80,(byte)255));
+            Raylib.DrawCircle(sx - 3, py, 5, new Color((byte)120,(byte)120,(byte)120,(byte)255));
+        }
+        // rope/chain left side
+        for (int py = sy + 5; py < sy + sh; py += 50)
+            Raylib.DrawLine(sx - 3, py, sx - 3, py + 44, new Color((byte)160,(byte)140,(byte)40,(byte)255));
+ 
+        // right barrier
+        for (int py = sy; py <= sy + sh; py += 50)
+        {
+            Raylib.DrawRectangle(sx + sw, py, 6, 45, new Color((byte)80,(byte)80,(byte)80,(byte)255));
+            Raylib.DrawCircle(sx + sw + 3, py, 5, new Color((byte)120,(byte)120,(byte)120,(byte)255));
+        }
+        // rope right side
+        for (int py = sy + 5; py < sy + sh; py += 50)
+            Raylib.DrawLine(sx + sw + 3, py, sx + sw + 3, py + 44, new Color((byte)160,(byte)140,(byte)40,(byte)255));
+ 
+        // front barrier (bottom edge)
+        for (int px = sx; px <= sx + sw; px += 50)
+        {
+            Raylib.DrawRectangle(px, sy + sh, 45, 6, new Color((byte)80,(byte)80,(byte)80,(byte)255));
+            Raylib.DrawCircle(px, sy + sh + 3, 5, new Color((byte)120,(byte)120,(byte)120,(byte)255));
+        }
+        // rope front
+        for (int px = sx + 5; px < sx + sw; px += 50)
+            Raylib.DrawLine(px, sy + sh + 3, px + 44, sy + sh + 3, new Color((byte)160,(byte)140,(byte)40,(byte)255));
+ 
+        // ── SMOKING TABLE 1 (left side of area) ─────────────────────────────
+        int t1x = sx + 20;
+        int t1y = sy + 50;
+        // table
+        Raylib.DrawRectangle(t1x, t1y, 70, 50, new Color((byte)50,(byte)50,(byte)50,(byte)255));
+        Raylib.DrawRectangleLines(t1x, t1y, 70, 50, new Color((byte)80,(byte)80,(byte)80,(byte)255));
+        Raylib.DrawRectangle(t1x + 2, t1y + 2, 66, 6, new Color((byte)70,(byte)70,(byte)70,(byte)255)); // table top highlight
+        // ashtray on table
+        Raylib.DrawCircle(t1x + 35, t1y + 25, 8, new Color((byte)40,(byte)40,(byte)40,(byte)255));
+        Raylib.DrawCircle(t1x + 35, t1y + 25, 5, new Color((byte)30,(byte)30,(byte)30,(byte)255));
+        // cigarette butts in ashtray
+        Raylib.DrawRectangle(t1x + 31, t1y + 22, 6, 2, new Color((byte)200,(byte)180,(byte)160,(byte)200));
+        Raylib.DrawRectangle(t1x + 33, t1y + 25, 5, 2, new Color((byte)200,(byte)180,(byte)160,(byte)200));
+        // chairs around table 1
+        // top chair
+        Raylib.DrawRectangle(t1x + 15, t1y - 18, 40, 16, new Color((byte)35,(byte)35,(byte)35,(byte)255));
+        Raylib.DrawRectangle(t1x + 15, t1y - 18, 40, 4, new Color((byte)55,(byte)55,(byte)55,(byte)255));
+        // bottom chair
+        Raylib.DrawRectangle(t1x + 15, t1y + 52, 40, 16, new Color((byte)35,(byte)35,(byte)35,(byte)255));
+        Raylib.DrawRectangle(t1x + 15, t1y + 64, 40, 4, new Color((byte)20,(byte)20,(byte)20,(byte)255));
+        // left chair
+        Raylib.DrawRectangle(t1x - 18, t1y + 10, 16, 30, new Color((byte)35,(byte)35,(byte)35,(byte)255));
+        Raylib.DrawRectangle(t1x - 18, t1y + 10, 4, 30, new Color((byte)55,(byte)55,(byte)55,(byte)255));
+        // right chair
+        Raylib.DrawRectangle(t1x + 72, t1y + 10, 16, 30, new Color((byte)35,(byte)35,(byte)35,(byte)255));
+        Raylib.DrawRectangle(t1x + 84, t1y + 10, 4, 30, new Color((byte)20,(byte)20,(byte)20,(byte)255));
+ 
+        // ── SMOKING TABLE 2 (right side of area) ────────────────────────────
+        int t2x = sx + 130;
+        int t2y = sy + 50;
+        Raylib.DrawRectangle(t2x, t2y, 70, 50, new Color((byte)50,(byte)50,(byte)50,(byte)255));
+        Raylib.DrawRectangleLines(t2x, t2y, 70, 50, new Color((byte)80,(byte)80,(byte)80,(byte)255));
+        Raylib.DrawRectangle(t2x + 2, t2y + 2, 66, 6, new Color((byte)70,(byte)70,(byte)70,(byte)255));
+        Raylib.DrawCircle(t2x + 35, t2y + 25, 8, new Color((byte)40,(byte)40,(byte)40,(byte)255));
+        Raylib.DrawCircle(t2x + 35, t2y + 25, 5, new Color((byte)30,(byte)30,(byte)30,(byte)255));
+        Raylib.DrawRectangle(t2x + 31, t2y + 22, 6, 2, new Color((byte)200,(byte)180,(byte)160,(byte)200));
+        Raylib.DrawRectangle(t2x + 33, t2y + 25, 5, 2, new Color((byte)200,(byte)180,(byte)160,(byte)200));
+        // chairs table 2
+        Raylib.DrawRectangle(t2x + 15, t2y - 18, 40, 16, new Color((byte)35,(byte)35,(byte)35,(byte)255));
+        Raylib.DrawRectangle(t2x + 15, t2y - 18, 40, 4, new Color((byte)55,(byte)55,(byte)55,(byte)255));
+        Raylib.DrawRectangle(t2x + 15, t2y + 52, 40, 16, new Color((byte)35,(byte)35,(byte)35,(byte)255));
+        Raylib.DrawRectangle(t2x + 15, t2y + 64, 40, 4, new Color((byte)20,(byte)20,(byte)20,(byte)255));
+        Raylib.DrawRectangle(t2x - 18, t2y + 10, 16, 30, new Color((byte)35,(byte)35,(byte)35,(byte)255));
+        Raylib.DrawRectangle(t2x - 18, t2y + 10, 4, 30, new Color((byte)55,(byte)55,(byte)55,(byte)255));
+        Raylib.DrawRectangle(t2x + 72, t2y + 10, 16, 30, new Color((byte)35,(byte)35,(byte)35,(byte)255));
+        Raylib.DrawRectangle(t2x + 84, t2y + 10, 4, 30, new Color((byte)20,(byte)20,(byte)20,(byte)255));
+ 
+        // smoking area sign
+        Raylib.DrawRectangle(sx + sw / 2 - 40, sy - 16, 80, 14, new Color((byte)20,(byte)20,(byte)20,(byte)255));
+        Raylib.DrawRectangleLines(sx + sw / 2 - 40, sy - 16, 80, 14, new Color((byte)80,(byte)80,(byte)80,(byte)255));
+        Raylib.DrawText("SMOKING", sx + sw / 2 - 34, sy - 14, 11, new Color((byte)160,(byte)160,(byte)160,(byte)255));
+    }
+ 
+    // ── GAS STATION BUILDING EXTERIOR ───────────────────────────────────────
+    if (building.BuildingName == "GAS STATION")
+    {
+        // main shop building
+        Raylib.DrawRectangle((int)bx, (int)by, 260, 160, new Color((byte)230,(byte)225,(byte)190,(byte)255));
+        // roof band
+        Raylib.DrawRectangle((int)bx - 5, (int)by - 10, 270, 14, new Color((byte)180,(byte)60,(byte)30,(byte)255));
+        Raylib.DrawRectangle((int)bx - 5, (int)by - 10, 270, 4, new Color((byte)220,(byte)80,(byte)40,(byte)255));
+        // large shop windows
+        Raylib.DrawRectangle((int)bx + 15, (int)by + 15, 100, 80, new Color((byte)160,(byte)200,(byte)220,(byte)220));
+        Raylib.DrawRectangleLines((int)bx + 15, (int)by + 15, 100, 80, new Color((byte)160,(byte)140,(byte)100,(byte)255));
+        Raylib.DrawRectangle((int)bx + 65, (int)by + 15, 2, 80, new Color((byte)140,(byte)120,(byte)80,(byte)180)); // window divide
+        Raylib.DrawRectangle((int)bx + 145, (int)by + 15, 80, 80, new Color((byte)160,(byte)200,(byte)220,(byte)220));
+        Raylib.DrawRectangleLines((int)bx + 145, (int)by + 15, 80, 80, new Color((byte)160,(byte)140,(byte)100,(byte)255));
+        // door
+        Raylib.DrawRectangle((int)bx + 110, (int)by + 90, 40, 70, new Color((byte)180,(byte)200,(byte)215,(byte)200));
+        Raylib.DrawRectangleLines((int)bx + 110, (int)by + 90, 40, 70, new Color((byte)160,(byte)140,(byte)100,(byte)255));
+        Raylib.DrawRectangle((int)bx + 128, (int)by + 115, 6, 18, new Color((byte)160,(byte)160,(byte)160,(byte)255)); // handle
+        // sign
+        Raylib.DrawRectangle((int)bx + 40, (int)by - 8, 180, 10, new Color((byte)180,(byte)60,(byte)30,(byte)200));
+        Raylib.DrawText("GAS STATION", (int)bx + 44, (int)by - 7, 10, new Color((byte)255,(byte)240,(byte)180,(byte)255));
+        // steps
+        Raylib.DrawRectangle((int)bx + 90, (int)by + 155, 80, 10, new Color((byte)200,(byte)195,(byte)160,(byte)255));
+    }
+ 
+    // ── WEAPONS STORE EXTERIOR ───────────────────────────────────────────────
+    if (building.BuildingName == "WEAPONS")
+    {
+        // base body
+        Raylib.DrawRectangle((int)bx, (int)by, 160, 120, new Color((byte)60,(byte)60,(byte)65,(byte)255));
+        // stone-like wall texture lines
+        for (int wx = (int)bx; wx < (int)bx + 160; wx += 30)
+            Raylib.DrawRectangle(wx, (int)by, 2, 120, new Color((byte)40,(byte)40,(byte)45,(byte)150));
+        for (int wy = (int)by; wy < (int)by + 120; wy += 20)
+            Raylib.DrawRectangle((int)bx, wy, 160, 1, new Color((byte)40,(byte)40,(byte)45,(byte)150));
+        // roof battlements / parapet
+        Raylib.DrawRectangle((int)bx - 5, (int)by - 12, 170, 14, new Color((byte)50,(byte)50,(byte)55,(byte)255));
+        for (int wx = (int)bx; wx < (int)bx + 165; wx += 22)
+            Raylib.DrawRectangle(wx, (int)by - 12, 12, 14, new Color((byte)70,(byte)70,(byte)75,(byte)255));
+        // shield/skull emblem above door
+        Raylib.DrawRectangle((int)bx + 55, (int)by - 8, 50, 10, new Color((byte)80,(byte)30,(byte)30,(byte)255));
+        Raylib.DrawText("WEAPONS", (int)bx + 18, (int)by - 7, 11, new Color((byte)180,(byte)50,(byte)50,(byte)255));
+        // barred windows
+        Raylib.DrawRectangle((int)bx + 10, (int)by + 20, 35, 30, new Color((byte)20,(byte)20,(byte)25,(byte)255));
+        Raylib.DrawRectangleLines((int)bx + 10, (int)by + 20, 35, 30, new Color((byte)80,(byte)80,(byte)85,(byte)255));
+        for (int wx = (int)bx + 18; wx < (int)bx + 45; wx += 8)
+            Raylib.DrawRectangle(wx, (int)by + 20, 2, 30, new Color((byte)60,(byte)60,(byte)65,(byte)255)); // bars
+        Raylib.DrawRectangle((int)bx + 115, (int)by + 20, 35, 30, new Color((byte)20,(byte)20,(byte)25,(byte)255));
+        Raylib.DrawRectangleLines((int)bx + 115, (int)by + 20, 35, 30, new Color((byte)80,(byte)80,(byte)85,(byte)255));
+        for (int wx = (int)bx + 123; wx < (int)bx + 150; wx += 8)
+            Raylib.DrawRectangle(wx, (int)by + 20, 2, 30, new Color((byte)60,(byte)60,(byte)65,(byte)255));
+        // heavy door
+        Raylib.DrawRectangle((int)bx + 60, (int)by + 70, 40, 50, new Color((byte)40,(byte)40,(byte)45,(byte)255));
+        Raylib.DrawRectangleLines((int)bx + 60, (int)by + 70, 40, 50, new Color((byte)80,(byte)80,(byte)85,(byte)255));
+        // door rivets
+        Raylib.DrawCircle((int)bx + 65, (int)by + 76, 3, new Color((byte)100,(byte)100,(byte)110,(byte)255));
+        Raylib.DrawCircle((int)bx + 95, (int)by + 76, 3, new Color((byte)100,(byte)100,(byte)110,(byte)255));
+        Raylib.DrawCircle((int)bx + 65, (int)by + 108, 3, new Color((byte)100,(byte)100,(byte)110,(byte)255));
+        Raylib.DrawCircle((int)bx + 95, (int)by + 108, 3, new Color((byte)100,(byte)100,(byte)110,(byte)255));
+        // door handle
+        Raylib.DrawRectangle((int)bx + 92, (int)by + 88, 4, 14, new Color((byte)140,(byte)140,(byte)150,(byte)255));
+        // crossed swords emblem on door
+        Raylib.DrawLine((int)bx + 68, (int)by + 82, (int)bx + 90, (int)by + 105, new Color((byte)160,(byte)160,(byte)170,(byte)255));
+        Raylib.DrawLine((int)bx + 90, (int)by + 82, (int)bx + 68, (int)by + 105, new Color((byte)160,(byte)160,(byte)170,(byte)255));
+    }
+ 
+    // ── HOSPITAL EXTERIOR ────────────────────────────────────────────────────
+    if (building.BuildingName == "HOSPITAL")
+    {
+        Raylib.DrawRectangle((int)bx, (int)by, 160, 120, new Color((byte)240,(byte)240,(byte)248,(byte)255));
+        // red band
+        Raylib.DrawRectangle((int)bx - 5, (int)by - 10, 170, 12, new Color((byte)200,(byte)30,(byte)30,(byte)255));
+        Raylib.DrawRectangle((int)bx - 5, (int)by - 10, 170, 4, new Color((byte)230,(byte)50,(byte)50,(byte)255));
+        // large windows each side
+        Raylib.DrawRectangle((int)bx + 8, (int)by + 15, 40, 45, new Color((byte)160,(byte)200,(byte)220,(byte)200));
+        Raylib.DrawRectangleLines((int)bx + 8, (int)by + 15, 40, 45, new Color((byte)180,(byte)190,(byte)200,(byte)255));
+        Raylib.DrawRectangle((int)bx + 112, (int)by + 15, 40, 45, new Color((byte)160,(byte)200,(byte)220,(byte)200));
+        Raylib.DrawRectangleLines((int)bx + 112, (int)by + 15, 40, 45, new Color((byte)180,(byte)190,(byte)200,(byte)255));
+        // red cross on wall
+        Raylib.DrawRectangle((int)bx + 66, (int)by + 20, 12, 35, new Color((byte)200,(byte)30,(byte)30,(byte)255));
+        Raylib.DrawRectangle((int)bx + 57, (int)by + 29, 30, 12, new Color((byte)200,(byte)30,(byte)30,(byte)255));
+        // door
+        Raylib.DrawRectangle((int)bx + 55, (int)by + 75, 50, 45, new Color((byte)180,(byte)200,(byte)210,(byte)200));
+        Raylib.DrawRectangleLines((int)bx + 55, (int)by + 75, 50, 45, new Color((byte)160,(byte)170,(byte)180,(byte)255));
+        // sign
+        Raylib.DrawRectangle((int)bx + 20, (int)by - 8, 120, 10, new Color((byte)200,(byte)30,(byte)30,(byte)200));
+        Raylib.DrawText("HOSPITAL", (int)bx + 26, (int)by - 7, 10, Color.White);
+        // ambulance bay lines on forecourt
+        Raylib.DrawRectangle((int)bx - 5, (int)by + 118, 170, 4, new Color((byte)220,(byte)50,(byte)50,(byte)255));
+    }
+ 
+    // ── SUPERMARKET EXTERIOR ─────────────────────────────────────────────────
+    if (building.BuildingName == "SUPERMARKET")
+    {
+        Raylib.DrawRectangle((int)bx, (int)by, 160, 120, new Color((byte)200,(byte)220,(byte)200,(byte)255));
+        // roof band - green
+        Raylib.DrawRectangle((int)bx - 5, (int)by - 10, 170, 12, new Color((byte)60,(byte)140,(byte)60,(byte)255));
+        Raylib.DrawRectangle((int)bx - 5, (int)by - 10, 170, 4, new Color((byte)80,(byte)170,(byte)80,(byte)255));
+        // wide glass front
+        Raylib.DrawRectangle((int)bx + 5, (int)by + 10, 150, 70, new Color((byte)140,(byte)190,(byte)160,(byte)180));
+        Raylib.DrawRectangleLines((int)bx + 5, (int)by + 10, 150, 70, new Color((byte)80,(byte)140,(byte)80,(byte)255));
+        // window frame dividers
+        Raylib.DrawRectangle((int)bx + 55, (int)by + 10, 4, 70, new Color((byte)80,(byte)140,(byte)80,(byte)255));
+        Raylib.DrawRectangle((int)bx + 105, (int)by + 10, 4, 70, new Color((byte)80,(byte)140,(byte)80,(byte)255));
+        // automatic door indicators
+        Raylib.DrawRectangle((int)bx + 57, (int)by + 82, 46, 38, new Color((byte)160,(byte)200,(byte)175,(byte)180));
+        Raylib.DrawRectangleLines((int)bx + 57, (int)by + 82, 46, 38, new Color((byte)60,(byte)120,(byte)60,(byte)255));
+        Raylib.DrawRectangle((int)bx + 79, (int)by + 82, 2, 38, new Color((byte)60,(byte)120,(byte)60,(byte)180)); // door gap
+        // sign
+        Raylib.DrawRectangle((int)bx + 10, (int)by - 8, 140, 10, new Color((byte)50,(byte)120,(byte)50,(byte)220));
+        Raylib.DrawText("SUPERMARKET", (int)bx + 12, (int)by - 7, 10, Color.White);
+        // trolley bay outside
+        Raylib.DrawRectangle((int)bx - 50, (int)by + 50, 45, 70, new Color((byte)160,(byte)160,(byte)170,(byte)255));
+        Raylib.DrawRectangleLines((int)bx - 50, (int)by + 50, 45, 70, new Color((byte)120,(byte)120,(byte)130,(byte)255));
+        Raylib.DrawText("Bay", (int)bx - 44, (int)by + 80, 11, Color.DarkGray);
+    }
+ 
+    // ── GYM EXTERIOR ─────────────────────────────────────────────────────────
+    if (building.BuildingName == "GYM")
+    {
+        Raylib.DrawRectangle((int)bx, (int)by, 160, 120, new Color((byte)40,(byte)80,(byte)160,(byte)255));
+        // bold blue roof band
+        Raylib.DrawRectangle((int)bx - 5, (int)by - 10, 170, 12, new Color((byte)20,(byte)40,(byte)100,(byte)255));
+        Raylib.DrawRectangle((int)bx - 5, (int)by - 10, 170, 4, new Color((byte)30,(byte)60,(byte)140,(byte)255));
+        // large tinted windows
+        Raylib.DrawRectangle((int)bx + 8, (int)by + 10, 55, 55, new Color((byte)60,(byte)100,(byte)180,(byte)180));
+        Raylib.DrawRectangleLines((int)bx + 8, (int)by + 10, 55, 55, new Color((byte)20,(byte)40,(byte)100,(byte)255));
+        Raylib.DrawRectangle((int)bx + 98, (int)by + 10, 55, 55, new Color((byte)60,(byte)100,(byte)180,(byte)180));
+        Raylib.DrawRectangleLines((int)bx + 98, (int)by + 10, 55, 55, new Color((byte)20,(byte)40,(byte)100,(byte)255));
+        // dumbbell icon on wall
+        Raylib.DrawRectangle((int)bx + 60, (int)by + 22, 40, 8, new Color((byte)60,(byte)100,(byte)180,(byte)255)); // bar
+        Raylib.DrawRectangle((int)bx + 56, (int)by + 18, 8, 16, new Color((byte)60,(byte)100,(byte)180,(byte)255)); // left plate
+        Raylib.DrawRectangle((int)bx + 96, (int)by + 18, 8, 16, new Color((byte)60,(byte)100,(byte)180,(byte)255)); // right plate
+        // door
+        Raylib.DrawRectangle((int)bx + 60, (int)by + 75, 40, 45, new Color((byte)20,(byte)40,(byte)100,(byte)255));
+        Raylib.DrawRectangleLines((int)bx + 60, (int)by + 75, 40, 45, new Color((byte)40,(byte)70,(byte)140,(byte)255));
+        // sign
+        Raylib.DrawRectangle((int)bx + 20, (int)by - 8, 120, 10, new Color((byte)20,(byte)40,(byte)100,(byte)220));
+        Raylib.DrawText("GYM", (int)bx + 52, (int)by - 7, 10, new Color((byte)180,(byte)210,(byte)255,(byte)255));
+    }
+ 
+    // ── POLICE STATION EXTERIOR ───────────────────────────────────────────────
+    if (building.BuildingName == "POLICE STATION")
+    {
+        Raylib.DrawRectangle((int)bx, (int)by, 160, 120, new Color((byte)30,(byte)30,(byte)100,(byte)255));
+        // dark blue band
+        Raylib.DrawRectangle((int)bx - 5, (int)by - 12, 170, 14, new Color((byte)15,(byte)15,(byte)60,(byte)255));
+        Raylib.DrawRectangle((int)bx - 5, (int)by - 12, 170, 4, new Color((byte)20,(byte)20,(byte)80,(byte)255));
+        // badge/star sign
+        Raylib.DrawRectangle((int)bx + 55, (int)by - 8, 50, 10, new Color((byte)15,(byte)15,(byte)60,(byte)255));
+        Raylib.DrawText("POLICE", (int)bx + 22, (int)by - 7, 11, new Color((byte)200,(byte)200,(byte)255,(byte)255));
+        // windows
+        Raylib.DrawRectangle((int)bx + 8, (int)by + 15, 40, 35, new Color((byte)60,(byte)80,(byte)160,(byte)180));
+        Raylib.DrawRectangleLines((int)bx + 8, (int)by + 15, 40, 35, new Color((byte)20,(byte)20,(byte)80,(byte)255));
+        Raylib.DrawRectangle((int)bx + 112, (int)by + 15, 40, 35, new Color((byte)60,(byte)80,(byte)160,(byte)180));
+        Raylib.DrawRectangleLines((int)bx + 112, (int)by + 15, 40, 35, new Color((byte)20,(byte)20,(byte)80,(byte)255));
+        // blue-and-white checkered strip (police pattern)
+        for (int cx = (int)bx; cx < (int)bx + 160; cx += 10)
+            Raylib.DrawRectangle(cx, (int)by + 52,
+                10, 10,
+                (cx / 10 % 2 == 0)
+                    ? new Color((byte)20,(byte)20,(byte)80,(byte)255)
+                    : new Color((byte)240,(byte)240,(byte)255,(byte)255));
+        // door
+        Raylib.DrawRectangle((int)bx + 60, (int)by + 70, 40, 50, new Color((byte)20,(byte)20,(byte)80,(byte)255));
+        Raylib.DrawRectangleLines((int)bx + 60, (int)by + 70, 40, 50, new Color((byte)40,(byte)40,(byte)120,(byte)255));
+        // gold handle
+        Raylib.DrawRectangle((int)bx + 92, (int)by + 88, 4, 14, new Color((byte)200,(byte)170,(byte)40,(byte)255));
+    }
+ 
+    // ── STORE EXTERIOR ───────────────────────────────────────────────────────
+    if (building.BuildingName == "STORE")
+    {
+        Raylib.DrawRectangle((int)bx, (int)by, 160, 120, new Color((byte)45,(byte)100,(byte)55,(byte)255));
+        // wooden-style dark green roof band
+        Raylib.DrawRectangle((int)bx - 5, (int)by - 10, 170, 12, new Color((byte)30,(byte)65,(byte)35,(byte)255));
+        Raylib.DrawRectangle((int)bx - 5, (int)by - 10, 170, 4, new Color((byte)40,(byte)80,(byte)45,(byte)255));
+        // rustic windows with shutters
+        Raylib.DrawRectangle((int)bx + 8, (int)by + 15, 38, 40, new Color((byte)160,(byte)195,(byte)175,(byte)180));
+        Raylib.DrawRectangleLines((int)bx + 8, (int)by + 15, 38, 40, new Color((byte)25,(byte)60,(byte)30,(byte)255));
+        Raylib.DrawRectangle((int)bx + 3, (int)by + 15, 6, 40, new Color((byte)60,(byte)110,(byte)70,(byte)255)); // left shutter
+        Raylib.DrawRectangle((int)bx + 45, (int)by + 15, 6, 40, new Color((byte)60,(byte)110,(byte)70,(byte)255)); // right shutter
+        Raylib.DrawRectangle((int)bx + 114, (int)by + 15, 38, 40, new Color((byte)160,(byte)195,(byte)175,(byte)180));
+        Raylib.DrawRectangleLines((int)bx + 114, (int)by + 15, 38, 40, new Color((byte)25,(byte)60,(byte)30,(byte)255));
+        Raylib.DrawRectangle((int)bx + 109, (int)by + 15, 6, 40, new Color((byte)60,(byte)110,(byte)70,(byte)255));
+        Raylib.DrawRectangle((int)bx + 151, (int)by + 15, 6, 40, new Color((byte)60,(byte)110,(byte)70,(byte)255));
+        // wooden door with panel detail
+        Raylib.DrawRectangle((int)bx + 58, (int)by + 72, 44, 48, new Color((byte)100,(byte)65,(byte)25,(byte)255));
+        Raylib.DrawRectangle((int)bx + 62, (int)by + 76, 18, 20, new Color((byte)120,(byte)80,(byte)35,(byte)255)); // upper panel
+        Raylib.DrawRectangle((int)bx + 82, (int)by + 76, 16, 20, new Color((byte)120,(byte)80,(byte)35,(byte)255));
+        Raylib.DrawRectangle((int)bx + 62, (int)by + 100, 36, 16, new Color((byte)120,(byte)80,(byte)35,(byte)255)); // lower panel
+        Raylib.DrawCircle((int)bx + 97, (int)by + 97, 3, new Color((byte)200,(byte)160,(byte)60,(byte)255)); // handle
+        // sign with barrel icon
+        Raylib.DrawRectangle((int)bx + 20, (int)by - 8, 120, 10, new Color((byte)25,(byte)60,(byte)30,(byte)220));
+        Raylib.DrawText("STORE", (int)bx + 46, (int)by - 7, 10, new Color((byte)180,(byte)220,(byte)180,(byte)255));
+        // wood plank steps
+        Raylib.DrawRectangle((int)bx + 48, (int)by + 118, 64, 8, new Color((byte)120,(byte)80,(byte)40,(byte)255));
+        Raylib.DrawRectangle((int)bx + 54, (int)by + 126, 52, 6, new Color((byte)140,(byte)95,(byte)50,(byte)255));
+    }
+ 
+    // ── MY HOUSE EXTERIOR ─────────────────────────────────────────────────────
+    if (building.BuildingName == "MY HOUSE")
+    {
+        // base walls - warm sandstone
+        Raylib.DrawRectangle((int)bx, (int)by, 160, 120, new Color((byte)210,(byte)175,(byte)120,(byte)255));
+        // roof - warm terracotta
+        Raylib.DrawRectangle((int)bx - 8, (int)by - 14, 176, 16, new Color((byte)180,(byte)90,(byte)50,(byte)255));
+        Raylib.DrawRectangle((int)bx - 8, (int)by - 14, 176, 5, new Color((byte)200,(byte)110,(byte)60,(byte)255));
+        // left window with flower box
+        Raylib.DrawRectangle((int)bx + 8, (int)by + 15, 38, 35, new Color((byte)160,(byte)200,(byte)210,(byte)200));
+        Raylib.DrawRectangleLines((int)bx + 8, (int)by + 15, 38, 35, new Color((byte)140,(byte)100,(byte)60,(byte)255));
+        Raylib.DrawRectangle((int)bx + 8, (int)by + 48, 38, 8, new Color((byte)100,(byte)60,(byte)20,(byte)255)); // flower box
+        Raylib.DrawCircle((int)bx + 16, (int)by + 50, 4, new Color((byte)220,(byte)80,(byte)80,(byte)255));
+        Raylib.DrawCircle((int)bx + 27, (int)by + 51, 4, new Color((byte)255,(byte)200,(byte)50,(byte)255));
+        Raylib.DrawCircle((int)bx + 38, (int)by + 50, 4, new Color((byte)220,(byte)80,(byte)80,(byte)255));
+        // right window with flower box
+        Raylib.DrawRectangle((int)bx + 114, (int)by + 15, 38, 35, new Color((byte)160,(byte)200,(byte)210,(byte)200));
+        Raylib.DrawRectangleLines((int)bx + 114, (int)by + 15, 38, 35, new Color((byte)140,(byte)100,(byte)60,(byte)255));
+        Raylib.DrawRectangle((int)bx + 114, (int)by + 48, 38, 8, new Color((byte)100,(byte)60,(byte)20,(byte)255));
+        Raylib.DrawCircle((int)bx + 122, (int)by + 50, 4, new Color((byte)255,(byte)200,(byte)50,(byte)255));
+        Raylib.DrawCircle((int)bx + 133, (int)by + 51, 4, new Color((byte)220,(byte)80,(byte)80,(byte)255));
+        Raylib.DrawCircle((int)bx + 144, (int)by + 50, 4, new Color((byte)255,(byte)200,(byte)50,(byte)255));
+        // front door - warm wood with welcome mat detail
+        Raylib.DrawRectangle((int)bx + 58, (int)by + 72, 44, 48, new Color((byte)140,(byte)85,(byte)35,(byte)255));
+        Raylib.DrawRectangle((int)bx + 62, (int)by + 76, 36, 20, new Color((byte)160,(byte)100,(byte)45,(byte)255)); // upper panel
+        Raylib.DrawRectangle((int)bx + 62, (int)by + 100, 36, 16, new Color((byte)160,(byte)100,(byte)45,(byte)255)); // lower panel
+        Raylib.DrawCircle((int)bx + 97, (int)by + 95, 4, new Color((byte)200,(byte)160,(byte)60,(byte)255)); // brass handle
+        // letterbox / house number
+        Raylib.DrawRectangle((int)bx + 10, (int)by + 90, 30, 14, new Color((byte)140,(byte)100,(byte)50,(byte)255));
+        Raylib.DrawRectangle((int)bx + 12, (int)by + 97, 26, 4, new Color((byte)80,(byte)50,(byte)20,(byte)255)); // slot
+        // sign
+        Raylib.DrawRectangle((int)bx + 20, (int)by - 10, 120, 10, new Color((byte)160,(byte)90,(byte)40,(byte)220));
+        Raylib.DrawText("MY HOUSE", (int)bx + 24, (int)by - 9, 10, new Color((byte)255,(byte)235,(byte)200,(byte)255));
+        // garden path
+        for (int px = (int)bx + 68; px < (int)bx + 93; px += 8)
+            Raylib.DrawRectangle(px, (int)by + 118, 6, 20, new Color((byte)200,(byte)185,(byte)150,(byte)255));
+    }
 }
+// ─── END DRAW ALL BUILDING EXTERIORS ────────────────────────────────────────
 
     static void DrawGasStation(GasStation station, float x, float y)
 {
@@ -5179,6 +5542,8 @@ if (currentBuilding.BuildingName == "SUPERMARKET")
 }
 
 if (currentBuilding.BuildingName != "DBar" && 
+    currentBuilding.BuildingName != "GAS STATION" && 
+    currentBuilding.BuildingName != "WEAPONS" && 
     currentBuilding.BuildingName != "SUPERMARKET" &&
     currentBuilding.BuildingName != "HOSPITAL" &&
     currentBuilding.BuildingName != "GYM" &&
@@ -5282,6 +5647,10 @@ if (currentBuilding.BuildingName != "DBar" &&
         Raylib.DrawRectangle(632, 435, 20, 22, new Color((byte)60,(byte)30,(byte)10,(byte)255));
         Raylib.DrawRectangle(558, 410, 22, 18, new Color((byte)60,(byte)30,(byte)10,(byte)255));
         Raylib.DrawRectangle(578, 497, 22, 18, new Color((byte)60,(byte)30,(byte)10,(byte)255));
+
+        // Entrance mat
+        Raylib.DrawRectangle(215, 825, 200, 120, new Color((byte)60,(byte)60,(byte)70,(byte)255));
+        Raylib.DrawRectangle(225, 835, 180, 100, new Color((byte)30,(byte)140,(byte)60,(byte)255));
             }
 
     if (currentBuilding.BuildingName == "POLICE STATION")
@@ -5553,6 +5922,393 @@ if (currentBuilding.BuildingName != "DBar" &&
         Raylib.DrawRectangle(rx + 200, 840, 4, 80, new Color((byte)160, (byte)160, (byte)170, (byte)255));
         Raylib.DrawCircle(rx + 202, 840, 8, new Color((byte)200, (byte)220, (byte)240, (byte)220));
     }
+}
+if (currentBuilding.BuildingName == "GAS STATION")
+{
+    // --- floor — grey/beige concrete tiles ---
+    for (int tx = 0; tx < 1400; tx += 80)
+        for (int ty = 0; ty < 1000; ty += 80)
+        {
+            Color tileColor = ((tx / 80 + ty / 80) % 2 == 0)
+                ? new Color((byte)195,(byte)190,(byte)165,(byte)255)
+                : new Color((byte)180,(byte)175,(byte)152,(byte)255);
+            Raylib.DrawRectangle(tx, ty, 80, 80, tileColor);
+            Raylib.DrawRectangle(tx, ty, 80, 1, new Color((byte)150,(byte)145,(byte)120,(byte)100));
+            Raylib.DrawRectangle(tx, ty, 1, 80, new Color((byte)150,(byte)145,(byte)120,(byte)100));
+        }
+ 
+    // --- SERVICE COUNTER (right side) ---
+    Raylib.DrawRectangle(800, 80, 380, 50, new Color((byte)60,(byte)60,(byte)55,(byte)255));
+    Raylib.DrawRectangle(800, 80, 380, 8, new Color((byte)80,(byte)80,(byte)74,(byte)255));
+    Raylib.DrawRectangle(800, 80, 8, 50, new Color((byte)45,(byte)45,(byte)40,(byte)255));
+    Raylib.DrawRectangle(1172, 80, 8, 50, new Color((byte)45,(byte)45,(byte)40,(byte)255));
+    // register
+    Raylib.DrawRectangle(1060, 56, 42, 28, new Color((byte)20,(byte)20,(byte)20,(byte)255));
+    Raylib.DrawRectangle(1062, 58, 38, 22, new Color((byte)0,(byte)160,(byte)100,(byte)255));
+    Raylib.DrawText("$", 1076, 60, 20, Color.White);
+    // lottery scratch card display
+    Raylib.DrawRectangle(820, 60, 70, 22, new Color((byte)220,(byte)180,(byte)40,(byte)255));
+    Raylib.DrawRectangleLines(820, 60, 70, 22, new Color((byte)180,(byte)140,(byte)20,(byte)255));
+    Raylib.DrawText("LOTTO", 828, 64, 12, new Color((byte)100,(byte)60,(byte)0,(byte)255));
+    // card reader terminal
+    Raylib.DrawRectangle(900, 58, 30, 26, new Color((byte)30,(byte)30,(byte)30,(byte)255));
+    Raylib.DrawRectangle(902, 60, 26, 16, new Color((byte)0,(byte)80,(byte)180,(byte)255));
+    Raylib.DrawText("COUNTER", 940, 92, 20, new Color((byte)200,(byte)195,(byte)160,(byte)255));
+    
+ 
+    // --- SNACK & DRINK AISLES ---
+    Color[][] gsColors = {
+        new Color[] {
+            new Color((byte)220,(byte)80,(byte)80,(byte)255),
+            new Color((byte)255,(byte)160,(byte)0,(byte)255),
+            new Color((byte)80,(byte)180,(byte)80,(byte)255),
+            new Color((byte)80,(byte)120,(byte)220,(byte)255),
+            new Color((byte)200,(byte)200,(byte)50,(byte)255),
+            new Color((byte)180,(byte)80,(byte)180,(byte)255),
+        },
+        new Color[] {
+            new Color((byte)220,(byte)80,(byte)80,(byte)255),
+            new Color((byte)100,(byte)160,(byte)220,(byte)255),
+            new Color((byte)220,(byte)180,(byte)40,(byte)255),
+            new Color((byte)80,(byte)200,(byte)100,(byte)255),
+            new Color((byte)180,(byte)100,(byte)220,(byte)255),
+            new Color((byte)220,(byte)130,(byte)50,(byte)255),
+        }
+    };
+    string[] aisleSignNames = { "SNACKS", "DRINKS" };
+ 
+    int[] gsAisleX = { 80, 340 };
+    int[] gsShelfY = { 200, 260, 320, 380, 440, 500 };
+ 
+    for (int col = 0; col < 2; col++)
+    {
+        int ax = gsAisleX[col];
+ 
+        // aisle sign
+        Raylib.DrawRectangle(ax + 30, 168, 120, 24, new Color((byte)40,(byte)40,(byte)40,(byte)255));
+        Raylib.DrawText(aisleSignNames[col], ax + 36, 172, 16, Color.Gold);
+ 
+        for (int row = 0; row < 6; row++)
+        {
+            int sy = gsShelfY[row];
+            Color pc = gsColors[col][row];
+            // shelf backing
+            Raylib.DrawRectangle(ax, sy, 180, 30, new Color((byte)80,(byte)80,(byte)75,(byte)255));
+            Raylib.DrawRectangle(ax, sy, 180, 5, new Color((byte)100,(byte)100,(byte)95,(byte)255));
+            // products
+            for (int p = 0; p < 8; p++)
+            {
+                int px = ax + 4 + p * 22;
+                Raylib.DrawRectangle(px, sy + 5, 18, 23,
+                    new Color((byte)Math.Min(255, pc.R + (p%3)*15),
+                              (byte)Math.Min(255, pc.G + (p%2)*10),
+                              (byte)Math.Min(255, pc.B + (p%4)*8), (byte)255));
+                Raylib.DrawRectangle(px, sy + 5, 18, 5, new Color((byte)255,(byte)255,(byte)255,(byte)100));
+            }
+            // shelf front edge
+            Raylib.DrawRectangle(ax, sy + 25, 180, 5, new Color((byte)60,(byte)60,(byte)55,(byte)255));
+        }
+        // end cap
+        Raylib.DrawRectangle(ax + 180, 196, 16, 310, new Color((byte)60,(byte)60,(byte)55,(byte)255));
+    }
+ 
+    // --- DRINK FRIDGES (back wall) ---
+    int[] fridgeX = { 600, 680, 760 };
+    string[] fridgeDrinks = { "COLA", "JUICE", "WATER" };
+    Color[] fridgeDrinkColors = {
+        new Color((byte)200,(byte)40,(byte)40,(byte)255),
+        new Color((byte)220,(byte)180,(byte)40,(byte)255),
+        new Color((byte)80,(byte)160,(byte)220,(byte)255)
+    };
+    for (int f = 0; f < 3; f++)
+    {
+        int fx = fridgeX[f];
+        // fridge body
+        Raylib.DrawRectangle(fx, 80, 60, 120, new Color((byte)50,(byte)50,(byte)60,(byte)255));
+        Raylib.DrawRectangle(fx, 80, 60, 8, new Color((byte)70,(byte)70,(byte)80,(byte)255));
+        // glass door
+        Raylib.DrawRectangle(fx + 4, 92, 52, 96, new Color((byte)80,(byte)120,(byte)160,(byte)160));
+        // cans/bottles
+        for (int row = 0; row < 4; row++)
+            for (int col2 = 0; col2 < 3; col2++)
+                Raylib.DrawRectangle(fx + 8 + col2 * 14, 96 + row * 22, 12, 18, fridgeDrinkColors[f]);
+        // frost effect
+        Raylib.DrawRectangle(fx + 4, 92, 52, 6, new Color((byte)180,(byte)210,(byte)240,(byte)100));
+        // handle
+        Raylib.DrawRectangle(fx + 54, 128, 4, 24, new Color((byte)120,(byte)120,(byte)130,(byte)255));
+        Raylib.DrawText(fridgeDrinks[f], fx + 6, 200, 11, Color.DarkBlue);
+    }
+    Raylib.DrawText("COOL DRINKS", 600, 64, 14, Color.DarkGray);
+ 
+    // --- OIL & AUTO PRODUCTS (left wall) ---
+    Raylib.DrawRectangle(20, 180, 40, 420, new Color((byte)65,(byte)60,(byte)55,(byte)255));
+    Raylib.DrawRectangle(20, 180, 40, 5, new Color((byte)85,(byte)80,(byte)72,(byte)255));
+    string[] oilLabels = { "OIL", "WASH", "TYRES", "TOOLS" };
+    Color[] oilColors = {
+        new Color((byte)40,(byte)40,(byte)20,(byte)255),
+        new Color((byte)60,(byte)120,(byte)60,(byte)255),
+        new Color((byte)30,(byte)30,(byte)30,(byte)255),
+        new Color((byte)120,(byte)80,(byte)30,(byte)255)
+    };
+    for (int o = 0; o < 4; o++)
+    {
+        int oy = 192 + o * 96;
+        for (int i = 0; i < 3; i++)
+            Raylib.DrawRectangle(24, oy + i * 26, 32, 22, oilColors[o]);
+        Raylib.DrawText(oilLabels[o], 18, oy + 72, 10, Color.DarkGray);
+    }
+    Raylib.DrawText("AUTO", 20, 164, 12, Color.DarkGray);
+ 
+    // --- TOILET ROOM (back corner) ---
+    Raylib.DrawRectangle(1080, 200, 120, 120, new Color((byte)180,(byte)185,(byte)185,(byte)255));
+    Raylib.DrawRectangle(1080, 200, 120, 6, new Color((byte)160,(byte)165,(byte)165,(byte)255));
+    // toilet
+    Raylib.DrawRectangle(1100, 218, 50, 20, new Color((byte)225,(byte)240,(byte)235,(byte)255));
+    Raylib.DrawRectangle(1100, 236, 50, 55, new Color((byte)232,(byte)248,(byte)240,(byte)255));
+    Raylib.DrawEllipse(1125, 285, 24, 14, new Color((byte)210,(byte)235,(byte)228,(byte)255));
+    // sink
+    Raylib.DrawRectangle(1088, 290, 50, 25, new Color((byte)232,(byte)248,(byte)240,(byte)255));
+    Raylib.DrawRectangle(1090, 295, 46, 18, new Color((byte)215,(byte)235,(byte)228,(byte)255));
+    Raylib.DrawCircle(1113, 308, 4, new Color((byte)160,(byte)190,(byte)185,(byte)255));
+    Raylib.DrawText("WC", 1120, 204, 14, Color.DarkGray);
+    // WC door
+    Raylib.DrawRectangle(1160, 220, 38, 80, new Color((byte)160,(byte)165,(byte)165,(byte)180));
+    Raylib.DrawCircle(1163, 260, 3, new Color((byte)140,(byte)140,(byte)150,(byte)255));
+ 
+    // --- MAGAZINE RACK (near counter) ---
+    Raylib.DrawRectangle(1196, 80, 55, 90, new Color((byte)100,(byte)80,(byte)50,(byte)255));
+    Raylib.DrawRectangle(1196, 80, 55, 6, new Color((byte)130,(byte)105,(byte)70,(byte)255));
+    // magazines
+    Color[] magColors = {
+        new Color((byte)220,(byte)50,(byte)50,(byte)255),
+        new Color((byte)50,(byte)100,(byte)200,(byte)255),
+        new Color((byte)50,(byte)160,(byte)50,(byte)255),
+        new Color((byte)200,(byte)160,(byte)20,(byte)255)
+    };
+    for (int m = 0; m < 4; m++)
+        Raylib.DrawRectangle(1200, 84 + m * 20, 47, 18, magColors[m]);
+    
+ 
+    // --- WAITING BENCH ---
+    Raylib.DrawRectangle(80, 620, 240, 30, new Color((byte)80,(byte)75,(byte)65,(byte)255));
+    Raylib.DrawRectangle(80, 620, 240, 6, new Color((byte)100,(byte)95,(byte)82,(byte)255));
+    Raylib.DrawRectangle(80, 620, 6, 30, new Color((byte)65,(byte)60,(byte)50,(byte)255));
+    Raylib.DrawRectangle(314, 620, 6, 30, new Color((byte)65,(byte)60,(byte)50,(byte)255));
+    // arm dividers
+    Raylib.DrawRectangle(160, 620, 6, 30, new Color((byte)65,(byte)60,(byte)50,(byte)255));
+    Raylib.DrawRectangle(240, 620, 6, 30, new Color((byte)65,(byte)60,(byte)50,(byte)255));
+ 
+    
+ 
+    // --- ENTRANCE MAT ---
+    Raylib.DrawRectangle(480, 870, 200, 30, new Color((byte)80,(byte)75,(byte)60,(byte)255));
+    Raylib.DrawRectangleLines(480, 870, 200, 30, new Color((byte)120,(byte)115,(byte)95,(byte)255));
+    Raylib.DrawText("WELCOME", 518, 878, 16, new Color((byte)200,(byte)195,(byte)165,(byte)255));
+}
+
+if (currentBuilding.BuildingName == "WEAPONS")
+{
+    // --- floor — dark stone tiles ---
+    for (int tx = 0; tx < 1400; tx += 70)
+        for (int ty = 0; ty < 1000; ty += 70)
+        {
+            Color tileColor = ((tx / 70 + ty / 70) % 2 == 0)
+                ? new Color((byte)40, (byte)40, (byte)45, (byte)255)
+                : new Color((byte)35, (byte)35, (byte)40, (byte)255);
+            Raylib.DrawRectangle(tx, ty, 70, 70, tileColor);
+            Raylib.DrawRectangle(tx, ty, 70, 1, new Color((byte)25,(byte)25,(byte)30,(byte)150));
+            Raylib.DrawRectangle(tx, ty, 1, 70, new Color((byte)25,(byte)25,(byte)30,(byte)150));
+        }
+ 
+    // --- ambient dark overlay ---
+    Raylib.DrawRectangle(0, 0, 1400, 1000, new Color((byte)10,(byte)10,(byte)20,(byte)100));
+ 
+    // --- front service counter ---
+    Raylib.DrawRectangle(400, 80, 500, 50, new Color((byte)50,(byte)50,(byte)55,(byte)255));
+    Raylib.DrawRectangle(400, 80, 500, 8, new Color((byte)70,(byte)70,(byte)80,(byte)255));
+    Raylib.DrawRectangle(400, 80, 8, 50, new Color((byte)35,(byte)35,(byte)40,(byte)255));
+    Raylib.DrawRectangle(892, 80, 8, 50, new Color((byte)35,(byte)35,(byte)40,(byte)255));
+    // glass display top on counter
+    Raylib.DrawRectangle(420, 55, 460, 28, new Color((byte)60,(byte)80,(byte)100,(byte)140));
+    Raylib.DrawRectangleLines(420, 55, 460, 28, new Color((byte)80,(byte)100,(byte)120,(byte)255));
+    // weapons in counter display
+    // sword
+    Raylib.DrawRectangle(440, 60, 50, 6, new Color((byte)180,(byte)190,(byte)200,(byte)255));
+    Raylib.DrawRectangle(437, 62, 8, 10, new Color((byte)160,(byte)130,(byte)60,(byte)255));
+    // dagger
+    Raylib.DrawTriangle(new Vector2(560, 58), new Vector2(556, 72), new Vector2(564, 72), new Color((byte)180,(byte)190,(byte)200,(byte)255));
+    Raylib.DrawRectangle(554, 72, 14, 10, new Color((byte)140,(byte)100,(byte)40,(byte)255));
+    // axe silhouette
+    Raylib.DrawRectangle(640, 58, 8, 22, new Color((byte)150,(byte)160,(byte)170,(byte)255));
+    Raylib.DrawTriangle(new Vector2(640, 58), new Vector2(640, 72), new Vector2(625, 65), new Color((byte)160,(byte)170,(byte)180,(byte)255));
+    // mace
+    Raylib.DrawRectangle(720, 68, 8, 18, new Color((byte)140,(byte)150,(byte)160,(byte)255));
+    Raylib.DrawCircle(724, 66, 8, new Color((byte)120,(byte)130,(byte)140,(byte)255));
+    // price tags
+    Raylib.DrawText("E = Upgrade Weapon", 480, 92, 16, new Color((byte)200,(byte)200,(byte)100,(byte)255));
+ 
+    // --- BACK WALL WEAPON RACKS ---
+    // rack support bars
+    Raylib.DrawRectangle(20, 70, 300, 16, new Color((byte)60,(byte)60,(byte)65,(byte)255));
+    Raylib.DrawRectangle(20, 170, 300, 16, new Color((byte)60,(byte)60,(byte)65,(byte)255));
+    Raylib.DrawRectangle(20, 270, 300, 16, new Color((byte)60,(byte)60,(byte)65,(byte)255));
+    // rack side supports
+    for (int rx = 25; rx < 310; rx += 60)
+    {
+        Raylib.DrawRectangle(rx, 70, 8, 220, new Color((byte)45,(byte)45,(byte)50,(byte)255));
+    }
+ 
+    // RACK 1 — swords & blades
+    string[] swordLabels = { "IRON", "STEEL", "SILVER", "SHADOW" };
+    Color[] swordColors = {
+        new Color((byte)140,(byte)140,(byte)150,(byte)255),
+        new Color((byte)180,(byte)185,(byte)195,(byte)255),
+        new Color((byte)200,(byte)210,(byte)225,(byte)255),
+        new Color((byte)60,(byte)60,(byte)80,(byte)255)
+    };
+    for (int i = 0; i < 4; i++)
+    {
+        int rx = 35 + i * 65;
+        // blade
+        Raylib.DrawRectangle(rx, 38, 6, 36, swordColors[i]);
+        Raylib.DrawRectangle(rx + 1, 36, 4, 4, swordColors[i]); // tip
+        // crossguard
+        Raylib.DrawRectangle(rx - 6, 70, 18, 5, new Color((byte)160,(byte)130,(byte)50,(byte)255));
+        // handle
+        Raylib.DrawRectangle(rx + 1, 74, 4, 16, new Color((byte)120,(byte)80,(byte)30,(byte)255));
+        Raylib.DrawText(swordLabels[i], rx - 10, 92, 10, new Color((byte)160,(byte)160,(byte)170,(byte)255));
+    }
+ 
+    // RACK 2 — bows & ranged
+    string[] bowLabels = { "SHORT", "LONG", "WAR", "SIEGE" };
+    Color[] bowColors = {
+        new Color((byte)140,(byte)100,(byte)50,(byte)255),
+        new Color((byte)120,(byte)80,(byte)30,(byte)255),
+        new Color((byte)80,(byte)55,(byte)20,(byte)255),
+        new Color((byte)60,(byte)40,(byte)15,(byte)255)
+    };
+    for (int i = 0; i < 4; i++)
+    {
+        int rx = 38 + i * 65;
+        // bow arc
+        Raylib.DrawCircleLines(rx + 3, 155, 18, bowColors[i]);
+        // string
+        Raylib.DrawLine(rx + 3, 137, rx + 3, 173, new Color((byte)200,(byte)200,(byte)200,(byte)120));
+        // arrow on bow
+        Raylib.DrawRectangle(rx - 12, 153, 28, 3, new Color((byte)180,(byte)150,(byte)80,(byte)255));
+        Raylib.DrawTriangle(new Vector2(rx + 16, 152), new Vector2(rx + 16, 158), new Vector2(rx + 22, 155), new Color((byte)150,(byte)160,(byte)170,(byte)255));
+        Raylib.DrawText(bowLabels[i], rx - 12, 180, 10, new Color((byte)160,(byte)160,(byte)170,(byte)255));
+    }
+ 
+    // RACK 3 — shields
+    Color[] shieldColors = {
+        new Color((byte)100,(byte)80,(byte)40,(byte)255),
+        new Color((byte)60,(byte)60,(byte)70,(byte)255),
+        new Color((byte)120,(byte)50,(byte)20,(byte)255),
+        new Color((byte)40,(byte)60,(byte)100,(byte)255)
+    };
+    string[] shieldLabels = { "WOOD", "IRON", "TOWER", "KITE" };
+    for (int i = 0; i < 4; i++)
+    {
+        int rx = 32 + i * 65;
+        // shield shape
+        Raylib.DrawRectangle(rx, 238, 30, 28, shieldColors[i]);
+        Raylib.DrawTriangle(
+            new Vector2(rx, 266), new Vector2(rx + 15, 280), new Vector2(rx + 30, 266),
+            shieldColors[i]);
+        Raylib.DrawRectangleLines(rx, 238, 30, 28, new Color((byte)100,(byte)100,(byte)110,(byte)255));
+        // emblem
+        Raylib.DrawRectangle(rx + 12, 242, 6, 18, new Color((byte)160,(byte)140,(byte)60,(byte)200));
+        Raylib.DrawRectangle(rx + 6,  248, 18, 6, new Color((byte)160,(byte)140,(byte)60,(byte)200));
+        Raylib.DrawText(shieldLabels[i], rx - 5, 284, 10, new Color((byte)160,(byte)160,(byte)170,(byte)255));
+    }
+    Raylib.DrawText("BLADES",  50,  22, 14, new Color((byte)180,(byte)180,(byte)190,(byte)255));
+    Raylib.DrawText("RANGED",  50, 122, 14, new Color((byte)180,(byte)180,(byte)190,(byte)255));
+    Raylib.DrawText("SHIELDS", 50, 222, 14, new Color((byte)180,(byte)180,(byte)190,(byte)255));
+ 
+    // --- DISPLAY CASES (centre floor) ---
+    Color[] caseColors = {
+        new Color((byte)180,(byte)60,(byte)60,(byte)255),   // red - special weapons
+        new Color((byte)60,(byte)100,(byte)180,(byte)255),  // blue - magic items
+        new Color((byte)60,(byte)160,(byte)60,(byte)255),   // green - potions/aids
+        new Color((byte)160,(byte)120,(byte)40,(byte)255),  // gold - legendary
+    };
+    string[] caseTitles = { "SPECIAL", "ENCHANTED", "SUPPLIES", "LEGENDARY" };
+    int[] caseX = { 420, 650, 420, 650 };
+    int[] caseY = { 280, 280, 400, 400 };
+ 
+    for (int c = 0; c < 4; c++)
+    {
+        int cx = caseX[c]; int cy = caseY[c];
+        // glass case
+        Raylib.DrawRectangle(cx, cy, 180, 60, new Color((byte)40,(byte)50,(byte)60,(byte)255));
+        Raylib.DrawRectangle(cx + 2, cy + 2, 176, 56, new Color((byte)50,(byte)60,(byte)75,(byte)255));
+        Raylib.DrawRectangle(cx + 2, cy + 2, 176, 20, new Color((byte)60,(byte)80,(byte)110,(byte)180)); // glass top
+        // case item placeholder (glowing)
+        Raylib.DrawCircle(cx + 90, cy + 38, 12, new Color(caseColors[c].R, caseColors[c].G, caseColors[c].B, (byte)100));
+        Raylib.DrawCircle(cx + 90, cy + 38, 8,  caseColors[c]);
+        Raylib.DrawCircle(cx + 90, cy + 38, 4,  new Color((byte)255,(byte)255,(byte)255,(byte)180));
+        // case label
+        Raylib.DrawRectangle(cx, cy + 60, 180, 20, new Color((byte)30,(byte)30,(byte)35,(byte)255));
+        Raylib.DrawText(caseTitles[c], cx + 30, cy + 64, 14, caseColors[c]);
+    }
+ 
+    // --- ARMOUR STANDS (right wall) ---
+    int[] armourX = { 1100, 1230 };
+    string[] armourNames = { "PLATE", "CHAIN" };
+    Color[] armourColors = {
+        new Color((byte)160,(byte)165,(byte)175,(byte)255),
+        new Color((byte)120,(byte)125,(byte)135,(byte)255)
+    };
+    for (int a = 0; a < 2; a++)
+    {
+        int ax = armourX[a];
+        // stand pole
+        Raylib.DrawRectangle(ax + 32, 80, 6, 140, new Color((byte)60,(byte)60,(byte)65,(byte)255));
+        Raylib.DrawRectangle(ax + 20, 215, 30, 6, new Color((byte)60,(byte)60,(byte)65,(byte)255)); // base
+        // helmet
+        Raylib.DrawCircle(ax + 35, 92, 18, armourColors[a]);
+        Raylib.DrawRectangle(ax + 22, 92, 26, 14, armourColors[a]);
+        Raylib.DrawRectangle(ax + 26, 102, 18, 5, new Color((byte)20,(byte)20,(byte)30,(byte)255)); // visor gap
+        // chest
+        Raylib.DrawRectangle(ax + 12, 110, 46, 55, armourColors[a]);
+        Raylib.DrawRectangle(ax + 14, 112, 42, 8, new Color((byte)Math.Min(255,armourColors[a].R+20),(byte)Math.Min(255,armourColors[a].G+20),(byte)Math.Min(255,armourColors[a].B+20),(byte)255));
+        Raylib.DrawRectangle(ax + 32, 112, 2, 53, new Color((byte)Math.Max(0,armourColors[a].R-20),(byte)Math.Max(0,armourColors[a].G-20),(byte)Math.Max(0,armourColors[a].B-20),(byte)255)); // centre line
+        // shoulder pauldrons
+        Raylib.DrawCircle(ax + 12, 118, 10, armourColors[a]);
+        Raylib.DrawCircle(ax + 58, 118, 10, armourColors[a]);
+        Raylib.DrawText(armourNames[a], ax + 6, 228, 14, new Color((byte)160,(byte)160,(byte)170,(byte)255));
+    }
+ 
+    // --- AMMO/SUPPLIES SHELVES (right wall lower) ---
+    int[] suppY = { 280, 350, 420, 490 };
+    string[] suppLabels = { "ARROWS", "BOLTS", "BOMBS", "POTIONS" };
+    Color[] suppColors = {
+        new Color((byte)140,(byte)100,(byte)40,(byte)255),
+        new Color((byte)80,(byte)80,(byte)90,(byte)255),
+        new Color((byte)180,(byte)80,(byte)20,(byte)255),
+        new Color((byte)80,(byte)30,(byte)120,(byte)255)
+    };
+    for (int s = 0; s < 4; s++)
+    {
+        int sy = suppY[s];
+        // shelf
+        Raylib.DrawRectangle(1050, sy, 320, 30, new Color((byte)50,(byte)50,(byte)55,(byte)255));
+        Raylib.DrawRectangle(1050, sy, 320, 5, new Color((byte)65,(byte)65,(byte)70,(byte)255));
+        // items on shelf
+        for (int i = 0; i < 12; i++)
+        {
+            int ix = 1058 + i * 24;
+            Raylib.DrawRectangle(ix, sy + 6, 18, 22, suppColors[s]);
+            Raylib.DrawRectangle(ix, sy + 6, 18, 4, new Color((byte)255,(byte)255,(byte)255,(byte)60));
+        }
+        Raylib.DrawText(suppLabels[s], 1052, sy + 32, 12, new Color((byte)140,(byte)140,(byte)150,(byte)255));
+    }
+ 
+    // --- ENTRANCE MAT ---
+    Raylib.DrawRectangle(500, 870, 200, 30, new Color((byte)30,(byte)30,(byte)40,(byte)255));
+    Raylib.DrawRectangleLines(500, 870, 200, 30, new Color((byte)80,(byte)80,(byte)90,(byte)255));
+    Raylib.DrawText("WELCOME", 550, 878, 16, new Color((byte)120,(byte)120,(byte)140,(byte)255));
 }
 
 if (currentBuilding.BuildingName == "STORE")
@@ -6569,8 +7325,8 @@ if (Vector2.Distance(player.Position, new Vector2(910, 365)) < 80)
             Rideable.RideableType.Horse        => "HORSE",
             _                                  => "RIDEABLE"
         };
-        Raylib.DrawRectangle(ScreenWidth / 2 - 160, ScreenHeight - 90, 320, 34, new Color((byte)0,(byte)0,(byte)0,(byte)180));
-        Raylib.DrawText($"{rideableName} — F = Dismount", ScreenWidth / 2 - 140, ScreenHeight - 82, 20, Color.Gold);
+        //Raylib.DrawRectangle(ScreenWidth / 2 - 160, ScreenHeight - 90, 320, 34, new Color((byte)0,(byte)0,(byte)0,(byte)180));
+        //Raylib.DrawText($"{rideableName} || F = Dismount", ScreenWidth / 2 - 140, ScreenHeight - 82, 20, Color.Gold);
         break;
     }
 }
@@ -6772,7 +7528,7 @@ for (int i = 4200; i < 30000; i += 400)
 AddDBar(1700, 410);
 
 //Banks
-AddBank(1200, 410);
+AddBank(1200, 380);
 AddBank(-9850, -700); 
 
 
@@ -6827,10 +7583,10 @@ AddPoliceStation(3200, 410);
                     "The lakes nearby have good fishing."
             ));
 
-            //Cars
-            vehicles.Add(new Vehicle(new Vector2(300,800), Color.Red, 650));
-            vehicles.Add(new Vehicle(new Vector2(1200,700), Color.Yellow, 900));
-            vehicles.Add(new Vehicle(new Vector2(-400,650), Color.DarkBlue, 500));
+            //vehicles
+            vehicles.Add(new Vehicle(new Vector2(300,  800), Color.Red,      650, Vehicle.VehicleType.Sedan));
+            vehicles.Add(new Vehicle(new Vector2(1200, 700), Color.Yellow,   900, Vehicle.VehicleType.Truck));
+            vehicles.Add(new Vehicle(new Vector2(-400, 650), Color.DarkBlue, 500, Vehicle.VehicleType.SUV));
 
             // Mountain bikes - safe zone and grasslands
             rideables.Add(new Rideable(new Vector2(600, 800),  Rideable.RideableType.MountainBike, new Color((byte)180,(byte)80,(byte)20,(byte)255)));
@@ -7822,6 +8578,7 @@ class Rideable
         SpawnPosition = pos;
         Type = type;
         RideableColor = color;
+        Facing = FacingDirection.Right;
 
         speed = type switch
         {
@@ -8041,24 +8798,21 @@ class Rideable
 
             case FacingDirection.Down:
             case FacingDirection.Up:
-                // front-on: show two wheels side by side, frame as a diamond
-                Raylib.DrawCircle(x + 10, y + 40, 10, Color.DarkGray);
-                Raylib.DrawCircleLines(x + 10, y + 40, 10, Color.Gray);
-                Raylib.DrawCircle(x + 50, y + 40, 10, Color.DarkGray);
-                Raylib.DrawCircleLines(x + 50, y + 40, 10, Color.Gray);
-                // frame cross
-                Raylib.DrawLine(x + 10, y + 40, x + 30, y + 20, RideableColor);
-                Raylib.DrawLine(x + 50, y + 40, x + 30, y + 20, RideableColor);
-                Raylib.DrawLine(x + 10, y + 40, x + 50, y + 40, RideableColor);
+                // single centre wheel
+                Raylib.DrawCircle(x + 30, y + 42, 12, Color.DarkGray);
+                Raylib.DrawCircleLines(x + 30, y + 42, 12, Color.Gray);
+                Raylib.DrawCircle(x + 30, y + 42, 4, Color.Gray);
+                // frame coming down to wheel
+                Raylib.DrawLine(x + 30, y + 20, x + 30, y + 30, RideableColor);
                 // handlebars
                 Raylib.DrawRectangle(x + 10, y + 18, 40, 5, Color.DarkGray);
                 // seat
                 Raylib.DrawRectangle(x + 18, y + 14, 24, 5, Color.Black);
 
-                if (Riding) DrawRider(x + 8, y - 16, Program.player.SkinColor, Program.player.ShirtColor, Program.player.PantsColor);
+                if (Riding) DrawRider(x + 8, y - 18, Program.player.SkinColor, Program.player.ShirtColor, Program.player.PantsColor);
                 break;
-        }
-    }
+                    }
+                }
 
     // ─── BMX ────────────────────────────────────────────────────────────────
     void DrawBMX(int x, int y)
@@ -8103,21 +8857,21 @@ class Rideable
                 if (Riding) DrawRider(x + 8, y - 16, Program.player.SkinColor, Program.player.ShirtColor, Program.player.PantsColor);
                 break;
 
-            case FacingDirection.Down:
+           case FacingDirection.Down:
             case FacingDirection.Up:
-                Raylib.DrawCircle(x + 10, y + 40, 9, Color.Black);
-                Raylib.DrawCircleLines(x + 10, y + 40, 9, Color.DarkGray);
-                Raylib.DrawCircle(x + 50, y + 40, 9, Color.Black);
-                Raylib.DrawCircleLines(x + 50, y + 40, 9, Color.DarkGray);
-                Raylib.DrawLine(x + 10, y + 40, x + 30, y + 22, RideableColor);
-                Raylib.DrawLine(x + 50, y + 40, x + 30, y + 22, RideableColor);
-                Raylib.DrawLine(x + 10, y + 40, x + 50, y + 40, RideableColor);
+                // single centre wheel
+                Raylib.DrawCircle(x + 30, y + 42, 10, Color.Black);
+                Raylib.DrawCircleLines(x + 30, y + 42, 10, Color.DarkGray);
+                Raylib.DrawCircle(x + 30, y + 42, 3, Color.DarkGray);
+                // frame
+                Raylib.DrawLine(x + 30, y + 22, x + 30, y + 32, RideableColor);
                 // flat BMX bars
-                Raylib.DrawRectangle(x + 8,  y + 16, 44, 4, Color.DarkGray);
+                Raylib.DrawRectangle(x + 8, y + 16, 44, 4, Color.DarkGray);
+                // seat
                 Raylib.DrawRectangle(x + 18, y + 12, 24, 5, Color.Black);
-                // pegs front-on
-                Raylib.DrawRectangle(x + 2,  y + 38, 6, 4, new Color((byte)192,(byte)192,(byte)192,(byte)255));
-                Raylib.DrawRectangle(x + 52, y + 38, 6, 4, new Color((byte)192,(byte)192,(byte)192,(byte)255));
+                // pegs front-on — just left and right of the single wheel
+                Raylib.DrawRectangle(x + 16, y + 40, 6, 4, new Color((byte)192,(byte)192,(byte)192,(byte)255));
+                Raylib.DrawRectangle(x + 38, y + 40, 6, 4, new Color((byte)192,(byte)192,(byte)192,(byte)255));
 
                 if (Riding) DrawRider(x + 8, y - 16, Program.player.SkinColor, Program.player.ShirtColor, Program.player.PantsColor);
                 break;
@@ -8306,116 +9060,549 @@ public NPC(Vector2 pos)
 }
 
     class Vehicle
+{
+    public enum VehicleType { Sedan, Truck, SUV }
+    public VehicleType Type;
+    public Vector2 Position;
+    public bool Driving = false;
+    public bool OnRoad = false;
+    public float Fuel = 100f;
+    public float MaxFuel = 100f;
+    public bool NeedsPayment = false;
+    public float FuelPumped = 0f;
+    public bool FuelLocked = false;
+    float speed;
+    public Color VehicleColor;
+    public Vector2 velocity = Vector2.Zero;
+
+    public enum FacingDirection { Down, Up, Left, Right }
+    public FacingDirection Facing = FacingDirection.Right;
+
+    float animTimer = 0f;
+    bool animFrame = false;
+    bool isMoving = false;
+
+    public Rectangle Bounds =>
+        new Rectangle(Position.X, Position.Y, 100, 50);
+
+    public Vehicle(Vector2 pos, Color vehicleColor, float vehicleSpeed, VehicleType type = VehicleType.Sedan)
     {
-        public Vector2 Position;
-        public bool Driving = false;
-        public bool OnRoad = false;
-        public void Refuel() { speed = 1200f; }
-        public float Fuel = 100f;
-        public float MaxFuel = 100f;
-        public bool NeedsPayment = false;
-        public float FuelPumped = 0f;
-        public bool FuelLocked = false;
-        float speed;
-        Color color;
-        Vector2 velocity = Vector2.Zero;
+        Position = pos;
+        VehicleColor = vehicleColor;
+        speed = vehicleSpeed;
+        Type = type;
+        Facing = FacingDirection.Right;
+    }
 
-        public Rectangle Bounds =>
-            new Rectangle(Position.X, Position.Y, 100, 50);
-
-        public Vehicle(Vector2 pos, Color vehicleColor, float vehicleSpeed)
+    public void Update(float dt, List<Building> buildings, List<TreeObject> trees, List<Vehicle> allVehicles)
+    {
+        if (!Driving) return;
+        if (FuelLocked)
         {
-            Position = pos;
-            color = vehicleColor;
-            speed = vehicleSpeed;
+            velocity = Vector2.Zero;
+            return;
         }
 
-        public void Update(float dt, List<Building> buildings, List<TreeObject> trees, List<Vehicle> allVehicles)
+        Vector2 move = Vector2.Zero;
+        if (Raylib.IsKeyDown(KeyboardKey.Up))    move.Y -= 1;
+        if (Raylib.IsKeyDown(KeyboardKey.Down))  move.Y += 1;
+        if (Raylib.IsKeyDown(KeyboardKey.Left))  move.X -= 1;
+        if (Raylib.IsKeyDown(KeyboardKey.Right)) move.X += 1;
+
+        if (move != Vector2.Zero)
         {
-            if (!Driving) return;
-            if (FuelLocked)
-            {
-                velocity = Vector2.Zero;
-                return;
-            }
-            Vector2 move = Vector2.Zero;
+            move = Vector2.Normalize(move);
 
-            if (Raylib.IsKeyDown(KeyboardKey.Up)) move.Y -= 1;
-            if (Raylib.IsKeyDown(KeyboardKey.Down)) move.Y += 1;
-            if (Raylib.IsKeyDown(KeyboardKey.Left)) move.X -= 1;
-            if (Raylib.IsKeyDown(KeyboardKey.Right)) move.X += 1;
+            if (MathF.Abs(move.X) >= MathF.Abs(move.Y))
+                Facing = move.X < 0 ? FacingDirection.Left : FacingDirection.Right;
+            else
+                Facing = move.Y < 0 ? FacingDirection.Up : FacingDirection.Down;
 
-            if (move != Vector2.Zero)
-                move = Vector2.Normalize(move);
-
-            if (move != Vector2.Zero && Fuel > 0)
-                Fuel = Math.Max(0, Fuel - dt * 2f);
-
-            if (Fuel <= 0) move = Vector2.Zero;
-
-            float speedMultiplier = OnRoad ? 1f + (Program.player.DrivingLevel * 0.01f) : 0.4f;
-            Vector2 targetVelocity = move * speed * speedMultiplier;
-            velocity = Vector2.Lerp(velocity, targetVelocity, dt * (OnRoad ? 5f : 2f));
-
-            Vector2 oldPos = Position;
-            Position += velocity * dt;
-
-            // building collision
-            foreach (Building building in buildings)
-            {
-                Rectangle collisionBox = new Rectangle(
-                    building.Bounds.X,
-                    building.Bounds.Y,
-                    building.Bounds.Width,
-                    building.Bounds.Height
-                );
-
-                if (Raylib.CheckCollisionRecs(Bounds, collisionBox))
-                {
-                    Position = oldPos;
-                    velocity = Vector2.Zero;
-                }
-            }
-
-            // tree collision
-            foreach (TreeObject tree in trees)
-            {
-                if (!tree.Chopped && Raylib.CheckCollisionRecs(Bounds, tree.Bounds))
-                {
-                    Position = oldPos;
-                    velocity *= -0.3f; // slight bounce
-                }
-            }
-
-            // vehicle to vehicle collision
-            foreach (Vehicle other in allVehicles)
-            {
-                if (other == this) continue;
-
-                if (Raylib.CheckCollisionRecs(Bounds, other.Bounds))
-                {
-                    Position = oldPos;
-                    velocity *= -0.5f;
-                }
-            }
+            isMoving = true;
         }
-        public void Refuel(float amount)
+        else
         {
-            float actualAmount = Math.Min(amount, MaxFuel - Fuel);
-            FuelPumped += actualAmount;
-            Fuel = Math.Min(MaxFuel, Fuel + actualAmount);
+            isMoving = false;
         }
 
-        public void Draw()
+        if (move != Vector2.Zero && Fuel > 0)
+            Fuel = Math.Max(0, Fuel - dt * 2f);
+
+        if (Fuel <= 0) move = Vector2.Zero;
+
+        float speedMultiplier = OnRoad ? 1f + (Program.player.DrivingLevel * 0.01f) : 0.4f;
+        Vector2 targetVelocity = move * speed * speedMultiplier;
+        velocity = Vector2.Lerp(velocity, targetVelocity, dt * (OnRoad ? 5f : 2f));
+
+        if (isMoving)
         {
-            Raylib.DrawRectangleRec(Bounds, color);
+            animTimer += dt * 8f;
+            if (animTimer >= 1f) { animTimer = 0f; animFrame = !animFrame; }
+        }
 
-            Raylib.DrawRectangle((int)Position.X + 18,(int)Position.Y + 8,64,20,Color.Black);
+        Vector2 oldPos = Position;
+        Position += velocity * dt;
 
-            Raylib.DrawCircle((int)Position.X + 20,(int)Position.Y + 50,10,Color.Black);
-            Raylib.DrawCircle((int)Position.X + 80,(int)Position.Y + 50,10,Color.Black);
+        foreach (Building building in buildings)
+        {
+            Rectangle collisionBox = new Rectangle(
+                building.Bounds.X, building.Bounds.Y,
+                building.Bounds.Width, building.Bounds.Height);
+            if (Raylib.CheckCollisionRecs(Bounds, collisionBox))
+            { Position = oldPos; velocity = Vector2.Zero; }
+        }
+
+        foreach (TreeObject tree in trees)
+            if (!tree.Chopped && Raylib.CheckCollisionRecs(Bounds, tree.Bounds))
+            { Position = oldPos; velocity *= -0.3f; }
+
+        foreach (Vehicle other in allVehicles)
+        {
+            if (other == this) continue;
+            if (Raylib.CheckCollisionRecs(Bounds, other.Bounds))
+            { Position = oldPos; velocity *= -0.5f; }
         }
     }
+
+    public void Refuel(float amount)
+    {
+        float actualAmount = Math.Min(amount, MaxFuel - Fuel);
+        FuelPumped += actualAmount;
+        Fuel = Math.Min(MaxFuel, Fuel + actualAmount);
+    }
+
+    public void Draw()
+    {
+        switch (Type)
+        {
+            case VehicleType.Sedan: DrawSedan(); break;
+            case VehicleType.Truck: DrawTruck(); break;
+            case VehicleType.SUV:   DrawSUV();   break;
+        }
+    }
+
+    // ── SEDAN ────────────────────────────────────────────────────────────────
+    void DrawSedan()
+    {
+        int x = (int)Position.X;
+        int y = (int)Position.Y;
+
+        switch (Facing)
+        {
+            case FacingDirection.Right:
+                // body
+                Raylib.DrawRectangle(x, y + 18, 100, 28, VehicleColor);
+                Raylib.DrawRectangle(x, y + 18, 100, 4,
+                    new Color((byte)Math.Min(255,VehicleColor.R+40),(byte)Math.Min(255,VehicleColor.G+40),(byte)Math.Min(255,VehicleColor.B+40),(byte)255));
+                // cabin
+                Raylib.DrawRectangle(x + 22, y + 4, 52, 16, VehicleColor);
+                Raylib.DrawRectangle(x + 24, y + 6, 48, 12,
+                    new Color((byte)100,(byte)180,(byte)220,(byte)200));
+                // windscreen lines
+                Raylib.DrawLine(x + 24, y + 6,  x + 48, y + 18, new Color((byte)60,(byte)140,(byte)180,(byte)180));
+                Raylib.DrawLine(x + 72, y + 6,  x + 48, y + 18, new Color((byte)60,(byte)140,(byte)180,(byte)180));
+                // wheels
+                Raylib.DrawCircle(x + 18, y + 46, 12, Color.Black);
+                Raylib.DrawCircleLines(x + 18, y + 46, 12, Color.DarkGray);
+                Raylib.DrawCircle(x + 18, y + 46, 5, new Color((byte)80,(byte)80,(byte)80,(byte)255));
+                Raylib.DrawCircle(x + 80, y + 46, 12, Color.Black);
+                Raylib.DrawCircleLines(x + 80, y + 46, 12, Color.DarkGray);
+                Raylib.DrawCircle(x + 80, y + 46, 5, new Color((byte)80,(byte)80,(byte)80,(byte)255));
+                // headlights
+                Raylib.DrawRectangle(x + 92, y + 22, 8, 10,
+                    new Color((byte)255,(byte)240,(byte)150,(byte)255));
+                Raylib.DrawRectangle(x + 92, y + 22, 8, 3,
+                    new Color((byte)255,(byte)255,(byte)200,(byte)255));
+                // tail lights
+                Raylib.DrawRectangle(x, y + 22, 6, 10,
+                    new Color((byte)220,(byte)30,(byte)30,(byte)255));
+                // door line
+                Raylib.DrawLine(x + 50, y + 18, x + 50, y + 46, new Color((byte)0,(byte)0,(byte)0,(byte)80));
+                // door handle
+                Raylib.DrawRectangle(x + 38, y + 30, 10, 3, new Color((byte)180,(byte)180,(byte)180,(byte)255));
+                Raylib.DrawRectangle(x + 62, y + 30, 10, 3, new Color((byte)180,(byte)180,(byte)180,(byte)255));
+                break;
+
+            case FacingDirection.Left:
+                Raylib.DrawRectangle(x, y + 18, 100, 28, VehicleColor);
+                Raylib.DrawRectangle(x, y + 18, 100, 4,
+                    new Color((byte)Math.Min(255,VehicleColor.R+40),(byte)Math.Min(255,VehicleColor.G+40),(byte)Math.Min(255,VehicleColor.B+40),(byte)255));
+                Raylib.DrawRectangle(x + 26, y + 4, 52, 16, VehicleColor);
+                Raylib.DrawRectangle(x + 28, y + 6, 48, 12,
+                    new Color((byte)100,(byte)180,(byte)220,(byte)200));
+                Raylib.DrawLine(x + 28, y + 6,  x + 52, y + 18, new Color((byte)60,(byte)140,(byte)180,(byte)180));
+                Raylib.DrawLine(x + 76, y + 6,  x + 52, y + 18, new Color((byte)60,(byte)140,(byte)180,(byte)180));
+                Raylib.DrawCircle(x + 18, y + 46, 12, Color.Black);
+                Raylib.DrawCircleLines(x + 18, y + 46, 12, Color.DarkGray);
+                Raylib.DrawCircle(x + 18, y + 46, 5, new Color((byte)80,(byte)80,(byte)80,(byte)255));
+                Raylib.DrawCircle(x + 80, y + 46, 12, Color.Black);
+                Raylib.DrawCircleLines(x + 80, y + 46, 12, Color.DarkGray);
+                Raylib.DrawCircle(x + 80, y + 46, 5, new Color((byte)80,(byte)80,(byte)80,(byte)255));
+                // headlights left side
+                Raylib.DrawRectangle(x, y + 22, 8, 10,
+                    new Color((byte)255,(byte)240,(byte)150,(byte)255));
+                Raylib.DrawRectangle(x, y + 22, 8, 3,
+                    new Color((byte)255,(byte)255,(byte)200,(byte)255));
+                Raylib.DrawRectangle(x + 94, y + 22, 6, 10,
+                    new Color((byte)220,(byte)30,(byte)30,(byte)255));
+                Raylib.DrawLine(x + 50, y + 18, x + 50, y + 46, new Color((byte)0,(byte)0,(byte)0,(byte)80));
+                Raylib.DrawRectangle(x + 38, y + 30, 10, 3, new Color((byte)180,(byte)180,(byte)180,(byte)255));
+                Raylib.DrawRectangle(x + 62, y + 30, 10, 3, new Color((byte)180,(byte)180,(byte)180,(byte)255));
+                break;
+
+            case FacingDirection.Down:
+                // front-on view
+                Raylib.DrawRectangle(x + 10, y + 10, 80, 40, VehicleColor);
+                Raylib.DrawRectangle(x + 10, y + 10, 80, 4,
+                    new Color((byte)Math.Min(255,VehicleColor.R+40),(byte)Math.Min(255,VehicleColor.G+40),(byte)Math.Min(255,VehicleColor.B+40),(byte)255));
+                // windscreen
+                Raylib.DrawRectangle(x + 18, y + 14, 64, 20,
+                    new Color((byte)100,(byte)180,(byte)220,(byte)200));
+                // windscreen divider
+                Raylib.DrawRectangle(x + 48, y + 14, 4, 20, VehicleColor);
+                // headlights
+                Raylib.DrawRectangle(x + 12, y + 36, 18, 10,
+                    new Color((byte)255,(byte)240,(byte)150,(byte)255));
+                Raylib.DrawRectangle(x + 70, y + 36, 18, 10,
+                    new Color((byte)255,(byte)240,(byte)150,(byte)255));
+                // grille
+                Raylib.DrawRectangle(x + 34, y + 38, 32, 8, new Color((byte)40,(byte)40,(byte)40,(byte)255));
+                for (int i = x + 36; i < x + 64; i += 6)
+                    Raylib.DrawRectangle(i, y + 38, 2, 8, new Color((byte)80,(byte)80,(byte)80,(byte)255));
+                // wheels
+                Raylib.DrawCircle(x + 10, y + 46, 10, Color.Black);
+                Raylib.DrawCircleLines(x + 10, y + 46, 10, Color.DarkGray);
+                Raylib.DrawCircle(x + 90, y + 46, 10, Color.Black);
+                Raylib.DrawCircleLines(x + 90, y + 46, 10, Color.DarkGray);
+                break;
+
+            case FacingDirection.Up:
+                // rear view
+                Raylib.DrawRectangle(x + 10, y + 10, 80, 40, VehicleColor);
+                Raylib.DrawRectangle(x + 10, y + 10, 80, 4,
+                    new Color((byte)Math.Max(0,VehicleColor.R-40),(byte)Math.Max(0,VehicleColor.G-40),(byte)Math.Max(0,VehicleColor.B-40),(byte)255));
+                // rear window
+                Raylib.DrawRectangle(x + 18, y + 14, 64, 20,
+                    new Color((byte)80,(byte)160,(byte)200,(byte)160));
+                Raylib.DrawRectangle(x + 48, y + 14, 4, 20, VehicleColor);
+                // tail lights
+                Raylib.DrawRectangle(x + 12, y + 36, 18, 10,
+                    new Color((byte)220,(byte)30,(byte)30,(byte)255));
+                Raylib.DrawRectangle(x + 70, y + 36, 18, 10,
+                    new Color((byte)220,(byte)30,(byte)30,(byte)255));
+                // boot/trunk line
+                Raylib.DrawRectangle(x + 32, y + 38, 36, 2, new Color((byte)0,(byte)0,(byte)0,(byte)80));
+                // wheels
+                Raylib.DrawCircle(x + 10, y + 46, 10, Color.Black);
+                Raylib.DrawCircleLines(x + 10, y + 46, 10, Color.DarkGray);
+                Raylib.DrawCircle(x + 90, y + 46, 10, Color.Black);
+                Raylib.DrawCircleLines(x + 90, y + 46, 10, Color.DarkGray);
+                break;
+        }
+
+        // driver visible through window when riding
+        if (Driving)
+        {
+            Raylib.DrawCircle((int)Position.X + 50, (int)Position.Y + 14, 7,
+                Program.player.SkinColor);
+        }
+    }
+
+    // ── TRUCK ────────────────────────────────────────────────────────────────
+    void DrawTruck()
+    {
+        int x = (int)Position.X;
+        int y = (int)Position.Y;
+        Color panelColor = new Color(
+            (byte)Math.Max(0, VehicleColor.R - 20),
+            (byte)Math.Max(0, VehicleColor.G - 20),
+            (byte)Math.Max(0, VehicleColor.B - 20), (byte)255);
+
+        switch (Facing)
+        {
+            case FacingDirection.Right:
+                // tray / bed
+                Raylib.DrawRectangle(x, y + 14, 60, 34, panelColor);
+                Raylib.DrawRectangle(x, y + 14, 60, 4,
+                    new Color((byte)Math.Min(255,panelColor.R+30),(byte)Math.Min(255,panelColor.G+30),(byte)Math.Min(255,panelColor.B+30),(byte)255));
+                // tray sides
+                Raylib.DrawRectangle(x, y + 14, 4, 34, new Color((byte)80,(byte)80,(byte)80,(byte)255));
+                Raylib.DrawRectangle(x, y + 44, 60, 4, new Color((byte)80,(byte)80,(byte)80,(byte)255));
+                // cab
+                Raylib.DrawRectangle(x + 58, y + 8, 42, 40, VehicleColor);
+                Raylib.DrawRectangle(x + 58, y + 8, 42, 4,
+                    new Color((byte)Math.Min(255,VehicleColor.R+40),(byte)Math.Min(255,VehicleColor.G+40),(byte)Math.Min(255,VehicleColor.B+40),(byte)255));
+                // cab window
+                Raylib.DrawRectangle(x + 64, y + 12, 28, 18,
+                    new Color((byte)100,(byte)180,(byte)220,(byte)200));
+                Raylib.DrawLine(x + 64, y + 12, x + 78, y + 30, new Color((byte)60,(byte)140,(byte)180,(byte)180));
+                // headlight
+                Raylib.DrawRectangle(x + 92, y + 20, 8, 10,
+                    new Color((byte)255,(byte)240,(byte)150,(byte)255));
+                // tail light on tray
+                Raylib.DrawRectangle(x, y + 20, 4, 8,
+                    new Color((byte)220,(byte)30,(byte)30,(byte)255));
+                // wheels — dual rear
+                Raylib.DrawCircle(x + 18, y + 48, 12, Color.Black);
+                Raylib.DrawCircleLines(x + 18, y + 48, 12, Color.DarkGray);
+                Raylib.DrawCircle(x + 18, y + 48, 5, new Color((byte)80,(byte)80,(byte)80,(byte)255));
+                Raylib.DrawCircle(x + 38, y + 48, 11, Color.Black);
+                Raylib.DrawCircleLines(x + 38, y + 48, 11, Color.DarkGray);
+                Raylib.DrawCircle(x + 38, y + 48, 4, new Color((byte)80,(byte)80,(byte)80,(byte)255));
+                // front wheel
+                Raylib.DrawCircle(x + 82, y + 48, 12, Color.Black);
+                Raylib.DrawCircleLines(x + 82, y + 48, 12, Color.DarkGray);
+                Raylib.DrawCircle(x + 82, y + 48, 5, new Color((byte)80,(byte)80,(byte)80,(byte)255));
+                // exhaust pipe
+                Raylib.DrawRectangle(x + 96, y + 10, 4, 16, new Color((byte)60,(byte)60,(byte)60,(byte)255));
+                break;
+
+            case FacingDirection.Left:
+                Raylib.DrawRectangle(x + 40, y + 14, 60, 34, panelColor);
+                Raylib.DrawRectangle(x + 40, y + 14, 60, 4,
+                    new Color((byte)Math.Min(255,panelColor.R+30),(byte)Math.Min(255,panelColor.G+30),(byte)Math.Min(255,panelColor.B+30),(byte)255));
+                Raylib.DrawRectangle(x + 96, y + 14, 4, 34, new Color((byte)80,(byte)80,(byte)80,(byte)255));
+                Raylib.DrawRectangle(x + 40, y + 44, 60, 4, new Color((byte)80,(byte)80,(byte)80,(byte)255));
+                Raylib.DrawRectangle(x, y + 8, 42, 40, VehicleColor);
+                Raylib.DrawRectangle(x, y + 8, 42, 4,
+                    new Color((byte)Math.Min(255,VehicleColor.R+40),(byte)Math.Min(255,VehicleColor.G+40),(byte)Math.Min(255,VehicleColor.B+40),(byte)255));
+                Raylib.DrawRectangle(x + 8, y + 12, 28, 18,
+                    new Color((byte)100,(byte)180,(byte)220,(byte)200));
+                Raylib.DrawLine(x + 36, y + 12, x + 22, y + 30, new Color((byte)60,(byte)140,(byte)180,(byte)180));
+                Raylib.DrawRectangle(x, y + 20, 8, 10,
+                    new Color((byte)255,(byte)240,(byte)150,(byte)255));
+                Raylib.DrawRectangle(x + 96, y + 20, 4, 8,
+                    new Color((byte)220,(byte)30,(byte)30,(byte)255));
+                Raylib.DrawCircle(x + 18, y + 48, 12, Color.Black);
+                Raylib.DrawCircleLines(x + 18, y + 48, 12, Color.DarkGray);
+                Raylib.DrawCircle(x + 18, y + 48, 5, new Color((byte)80,(byte)80,(byte)80,(byte)255));
+                Raylib.DrawCircle(x + 62, y + 48, 11, Color.Black);
+                Raylib.DrawCircleLines(x + 62, y + 48, 11, Color.DarkGray);
+                Raylib.DrawCircle(x + 62, y + 48, 4, new Color((byte)80,(byte)80,(byte)80,(byte)255));
+                Raylib.DrawCircle(x + 82, y + 48, 12, Color.Black);
+                Raylib.DrawCircleLines(x + 82, y + 48, 12, Color.DarkGray);
+                Raylib.DrawCircle(x + 82, y + 48, 5, new Color((byte)80,(byte)80,(byte)80,(byte)255));
+                Raylib.DrawRectangle(x, y + 10, 4, 16, new Color((byte)60,(byte)60,(byte)60,(byte)255));
+                break;
+
+            case FacingDirection.Down:
+                // wide front grille
+                Raylib.DrawRectangle(x + 5, y + 8, 90, 42, VehicleColor);
+                Raylib.DrawRectangle(x + 5, y + 8, 90, 4,
+                    new Color((byte)Math.Min(255,VehicleColor.R+40),(byte)Math.Min(255,VehicleColor.G+40),(byte)Math.Min(255,VehicleColor.B+40),(byte)255));
+                // windscreen
+                Raylib.DrawRectangle(x + 14, y + 12, 72, 22,
+                    new Color((byte)100,(byte)180,(byte)220,(byte)200));
+                Raylib.DrawRectangle(x + 48, y + 12, 4, 22, VehicleColor);
+                // large headlights
+                Raylib.DrawRectangle(x + 7,  y + 36, 22, 12,
+                    new Color((byte)255,(byte)240,(byte)150,(byte)255));
+                Raylib.DrawRectangle(x + 71, y + 36, 22, 12,
+                    new Color((byte)255,(byte)240,(byte)150,(byte)255));
+                // big grille
+                Raylib.DrawRectangle(x + 32, y + 38, 36, 10, new Color((byte)40,(byte)40,(byte)40,(byte)255));
+                for (int i = x + 34; i < x + 66; i += 6)
+                    Raylib.DrawRectangle(i, y + 39, 2, 8, new Color((byte)80,(byte)80,(byte)80,(byte)255));
+                // bull bar
+                Raylib.DrawRectangle(x + 5, y + 46, 90, 4, new Color((byte)60,(byte)60,(byte)60,(byte)255));
+                // wheels
+                Raylib.DrawCircle(x + 6,  y + 46, 10, Color.Black);
+                Raylib.DrawCircleLines(x + 6, y + 46, 10, Color.DarkGray);
+                Raylib.DrawCircle(x + 94, y + 46, 10, Color.Black);
+                Raylib.DrawCircleLines(x + 94, y + 46, 10, Color.DarkGray);
+                break;
+
+            case FacingDirection.Up:
+                // tray rear view
+                Raylib.DrawRectangle(x + 5, y + 8, 90, 42, panelColor);
+                Raylib.DrawRectangle(x + 5, y + 8, 90, 4,
+                    new Color((byte)Math.Max(0,panelColor.R-30),(byte)Math.Max(0,panelColor.G-30),(byte)Math.Max(0,panelColor.B-30),(byte)255));
+                // tray walls
+                Raylib.DrawRectangle(x + 5,  y + 8, 4, 42, new Color((byte)60,(byte)60,(byte)60,(byte)255));
+                Raylib.DrawRectangle(x + 91, y + 8, 4, 42, new Color((byte)60,(byte)60,(byte)60,(byte)255));
+                Raylib.DrawRectangle(x + 5,  y + 8, 90, 4, new Color((byte)60,(byte)60,(byte)60,(byte)255));
+                // tail lights
+                Raylib.DrawRectangle(x + 7,  y + 36, 22, 12,
+                    new Color((byte)220,(byte)30,(byte)30,(byte)255));
+                Raylib.DrawRectangle(x + 71, y + 36, 22, 12,
+                    new Color((byte)220,(byte)30,(byte)30,(byte)255));
+                // tow bar
+                Raylib.DrawRectangle(x + 44, y + 46, 12, 6, new Color((byte)60,(byte)60,(byte)60,(byte)255));
+                // wheels
+                Raylib.DrawCircle(x + 6,  y + 46, 10, Color.Black);
+                Raylib.DrawCircleLines(x + 6, y + 46, 10, Color.DarkGray);
+                Raylib.DrawCircle(x + 94, y + 46, 10, Color.Black);
+                Raylib.DrawCircleLines(x + 94, y + 46, 10, Color.DarkGray);
+                break;
+        }
+
+        if (Driving)
+            Raylib.DrawCircle((int)Position.X + 78, (int)Position.Y + 18, 7, Program.player.SkinColor);
+    }
+
+    // ── SUV ──────────────────────────────────────────────────────────────────
+    void DrawSUV()
+    {
+        int x = (int)Position.X;
+        int y = (int)Position.Y;
+        Color darkColor = new Color(
+            (byte)Math.Max(0, VehicleColor.R - 30),
+            (byte)Math.Max(0, VehicleColor.G - 30),
+            (byte)Math.Max(0, VehicleColor.B - 30), (byte)255);
+
+        switch (Facing)
+        {
+            case FacingDirection.Right:
+                // body — taller and boxier than sedan
+                Raylib.DrawRectangle(x, y + 12, 100, 36, VehicleColor);
+                Raylib.DrawRectangle(x, y + 12, 100, 4,
+                    new Color((byte)Math.Min(255,VehicleColor.R+40),(byte)Math.Min(255,VehicleColor.G+40),(byte)Math.Min(255,VehicleColor.B+40),(byte)255));
+                // full length roof
+                Raylib.DrawRectangle(x + 10, y + 2, 80, 12, VehicleColor);
+                Raylib.DrawRectangle(x + 10, y + 2, 80, 3,
+                    new Color((byte)Math.Min(255,VehicleColor.R+40),(byte)Math.Min(255,VehicleColor.G+40),(byte)Math.Min(255,VehicleColor.B+40),(byte)255));
+                // roof rack
+                Raylib.DrawRectangle(x + 14, y,     72, 3, new Color((byte)60,(byte)60,(byte)60,(byte)255));
+                Raylib.DrawRectangle(x + 14, y,     4,  3, new Color((byte)80,(byte)80,(byte)80,(byte)255));
+                Raylib.DrawRectangle(x + 82, y,     4,  3, new Color((byte)80,(byte)80,(byte)80,(byte)255));
+                Raylib.DrawRectangle(x + 48, y,     4,  3, new Color((byte)80,(byte)80,(byte)80,(byte)255));
+                // windows — two separate panes
+                Raylib.DrawRectangle(x + 14, y + 5, 36, 10,
+                    new Color((byte)100,(byte)180,(byte)220,(byte)180));
+                Raylib.DrawRectangle(x + 54, y + 5, 32, 10,
+                    new Color((byte)100,(byte)180,(byte)220,(byte)180));
+                // window divider (B pillar)
+                Raylib.DrawRectangle(x + 50, y + 4, 4, 12, VehicleColor);
+                // headlights
+                Raylib.DrawRectangle(x + 92, y + 16, 8, 12,
+                    new Color((byte)255,(byte)240,(byte)150,(byte)255));
+                Raylib.DrawRectangle(x + 92, y + 16, 8, 4,
+                    new Color((byte)255,(byte)255,(byte)200,(byte)255));
+                // tail lights
+                Raylib.DrawRectangle(x, y + 16, 6, 12,
+                    new Color((byte)220,(byte)30,(byte)30,(byte)255));
+                // spare tyre on back
+                Raylib.DrawCircle(x + 4, y + 30, 8, Color.Black);
+                Raylib.DrawCircleLines(x + 4, y + 30, 8, Color.DarkGray);
+                Raylib.DrawCircle(x + 4, y + 30, 3, new Color((byte)80,(byte)80,(byte)80,(byte)255));
+                // skid plate / running boards
+                Raylib.DrawRectangle(x + 10, y + 46, 80, 4, new Color((byte)60,(byte)60,(byte)60,(byte)255));
+                // wheels — larger than sedan
+                Raylib.DrawCircle(x + 20, y + 48, 14, Color.Black);
+                Raylib.DrawCircleLines(x + 20, y + 48, 14, Color.DarkGray);
+                Raylib.DrawCircle(x + 20, y + 48, 6, new Color((byte)80,(byte)80,(byte)80,(byte)255));
+                Raylib.DrawCircle(x + 80, y + 48, 14, Color.Black);
+                Raylib.DrawCircleLines(x + 80, y + 48, 14, Color.DarkGray);
+                Raylib.DrawCircle(x + 80, y + 48, 6, new Color((byte)80,(byte)80,(byte)80,(byte)255));
+                // door lines
+                Raylib.DrawLine(x + 50, y + 12, x + 50, y + 46, new Color((byte)0,(byte)0,(byte)0,(byte)80));
+                // door handles
+                Raylib.DrawRectangle(x + 30, y + 28, 12, 3, new Color((byte)180,(byte)180,(byte)180,(byte)255));
+                Raylib.DrawRectangle(x + 60, y + 28, 12, 3, new Color((byte)180,(byte)180,(byte)180,(byte)255));
+                break;
+
+            case FacingDirection.Left:
+                Raylib.DrawRectangle(x, y + 12, 100, 36, VehicleColor);
+                Raylib.DrawRectangle(x, y + 12, 100, 4,
+                    new Color((byte)Math.Min(255,VehicleColor.R+40),(byte)Math.Min(255,VehicleColor.G+40),(byte)Math.Min(255,VehicleColor.B+40),(byte)255));
+                Raylib.DrawRectangle(x + 10, y + 2, 80, 12, VehicleColor);
+                Raylib.DrawRectangle(x + 10, y + 2, 80, 3,
+                    new Color((byte)Math.Min(255,VehicleColor.R+40),(byte)Math.Min(255,VehicleColor.G+40),(byte)Math.Min(255,VehicleColor.B+40),(byte)255));
+                Raylib.DrawRectangle(x + 14, y, 72, 3, new Color((byte)60,(byte)60,(byte)60,(byte)255));
+                Raylib.DrawRectangle(x + 14, y, 4,  3, new Color((byte)80,(byte)80,(byte)80,(byte)255));
+                Raylib.DrawRectangle(x + 82, y, 4,  3, new Color((byte)80,(byte)80,(byte)80,(byte)255));
+                Raylib.DrawRectangle(x + 48, y, 4,  3, new Color((byte)80,(byte)80,(byte)80,(byte)255));
+                Raylib.DrawRectangle(x + 14, y + 5, 32, 10,
+                    new Color((byte)100,(byte)180,(byte)220,(byte)180));
+                Raylib.DrawRectangle(x + 50, y + 5, 36, 10,
+                    new Color((byte)100,(byte)180,(byte)220,(byte)180));
+                Raylib.DrawRectangle(x + 46, y + 4, 4, 12, VehicleColor);
+                // headlights on left side
+                Raylib.DrawRectangle(x, y + 16, 8, 12,
+                    new Color((byte)255,(byte)240,(byte)150,(byte)255));
+                Raylib.DrawRectangle(x, y + 16, 8, 4,
+                    new Color((byte)255,(byte)255,(byte)200,(byte)255));
+                Raylib.DrawRectangle(x + 94, y + 16, 6, 12,
+                    new Color((byte)220,(byte)30,(byte)30,(byte)255));
+                Raylib.DrawCircle(x + 96, y + 30, 8, Color.Black);
+                Raylib.DrawCircleLines(x + 96, y + 30, 8, Color.DarkGray);
+                Raylib.DrawCircle(x + 96, y + 30, 3, new Color((byte)80,(byte)80,(byte)80,(byte)255));
+                Raylib.DrawRectangle(x + 10, y + 46, 80, 4, new Color((byte)60,(byte)60,(byte)60,(byte)255));
+                Raylib.DrawCircle(x + 20, y + 48, 14, Color.Black);
+                Raylib.DrawCircleLines(x + 20, y + 48, 14, Color.DarkGray);
+                Raylib.DrawCircle(x + 20, y + 48, 6, new Color((byte)80,(byte)80,(byte)80,(byte)255));
+                Raylib.DrawCircle(x + 80, y + 48, 14, Color.Black);
+                Raylib.DrawCircleLines(x + 80, y + 48, 14, Color.DarkGray);
+                Raylib.DrawCircle(x + 80, y + 48, 6, new Color((byte)80,(byte)80,(byte)80,(byte)255));
+                Raylib.DrawLine(x + 50, y + 12, x + 50, y + 46, new Color((byte)0,(byte)0,(byte)0,(byte)80));
+                Raylib.DrawRectangle(x + 28, y + 28, 12, 3, new Color((byte)180,(byte)180,(byte)180,(byte)255));
+                Raylib.DrawRectangle(x + 58, y + 28, 12, 3, new Color((byte)180,(byte)180,(byte)180,(byte)255));
+                break;
+
+            case FacingDirection.Down:
+                // boxy front
+                Raylib.DrawRectangle(x + 5, y + 6, 90, 44, VehicleColor);
+                Raylib.DrawRectangle(x + 5, y + 6, 90, 4,
+                    new Color((byte)Math.Min(255,VehicleColor.R+40),(byte)Math.Min(255,VehicleColor.G+40),(byte)Math.Min(255,VehicleColor.B+40),(byte)255));
+                // windscreen
+                Raylib.DrawRectangle(x + 14, y + 10, 72, 22,
+                    new Color((byte)100,(byte)180,(byte)220,(byte)180));
+                Raylib.DrawRectangle(x + 48, y + 10, 4, 22, VehicleColor);
+                // headlights — square and wide
+                Raylib.DrawRectangle(x + 7,  y + 34, 22, 14,
+                    new Color((byte)255,(byte)240,(byte)150,(byte)255));
+                Raylib.DrawRectangle(x + 71, y + 34, 22, 14,
+                    new Color((byte)255,(byte)240,(byte)150,(byte)255));
+                // grille
+                Raylib.DrawRectangle(x + 32, y + 36, 36, 12, new Color((byte)40,(byte)40,(byte)40,(byte)255));
+                for (int i = x + 34; i < x + 66; i += 6)
+                    Raylib.DrawRectangle(i, y + 37, 2, 10, new Color((byte)80,(byte)80,(byte)80,(byte)255));
+                // bull bar
+                Raylib.DrawRectangle(x + 5, y + 48, 90, 4, new Color((byte)60,(byte)60,(byte)60,(byte)255));
+                // running boards
+                Raylib.DrawRectangle(x, y + 24, 6, 26, new Color((byte)60,(byte)60,(byte)60,(byte)255));
+                Raylib.DrawRectangle(x + 94, y + 24, 6, 26, new Color((byte)60,(byte)60,(byte)60,(byte)255));
+                // wheels
+                Raylib.DrawCircle(x + 6,  y + 46, 11, Color.Black);
+                Raylib.DrawCircleLines(x + 6, y + 46, 11, Color.DarkGray);
+                Raylib.DrawCircle(x + 94, y + 46, 11, Color.Black);
+                Raylib.DrawCircleLines(x + 94, y + 46, 11, Color.DarkGray);
+                break;
+
+            case FacingDirection.Up:
+                Raylib.DrawRectangle(x + 5, y + 6, 90, 44, VehicleColor);
+                Raylib.DrawRectangle(x + 5, y + 6, 90, 4,
+                    new Color((byte)Math.Max(0,VehicleColor.R-40),(byte)Math.Max(0,VehicleColor.G-40),(byte)Math.Max(0,VehicleColor.B-40),(byte)255));
+                // rear window
+                Raylib.DrawRectangle(x + 14, y + 10, 72, 22,
+                    new Color((byte)80,(byte)160,(byte)200,(byte)140));
+                Raylib.DrawRectangle(x + 48, y + 10, 4, 22, VehicleColor);
+                // tail lights — wide
+                Raylib.DrawRectangle(x + 7,  y + 34, 22, 14,
+                    new Color((byte)220,(byte)30,(byte)30,(byte)255));
+                Raylib.DrawRectangle(x + 71, y + 34, 22, 14,
+                    new Color((byte)220,(byte)30,(byte)30,(byte)255));
+                // spare tyre
+                Raylib.DrawCircle(x + 50, y + 24, 14, Color.Black);
+                Raylib.DrawCircleLines(x + 50, y + 24, 14, Color.DarkGray);
+                Raylib.DrawCircle(x + 50, y + 24, 6, new Color((byte)80,(byte)80,(byte)80,(byte)255));
+                // tow hitch
+                Raylib.DrawRectangle(x + 44, y + 48, 12, 6, new Color((byte)60,(byte)60,(byte)60,(byte)255));
+                // running boards
+                Raylib.DrawRectangle(x, y + 24, 6, 26, new Color((byte)60,(byte)60,(byte)60,(byte)255));
+                Raylib.DrawRectangle(x + 94, y + 24, 6, 26, new Color((byte)60,(byte)60,(byte)60,(byte)255));
+                // wheels
+                Raylib.DrawCircle(x + 6,  y + 46, 11, Color.Black);
+                Raylib.DrawCircleLines(x + 6, y + 46, 11, Color.DarkGray);
+                Raylib.DrawCircle(x + 94, y + 46, 11, Color.Black);
+                Raylib.DrawCircleLines(x + 94, y + 46, 11, Color.DarkGray);
+                break;
+        }
+
+        if (Driving)
+            Raylib.DrawCircle((int)Position.X + 50, (int)Position.Y + 16, 7, Program.player.SkinColor);
+    }
+}
 
     class Building
     {
