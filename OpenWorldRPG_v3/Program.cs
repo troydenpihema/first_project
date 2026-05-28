@@ -248,16 +248,6 @@ static void AddBank(float x, float y)
     bank.InteriorObjects.Add(new Rectangle(500, 260, 200, 90));
     bank.InteriorObjects.Add(new Rectangle(850, 260, 200, 90));
 
-    // --- board meeting room (top right) ---
-    bank.InteriorObjects.Add(new Rectangle(1050,  20,  20, 330)); // left wall
-    bank.InteriorObjects.Add(new Rectangle(1050,  20, 330,  20)); // top wall
-    bank.InteriorObjects.Add(new Rectangle(1360,  20,  20, 330)); // right wall
-    bank.InteriorObjects.Add(new Rectangle(1050, 330, 130,  20)); // bottom left
-    bank.InteriorObjects.Add(new Rectangle(1280, 330,  80,  20)); // bottom right (gap at 1180-1280 for door)
-
-    // board room table
-    bank.InteriorObjects.Add(new Rectangle(1080,  80, 260, 200)); // big meeting table
-
     // --- office (top left) ---
     bank.InteriorObjects.Add(new Rectangle(0,    20,  20, 330)); // already covered by left wall
     bank.InteriorObjects.Add(new Rectangle(20,   20, 330,  20)); // top wall
@@ -4293,108 +4283,7 @@ foreach (Building building in buildings)
         // door handle
         Raylib.DrawCircle((int)bx + 96, (int)by + 96, 3, new Color((byte)160,(byte)160,(byte)160,(byte)255));
  
-        // ── SMOKING AREA — front right of building entrance ──────────────────
-        // Positioned to the right of the door (bx+100 to bx+340, by+60 to by+240)
-        int sx = (int)bx + 105;   // smoking area left edge
-        int sy = (int)by + 55;    // smoking area top edge
-        int sw = 230;              // width
-        int sh = 200;              // height
- 
-        // concrete/paving slab floor
-        Raylib.DrawRectangle(sx, sy, sw, sh, new Color((byte)90,(byte)90,(byte)90,(byte)255));
-        for (int tx = sx; tx < sx + sw; tx += 40)
-            for (int ty = sy; ty < sy + sh; ty += 40)
-            {
-                Raylib.DrawRectangle(tx, ty, 40, 40,
-                    ((tx + ty) / 40 % 2 == 0)
-                        ? new Color((byte)88,(byte)88,(byte)88,(byte)255)
-                        : new Color((byte)78,(byte)78,(byte)78,(byte)255));
-                Raylib.DrawRectangle(tx, ty, 40, 1, new Color((byte)60,(byte)60,(byte)60,(byte)120));
-                Raylib.DrawRectangle(tx, ty, 1, 40, new Color((byte)60,(byte)60,(byte)60,(byte)120));
-            }
- 
-        // barriers — metal posts + rope/chain (3 sides, open toward building)
-        // left barrier
-        for (int py = sy; py <= sy + sh; py += 50)
-        {
-            Raylib.DrawRectangle(sx - 6, py, 6, 45, new Color((byte)80,(byte)80,(byte)80,(byte)255));
-            Raylib.DrawCircle(sx - 3, py, 5, new Color((byte)120,(byte)120,(byte)120,(byte)255));
-        }
-        // rope/chain left side
-        for (int py = sy + 5; py < sy + sh; py += 50)
-            Raylib.DrawLine(sx - 3, py, sx - 3, py + 44, new Color((byte)160,(byte)140,(byte)40,(byte)255));
- 
-        // right barrier
-        for (int py = sy; py <= sy + sh; py += 50)
-        {
-            Raylib.DrawRectangle(sx + sw, py, 6, 45, new Color((byte)80,(byte)80,(byte)80,(byte)255));
-            Raylib.DrawCircle(sx + sw + 3, py, 5, new Color((byte)120,(byte)120,(byte)120,(byte)255));
-        }
-        // rope right side
-        for (int py = sy + 5; py < sy + sh; py += 50)
-            Raylib.DrawLine(sx + sw + 3, py, sx + sw + 3, py + 44, new Color((byte)160,(byte)140,(byte)40,(byte)255));
- 
-        // front barrier (bottom edge)
-        for (int px = sx; px <= sx + sw; px += 50)
-        {
-            Raylib.DrawRectangle(px, sy + sh, 45, 6, new Color((byte)80,(byte)80,(byte)80,(byte)255));
-            Raylib.DrawCircle(px, sy + sh + 3, 5, new Color((byte)120,(byte)120,(byte)120,(byte)255));
-        }
-        // rope front
-        for (int px = sx + 5; px < sx + sw; px += 50)
-            Raylib.DrawLine(px, sy + sh + 3, px + 44, sy + sh + 3, new Color((byte)160,(byte)140,(byte)40,(byte)255));
- 
-        // ── SMOKING TABLE 1 (left side of area) ─────────────────────────────
-        int t1x = sx + 20;
-        int t1y = sy + 50;
-        // table
-        Raylib.DrawRectangle(t1x, t1y, 70, 50, new Color((byte)50,(byte)50,(byte)50,(byte)255));
-        Raylib.DrawRectangleLines(t1x, t1y, 70, 50, new Color((byte)80,(byte)80,(byte)80,(byte)255));
-        Raylib.DrawRectangle(t1x + 2, t1y + 2, 66, 6, new Color((byte)70,(byte)70,(byte)70,(byte)255)); // table top highlight
-        // ashtray on table
-        Raylib.DrawCircle(t1x + 35, t1y + 25, 8, new Color((byte)40,(byte)40,(byte)40,(byte)255));
-        Raylib.DrawCircle(t1x + 35, t1y + 25, 5, new Color((byte)30,(byte)30,(byte)30,(byte)255));
-        // cigarette butts in ashtray
-        Raylib.DrawRectangle(t1x + 31, t1y + 22, 6, 2, new Color((byte)200,(byte)180,(byte)160,(byte)200));
-        Raylib.DrawRectangle(t1x + 33, t1y + 25, 5, 2, new Color((byte)200,(byte)180,(byte)160,(byte)200));
-        // chairs around table 1
-        // top chair
-        Raylib.DrawRectangle(t1x + 15, t1y - 18, 40, 16, new Color((byte)35,(byte)35,(byte)35,(byte)255));
-        Raylib.DrawRectangle(t1x + 15, t1y - 18, 40, 4, new Color((byte)55,(byte)55,(byte)55,(byte)255));
-        // bottom chair
-        Raylib.DrawRectangle(t1x + 15, t1y + 52, 40, 16, new Color((byte)35,(byte)35,(byte)35,(byte)255));
-        Raylib.DrawRectangle(t1x + 15, t1y + 64, 40, 4, new Color((byte)20,(byte)20,(byte)20,(byte)255));
-        // left chair
-        Raylib.DrawRectangle(t1x - 18, t1y + 10, 16, 30, new Color((byte)35,(byte)35,(byte)35,(byte)255));
-        Raylib.DrawRectangle(t1x - 18, t1y + 10, 4, 30, new Color((byte)55,(byte)55,(byte)55,(byte)255));
-        // right chair
-        Raylib.DrawRectangle(t1x + 72, t1y + 10, 16, 30, new Color((byte)35,(byte)35,(byte)35,(byte)255));
-        Raylib.DrawRectangle(t1x + 84, t1y + 10, 4, 30, new Color((byte)20,(byte)20,(byte)20,(byte)255));
- 
-        // ── SMOKING TABLE 2 (right side of area) ────────────────────────────
-        int t2x = sx + 130;
-        int t2y = sy + 50;
-        Raylib.DrawRectangle(t2x, t2y, 70, 50, new Color((byte)50,(byte)50,(byte)50,(byte)255));
-        Raylib.DrawRectangleLines(t2x, t2y, 70, 50, new Color((byte)80,(byte)80,(byte)80,(byte)255));
-        Raylib.DrawRectangle(t2x + 2, t2y + 2, 66, 6, new Color((byte)70,(byte)70,(byte)70,(byte)255));
-        Raylib.DrawCircle(t2x + 35, t2y + 25, 8, new Color((byte)40,(byte)40,(byte)40,(byte)255));
-        Raylib.DrawCircle(t2x + 35, t2y + 25, 5, new Color((byte)30,(byte)30,(byte)30,(byte)255));
-        Raylib.DrawRectangle(t2x + 31, t2y + 22, 6, 2, new Color((byte)200,(byte)180,(byte)160,(byte)200));
-        Raylib.DrawRectangle(t2x + 33, t2y + 25, 5, 2, new Color((byte)200,(byte)180,(byte)160,(byte)200));
-        // chairs table 2
-        Raylib.DrawRectangle(t2x + 15, t2y - 18, 40, 16, new Color((byte)35,(byte)35,(byte)35,(byte)255));
-        Raylib.DrawRectangle(t2x + 15, t2y - 18, 40, 4, new Color((byte)55,(byte)55,(byte)55,(byte)255));
-        Raylib.DrawRectangle(t2x + 15, t2y + 52, 40, 16, new Color((byte)35,(byte)35,(byte)35,(byte)255));
-        Raylib.DrawRectangle(t2x + 15, t2y + 64, 40, 4, new Color((byte)20,(byte)20,(byte)20,(byte)255));
-        Raylib.DrawRectangle(t2x - 18, t2y + 10, 16, 30, new Color((byte)35,(byte)35,(byte)35,(byte)255));
-        Raylib.DrawRectangle(t2x - 18, t2y + 10, 4, 30, new Color((byte)55,(byte)55,(byte)55,(byte)255));
-        Raylib.DrawRectangle(t2x + 72, t2y + 10, 16, 30, new Color((byte)35,(byte)35,(byte)35,(byte)255));
-        Raylib.DrawRectangle(t2x + 84, t2y + 10, 4, 30, new Color((byte)20,(byte)20,(byte)20,(byte)255));
- 
-        // smoking area sign
-        Raylib.DrawRectangle(sx + sw / 2 - 40, sy - 16, 80, 14, new Color((byte)20,(byte)20,(byte)20,(byte)255));
-        Raylib.DrawRectangleLines(sx + sw / 2 - 40, sy - 16, 80, 14, new Color((byte)80,(byte)80,(byte)80,(byte)255));
-        Raylib.DrawText("SMOKING", sx + sw / 2 - 34, sy - 14, 11, new Color((byte)160,(byte)160,(byte)160,(byte)255));
+        
     }
  
     // ── GAS STATION BUILDING EXTERIOR ───────────────────────────────────────
@@ -5183,84 +5072,7 @@ if (currentBuilding.BuildingName == "BANK")
     Raylib.DrawText("MANAGER", 100, 27, 16,
         new Color((byte)220, (byte)185, (byte)70, (byte)255));
 
-    // =============================================
-    // BOARD MEETING ROOM (top right)
-    // =============================================
-    // walls
-    Raylib.DrawRectangle(1050, 20, 330,  20,
-        new Color((byte)180, (byte)160, (byte)100, (byte)255)); // top
-    Raylib.DrawRectangle(1050, 20,  20, 310,
-        new Color((byte)180, (byte)160, (byte)100, (byte)255)); // left
-    Raylib.DrawRectangle(1360, 20,  20, 310,
-        new Color((byte)180, (byte)160, (byte)100, (byte)255)); // right
-    Raylib.DrawRectangle(1050,310, 130,  20,
-        new Color((byte)180, (byte)160, (byte)100, (byte)255)); // bottom left
-    Raylib.DrawRectangle(1280,310,  80,  20,
-        new Color((byte)180, (byte)160, (byte)100, (byte)255)); // bottom right
-    // door frame
-    Raylib.DrawRectangle(1180, 308, 100, 4,
-        new Color((byte)120, (byte)90, (byte)30, (byte)255));
 
-    // carpet inside board room
-    Raylib.DrawRectangle(1072, 42, 286, 266,
-        new Color((byte)60, (byte)80, (byte)50, (byte)255));
-    Raylib.DrawRectangleLines(1080, 50, 270, 250,
-        new Color((byte)80, (byte)105, (byte)65, (byte)255));
-
-    // large meeting table
-    Raylib.DrawRectangle(1082, 70, 256, 210,
-        new Color((byte)120, (byte)85, (byte)35, (byte)255));
-    Raylib.DrawRectangle(1082, 70, 256, 8,
-        new Color((byte)155, (byte)115, (byte)55, (byte)255));
-    Raylib.DrawRectangle(1082, 70, 8, 210,
-        new Color((byte)155, (byte)115, (byte)55, (byte)255));
-    // wood grain
-    for (int gx = 1092; gx < 1335; gx += 30)
-        Raylib.DrawRectangle(gx, 70, 1, 210,
-            new Color((byte)100, (byte)65, (byte)25, (byte)80));
-
-    // chairs around table
-    // top row
-    int[] boardChairX = { 1092, 1152, 1212, 1272 };
-    foreach (int bcx in boardChairX)
-    {
-        Raylib.DrawRectangle(bcx, 48, 44, 20,
-            new Color((byte)50, (byte)60, (byte)40, (byte)255));
-        Raylib.DrawRectangle(bcx, 48, 44, 5,
-            new Color((byte)70, (byte)85, (byte)55, (byte)255));
-    }
-    // bottom row
-    foreach (int bcx in boardChairX)
-    {
-        Raylib.DrawRectangle(bcx, 282, 44, 20,
-            new Color((byte)50, (byte)60, (byte)40, (byte)255));
-        Raylib.DrawRectangle(bcx, 297, 44, 5,
-            new Color((byte)35, (byte)45, (byte)28, (byte)255));
-    }
-    // left side
-    int[] boardChairY = { 95, 155, 215 };
-    foreach (int bcy in boardChairY)
-    {
-        Raylib.DrawRectangle(1060, bcy, 20, 40,
-            new Color((byte)50, (byte)60, (byte)40, (byte)255));
-        Raylib.DrawRectangle(1060, bcy, 5, 40,
-            new Color((byte)70, (byte)85, (byte)55, (byte)255));
-    }
-    // right side
-    foreach (int bcy in boardChairY)
-    {
-        Raylib.DrawRectangle(1340, bcy, 20, 40,
-            new Color((byte)50, (byte)60, (byte)40, (byte)255));
-        Raylib.DrawRectangle(1355, bcy, 5, 40,
-            new Color((byte)35, (byte)45, (byte)28, (byte)255));
-    }
-    // projector screen on back wall
-    Raylib.DrawRectangle(1095, 22, 230, 45,
-        new Color((byte)230, (byte)230, (byte)220, (byte)255));
-    Raylib.DrawRectangleLines(1095, 22, 230, 45,
-        new Color((byte)80, (byte)80, (byte)80, (byte)255));
-    Raylib.DrawText("BOARD ROOM", 1128, 26, 16,
-        new Color((byte)80, (byte)80, (byte)80, (byte)255));
 
     // =============================================
     // LABELS
