@@ -142,6 +142,57 @@ namespace OpenWorldRPG
         static Building currentBuilding = null;
         static float shakeDuration = 0f;
         static float shakeMagnitude = 6f;
+        // ── SWIMMING ──
+        static bool swimmingActive = false;
+        static string swimmingPoolType = ""; // "lane" or "diving"
+        static float swimLapTimer = 0f;
+        static float swimLapDuration = 4f;
+        static int swimLapsCompleted = 0;
+        static bool divingActive = false;
+        static float divingBarPos = 0f;
+        static float divingBarDir = 1f;
+        static float divingBarSpeed = 0.4f;
+        static int divingScore = 0;
+        static bool divingJumped = false;
+        static float divingFallTimer = 0f;
+        static string divingResult = "";
+        static float divingResultTimer = 0f;
+
+        // ── TENNIS ──
+        static bool tennisActive = false;
+        static Vector2 tennisBallPos = new Vector2(400, 300);
+        static Vector2 tennisBallVel = new Vector2(200, 150);
+        static float tennisPlayerPaddleY = 270f;
+        static float tennisAIPaddleY = 270f;
+        static int tennisPlayerScore = 0;
+        static int tennisAIScore = 0;
+        static float tennisSwingCooldown = 0f;
+        static bool tennisServing = true;
+        static float tennisMessageTimer = 0f;
+        static string tennisMessage = "";
+
+        // ── BASKETBALL ──
+        static bool basketballActive = false;
+        static float bbPower = 0f;
+        static float bbPowerDir = 1f;
+        static float bbAimX = 0f;
+        static float bbAimDir = 1f;
+        static bool bbShooting = false;
+        static float bbShotTimer = 0f;
+        static int bbScore = 0;
+        static int bbAttempts = 0;
+        static string bbMessage = "";
+        static float bbMessageTimer = 0f;
+        static bool bbPowerLocked = false;
+
+        // ── MCDONALD'S ──
+        static bool mcdonaldsMenuOpen = false;
+        static int mcdonaldsSelectedItem = -1;
+        static string mcdonaldsMessage = "";
+        static float mcdonaldsMessageTimer = 0f;
+        static float mcdonaldsOrderTimer = 0f;
+        static bool mcdonaldsOrderReady = false;
+        static string mcdonaldsOrderName = "";
 
         static (bool exists, string name, string info) GetSlotInfo(int slot)
         {
@@ -220,6 +271,119 @@ namespace OpenWorldRPG
     // add to gas stations list for pump logic
     gasStations.Add(new GasStation(x, y));
 }
+
+static void AddSwimmingComplex(float x, float y)
+{
+    var pool = new Building(
+        new Rectangle(x, y, 300, 200),
+        new Color(30, 120, 200, 255),
+        new Color(20, 160, 220, 255),
+        new Vector2(x + 150, y + 300),
+        "SWIMMING COMPLEX",
+        new NPC(new Vector2(700, 100), "Lifeguard", "Lane pool: swim laps. Diving pool: time your jump!"),
+        entryPos: new Vector2(700, 900)
+    );
+
+    pool.InteriorObjects.Clear();
+
+    // Lane pool walls
+    pool.InteriorObjects.Add(new Rectangle(50, 100, 500, 20));   // top wall
+    pool.InteriorObjects.Add(new Rectangle(50, 420, 500, 20));   // bottom wall
+    pool.InteriorObjects.Add(new Rectangle(50, 100, 20, 340));   // left wall
+    pool.InteriorObjects.Add(new Rectangle(530, 100, 20, 340));  // right wall
+
+    // Lane dividers (can't walk through)
+    for (int lane = 0; lane < 4; lane++)
+        pool.InteriorObjects.Add(new Rectangle(52, 152 + lane * 60, 496, 8));
+
+    // Diving pool walls
+    pool.InteriorObjects.Add(new Rectangle(700, 100, 450, 20));  // top
+    pool.InteriorObjects.Add(new Rectangle(700, 500, 450, 20));  // bottom
+    pool.InteriorObjects.Add(new Rectangle(700, 100, 20, 420));  // left
+    pool.InteriorObjects.Add(new Rectangle(1130, 100, 20, 420)); // right
+
+    // Diving board platform (collision - player stands on edge)
+    pool.InteriorObjects.Add(new Rectangle(700, 180, 80, 20));   // board platform base
+    pool.InteriorObjects.Add(new Rectangle(700, 160, 20, 360));  // left wall of dive area
+
+    buildings.Add(pool);
+}
+
+static void AddTennisCourt(float x, float y)
+{
+    var court = new Building(
+        new Rectangle(x, y, 200, 120),
+        new Color(180, 120, 40, 255),
+        new Color(60, 160, 60, 255),
+        new Vector2(x + 100, y + 200),
+        "TENNIS COURT",
+        new NPC(new Vector2(700, 100), "Tennis Coach", "Press E near the net to start a game! WASD to move your paddle."),
+        entryPos: new Vector2(700, 920)
+    );
+
+    court.InteriorObjects.Clear();
+    // Net post collision
+    court.InteriorObjects.Add(new Rectangle(670, 80, 20, 560));
+
+    buildings.Add(court);
+}
+
+static void AddBasketballCourt(float x, float y)
+{
+    var court = new Building(
+        new Rectangle(x, y, 200, 120),
+        new Color(200, 100, 20, 255),
+        new Color(200, 140, 60, 255),
+        new Vector2(x + 100, y + 200),
+        "BASKETBALL COURT",
+        new NPC(new Vector2(700, 100), "Coach", "Shoot hoops! Stand at the free throw line and press F. Lock power, then lock aim!"),
+        entryPos: new Vector2(700, 920)
+    );
+
+    court.InteriorObjects.Clear();
+    // Backboard collision
+    court.InteriorObjects.Add(new Rectangle(640, 80, 80, 20));
+
+    buildings.Add(court);
+}
+
+static void AddMcDonalds(float x, float y)
+{
+    var mcd = new Building(
+        new Rectangle(x, y, 200, 140),
+        new Color(220, 30, 30, 255),
+        new Color(255, 200, 0, 255),
+        new Vector2(x + 100, y + 240),
+        "McDONALD'S",
+        new NPC(new Vector2(700, 120), "Cashier", "Welcome to McDonald's! Press E to order."),
+        entryPos: new Vector2(700, 900)
+    );
+
+    mcd.InteriorObjects.Clear();
+
+    // Counter
+    mcd.InteriorObjects.Add(new Rectangle(200, 80, 900, 50));
+    mcd.InteriorObjects.Add(new Rectangle(200, 80, 900, 8));
+    mcd.InteriorObjects.Add(new Rectangle(200, 80, 8, 50));
+    mcd.InteriorObjects.Add(new Rectangle(1092, 80, 8, 50));
+
+    // Tables
+    for (int t = 0; t < 3; t++)
+    {
+        int tx = 150 + t * 300;
+        mcd.InteriorObjects.Add(new Rectangle(tx, 400, 120, 70));
+    }
+    for (int t = 0; t < 3; t++)
+    {
+        int tx = 150 + t * 300;
+        mcd.InteriorObjects.Add(new Rectangle(tx, 600, 120, 70));
+    }
+
+    // Play area wall
+    mcd.InteriorObjects.Add(new Rectangle(1100, 300, 20, 600));
+
+    buildings.Add(mcd);
+}
 static void AddBank(float x, float y)
 {
     var bank = new Building(
@@ -247,6 +411,7 @@ static void AddBank(float x, float y)
     bank.InteriorObjects.Add(new Rectangle(150, 260, 200, 90));
     bank.InteriorObjects.Add(new Rectangle(500, 260, 200, 90));
     bank.InteriorObjects.Add(new Rectangle(850, 260, 200, 90));
+
 
     // --- office (top left) ---
     bank.InteriorObjects.Add(new Rectangle(0,    20,  20, 330)); // already covered by left wall
@@ -1693,6 +1858,87 @@ static int GetItemCount(string itemName)
         _ => 0
     };
 }
+
+static void DrawMcDonaldsMenu()
+{
+    if (!mcdonaldsMenuOpen) return;
+    if (currentBuilding == null || currentBuilding.BuildingName != "McDONALD'S") return;
+
+    string[] items = { "Big Mac", "McChicken", "Large Fries", "McFlurry", "Happy Meal", "10pc Nuggets" };
+    int[]    prices = { 8, 7, 4, 5, 9, 6 };
+    string[] descriptions = {
+        "Two beef patties, special sauce. +25 HP",
+        "Crispy chicken fillet. +20 HP",
+        "Golden salty fries. +10 HP",
+        "Creamy ice cream swirl. +15 HP",
+        "Kids meal + toy! +20 HP",
+        "Ten crispy nuggets. +22 HP"
+    };
+    int[] hpGain = { 25, 20, 10, 15, 20, 22 };
+
+    int panelW = 700;
+    int panelH = 540;
+    int panelX = ScreenWidth / 2 - panelW / 2;
+    int panelY = 80;
+
+    Raylib.DrawRectangle(panelX, panelY, panelW, panelH, new Color((byte)20,(byte)20,(byte)20,(byte)245));
+    Raylib.DrawRectangleLines(panelX, panelY, panelW, panelH, new Color((byte)255,(byte)200,(byte)0,(byte)255));
+    // Header
+    Raylib.DrawRectangle(panelX, panelY, panelW, 50, new Color((byte)200,(byte)30,(byte)30,(byte)255));
+    Raylib.DrawText("McDONALD'S", panelX + 240, panelY + 10, 32, new Color((byte)255,(byte)220,(byte)0,(byte)255));
+    Raylib.DrawText($"Wallet: ${player.Money}", panelX + 20, panelY + 58, 20, Color.Gold);
+
+    if (mcdonaldsOrderReady)
+    {
+        Raylib.DrawRectangle(panelX + 100, panelY + 200, 500, 80,
+            new Color((byte)0,(byte)160,(byte)0,(byte)255));
+        Raylib.DrawText($"🍟 {mcdonaldsOrderName} is ready!", panelX + 120, panelY + 225, 26, Color.White);
+        return;
+    }
+
+    Vector2 mouse = Raylib.GetMousePosition();
+
+    for (int i = 0; i < items.Length; i++)
+    {
+        int row = i / 2;
+        int col = i % 2;
+        int bx = panelX + 20 + col * 340;
+        int by = panelY + 90 + row * 140;
+
+        bool hover = Raylib.CheckCollisionPointRec(mouse, new Rectangle(bx, by, 320, 120));
+        bool canAfford = player.Money >= prices[i];
+
+        Raylib.DrawRectangle(bx, by, 320, 120,
+            hover && canAfford ? new Color((byte)50,(byte)30,(byte)0,(byte)255)
+                               : new Color((byte)30,(byte)20,(byte)0,(byte)255));
+        Raylib.DrawRectangleLines(bx, by, 320, 120,
+            hover && canAfford ? new Color((byte)255,(byte)200,(byte)0,(byte)255)
+                               : new Color((byte)150,(byte)100,(byte)0,(byte)255));
+
+        Raylib.DrawText(items[i], bx + 12, by + 10, 22,
+            canAfford ? Color.White : Color.DarkGray);
+        Raylib.DrawText($"${prices[i]}", bx + 260, by + 10, 22,
+            canAfford ? Color.Gold : Color.DarkGray);
+        Raylib.DrawText(descriptions[i], bx + 12, by + 40, 15,
+            canAfford ? Color.LightGray : Color.DarkGray);
+
+        if (!canAfford)
+            Raylib.DrawText("Not enough $", bx + 12, by + 90, 14, Color.Red);
+
+        if (hover && canAfford && Raylib.IsMouseButtonPressed(MouseButton.Left))
+        {
+            player.Money -= prices[i];
+            mcdonaldsOrderName = items[i];
+            mcdonaldsOrderReady = true;
+            mcdonaldsOrderTimer = 3f;  // 3 second wait
+            player.Health = Math.Min(player.MaxHealth, player.Health + hpGain[i]);
+            mcdonaldsMessage = $"Ordered {items[i]}! Ready in a moment...";
+            mcdonaldsMessageTimer = 4f;
+        }
+    }
+
+    Raylib.DrawText("Q = Close", panelX + 300, panelY + 500, 20, Color.LightGray);
+}
         static void DrawChestUI()
 {
     if (!chestOpen) return;
@@ -3098,6 +3344,342 @@ if (currentBuilding.BuildingName == "GYM")
     }
 }
 
+// ── McDONALD'S ──────────────────────────────────────────────────────────
+if (currentBuilding.BuildingName == "McDONALD'S")
+{
+    if (mcdonaldsMenuOpen)
+    {
+        if (Raylib.IsKeyPressed(KeyboardKey.Q))
+        {
+            mcdonaldsMenuOpen = false;
+            mcdonaldsSelectedItem = -1;
+        }
+    }
+    else
+    {
+        if (Vector2.Distance(player.Position, currentBuilding.InteriorNPC.Position) < 120)
+        {
+            if (Raylib.IsKeyPressed(KeyboardKey.E))
+                mcdonaldsMenuOpen = true;
+        }
+    }
+
+    if (mcdonaldsOrderReady)
+    {
+        mcdonaldsOrderTimer -= dt;
+        if (mcdonaldsOrderTimer <= 0)
+        {
+            mcdonaldsOrderReady = false;
+            mcdonaldsMessage = $"Order ready! Enjoy your {mcdonaldsOrderName}. +20 HP";
+            mcdonaldsMessageTimer = 3f;
+            player.Health = Math.Min(player.MaxHealth, player.Health + 20);
+        }
+    }
+    if (mcdonaldsMessageTimer > 0) mcdonaldsMessageTimer -= dt;
+}
+
+// ── SWIMMING COMPLEX ─────────────────────────────────────────────────────
+if (currentBuilding.BuildingName == "SWIMMING COMPLEX")
+{
+    // Lane pool zone: x 50-550, y 100-440
+    Vector2 lanePoolCenter = new Vector2(300, 270);
+    Vector2 divingBoardPos = new Vector2(780, 200);
+
+    bool nearLanePool  = player.Position.X > 55  && player.Position.X < 545
+                      && player.Position.Y > 105 && player.Position.Y < 435;
+    bool nearDivingBoard = Vector2.Distance(player.Position, divingBoardPos) < 100;
+
+    if (!swimmingActive && !divingActive)
+    {
+        if (nearLanePool && Raylib.IsKeyPressed(KeyboardKey.E))
+        {
+            swimmingActive = true;
+            swimmingPoolType = "lane";
+            swimLapTimer = 0f;
+            swimLapsCompleted = 0;
+        }
+        if (nearDivingBoard && Raylib.IsKeyPressed(KeyboardKey.E))
+        {
+            swimmingActive = true;
+            swimmingPoolType = "diving";
+            divingActive = false;
+            divingBarPos = 0f;
+            divingBarDir = 1f;
+            divingJumped = false;
+            divingScore = 0;
+            divingResult = "";
+        }
+    }
+
+    if (swimmingActive && swimmingPoolType == "lane")
+    {
+        swimLapTimer += dt;
+        if (swimLapTimer >= swimLapDuration)
+        {
+            swimLapTimer = 0f;
+            swimLapsCompleted++;
+            player.AddAthleticsXP(30);
+            shopMessage = $"Lap {swimLapsCompleted} complete! +30 Athletics XP";
+            shopMessageTimer = 1.2f;
+        }
+        if (Raylib.IsKeyPressed(KeyboardKey.Q))
+        {
+            swimmingActive = false;
+            shopMessage = $"Finished swimming! {swimLapsCompleted} laps completed.";
+            shopMessageTimer = 2f;
+        }
+    }
+
+    if (swimmingActive && swimmingPoolType == "diving")
+    {
+        if (!divingJumped)
+        {
+            // Move power bar
+            divingBarPos += divingBarDir * divingBarSpeed * dt;
+            if (divingBarPos >= 1f) { divingBarPos = 1f; divingBarDir = -1f; }
+            if (divingBarPos <= 0f) { divingBarPos = 0f; divingBarDir = 1f; }
+
+            if (Raylib.IsKeyPressed(KeyboardKey.Space))
+            {
+                divingJumped = true;
+                divingFallTimer = 0f;
+                // Score based on how close to centre (0.5)
+                float dist = MathF.Abs(divingBarPos - 0.5f);
+                if (dist < 0.05f)      { divingScore = 10; divingResult = "PERFECT DIVE! 10/10"; }
+                else if (dist < 0.12f) { divingScore = 8;  divingResult = "Great dive! 8/10"; }
+                else if (dist < 0.22f) { divingScore = 6;  divingResult = "Good dive! 6/10"; }
+                else if (dist < 0.35f) { divingScore = 4;  divingResult = "Average dive. 4/10"; }
+                else                   { divingScore = 1;  divingResult = "Belly flop! 1/10"; }
+
+                int xp = divingScore * 8;
+                player.AddAthleticsXP(xp);
+                shopMessage = $"{divingResult} +{xp} Athletics XP";
+                shopMessageTimer = 3f;
+            }
+        }
+        else
+        {
+            divingFallTimer += dt;
+            if (divingFallTimer > 2f)
+            {
+                divingJumped = false;
+                divingBarPos = 0f;
+                divingBarDir = 1f;
+                // allow another dive or exit
+            }
+        }
+
+        if (Raylib.IsKeyPressed(KeyboardKey.Q) && !divingJumped)
+        {
+            swimmingActive = false;
+            swimmingPoolType = "";
+        }
+    }
+}
+
+// ── TENNIS COURT ─────────────────────────────────────────────────────────
+if (currentBuilding.BuildingName == "TENNIS COURT")
+{
+    Vector2 netPos = new Vector2(680, 300);
+    if (!tennisActive && Vector2.Distance(player.Position, netPos) < 150)
+    {
+        if (Raylib.IsKeyPressed(KeyboardKey.E))
+        {
+            tennisActive = true;
+            tennisBallPos = new Vector2(300, 300);
+            tennisBallVel = new Vector2(180, 100);
+            tennisPlayerScore = 0;
+            tennisAIScore = 0;
+            tennisPlayerPaddleY = 270f;
+            tennisAIPaddleY = 270f;
+            tennisServing = true;
+            tennisMessage = "Tennis started! W/S to move your paddle. Space to serve.";
+            tennisMessageTimer = 3f;
+        }
+    }
+
+    if (tennisActive)
+    {
+        if (tennisSwingCooldown > 0) tennisSwingCooldown -= dt;
+        if (tennisMessageTimer > 0) tennisMessageTimer -= dt;
+
+        // Player paddle movement (left side, x~100)
+        if (Raylib.IsKeyDown(KeyboardKey.W)) tennisPlayerPaddleY -= 300f * dt;
+        if (Raylib.IsKeyDown(KeyboardKey.S)) tennisPlayerPaddleY += 300f * dt;
+        tennisPlayerPaddleY = Math.Clamp(tennisPlayerPaddleY, 90f, 500f);
+
+        // AI tracks ball
+        float aiTarget = tennisBallPos.Y - 30f;
+        tennisAIPaddleY += Math.Sign(aiTarget - tennisAIPaddleY) * 200f * dt;
+        tennisAIPaddleY = Math.Clamp(tennisAIPaddleY, 90f, 500f);
+
+        if (!tennisServing)
+        {
+            // Move ball
+            tennisBallPos += tennisBallVel * dt;
+
+            // Top/bottom bounce
+            if (tennisBallPos.Y < 90f)  { tennisBallPos.Y = 90f;  tennisBallVel.Y = MathF.Abs(tennisBallVel.Y); }
+            if (tennisBallPos.Y > 540f) { tennisBallPos.Y = 540f; tennisBallVel.Y = -MathF.Abs(tennisBallVel.Y); }
+
+            // Player paddle (x 80-110, y playerPaddleY to +60)
+            Rectangle playerPaddle = new Rectangle(80, tennisPlayerPaddleY, 22, 60);
+            Rectangle ballRect = new Rectangle(tennisBallPos.X - 8, tennisBallPos.Y - 8, 16, 16);
+            if (Raylib.CheckCollisionRecs(ballRect, playerPaddle) && tennisBallVel.X < 0)
+            {
+                tennisBallVel.X = MathF.Abs(tennisBallVel.X) * 1.05f;
+                tennisBallVel.Y += Raylib.GetRandomValue(-40, 40);
+                player.AddAthleticsXP(2);
+            }
+
+            // AI paddle (x 1270-1292)
+            Rectangle aiPaddle = new Rectangle(1270, tennisAIPaddleY, 22, 60);
+            if (Raylib.CheckCollisionRecs(ballRect, aiPaddle) && tennisBallVel.X > 0)
+            {
+                tennisBallVel.X = -MathF.Abs(tennisBallVel.X) * 1.02f;
+                tennisBallVel.Y += Raylib.GetRandomValue(-30, 30);
+            }
+
+            // Score: ball goes off left = AI scores, off right = player scores
+            if (tennisBallPos.X < 60f)
+            {
+                tennisAIScore++;
+                tennisMessage = tennisAIScore >= 5 ? "AI wins the set! Good game." : $"AI scores! {tennisPlayerScore} - {tennisAIScore}";
+                tennisMessageTimer = 2f;
+                if (tennisAIScore >= 5)
+                {
+                    tennisActive = false;
+                    player.AddAthleticsXP(20);
+                }
+                else { tennisServing = true; tennisBallPos = new Vector2(300, 300); }
+            }
+            if (tennisBallPos.X > 1320f)
+            {
+                tennisPlayerScore++;
+                player.AddAthleticsXP(10);
+                tennisMessage = tennisPlayerScore >= 5 ? "You win the set! +50 Athletics XP" : $"You score! {tennisPlayerScore} - {tennisAIScore}";
+                tennisMessageTimer = 2f;
+                if (tennisPlayerScore >= 5)
+                {
+                    tennisActive = false;
+                    player.AddAthleticsXP(50);
+                }
+                else { tennisServing = true; tennisBallPos = new Vector2(1000, 300); tennisBallVel.X = MathF.Abs(tennisBallVel.X); }
+            }
+        }
+        else
+        {
+            if (Raylib.IsKeyPressed(KeyboardKey.Space))
+            {
+                tennisServing = false;
+                tennisBallVel = new Vector2(
+                    tennisBallPos.X < 680 ? 220 : -220,
+                    Raylib.GetRandomValue(-120, 120)
+                );
+            }
+        }
+
+        if (Raylib.IsKeyPressed(KeyboardKey.Q) && !tennisActive == false)
+        {
+            tennisActive = false;
+            shopMessage = $"Tennis ended. Score: {tennisPlayerScore} - {tennisAIScore}";
+            shopMessageTimer = 2f;
+        }
+    }
+}
+
+// ── BASKETBALL COURT ─────────────────────────────────────────────────────
+if (currentBuilding.BuildingName == "BASKETBALL COURT")
+{
+    Vector2 freeThrowLine = new Vector2(400, 500);
+    bool nearFreeThrow = Vector2.Distance(player.Position, freeThrowLine) < 100;
+
+    if (bbMessageTimer > 0) bbMessageTimer -= dt;
+
+    if (!basketballActive)
+    {
+        if (nearFreeThrow && Raylib.IsKeyPressed(KeyboardKey.F))
+        {
+            basketballActive = true;
+            bbPower = 0f;
+            bbPowerDir = 1f;
+            bbAimX = 0f;
+            bbAimDir = 1f;
+            bbPowerLocked = false;
+            bbShooting = false;
+            bbShotTimer = 0f;
+            bbAttempts++;
+        }
+    }
+    else
+    {
+        if (!bbPowerLocked)
+        {
+            // Phase 1: lock power
+            bbPower += bbPowerDir * 0.8f * dt;
+            if (bbPower >= 1f) { bbPower = 1f; bbPowerDir = -1f; }
+            if (bbPower <= 0f) { bbPower = 0f; bbPowerDir = 1f; }
+
+            if (Raylib.IsKeyPressed(KeyboardKey.Space))
+                bbPowerLocked = true;
+        }
+        else if (!bbShooting)
+        {
+            // Phase 2: lock aim
+            bbAimX += bbAimDir * 1.2f * dt;
+            if (bbAimX >= 1f) { bbAimX = 1f; bbAimDir = -1f; }
+            if (bbAimX <= 0f) { bbAimX = 0f; bbAimDir = 1f; }
+
+            if (Raylib.IsKeyPressed(KeyboardKey.Space))
+            {
+                bbShooting = true;
+                bbShotTimer = 0f;
+
+                // Score: power near 0.65 = good arc, aim near 0.5 = centred
+                float powerDiff = MathF.Abs(bbPower - 0.65f);
+                float aimDiff   = MathF.Abs(bbAimX - 0.5f);
+                bool scored = powerDiff < 0.15f && aimDiff < 0.2f;
+
+                if (scored)
+                {
+                    bbScore++;
+                    int xp = 15 + (int)(10 * (1f - powerDiff / 0.15f));
+                    player.AddAthleticsXP(xp);
+                    bbMessage = $"SWISH! Score: {bbScore} | +{xp} Athletics XP";
+                }
+                else if (powerDiff < 0.25f && aimDiff < 0.35f)
+                {
+                    bbMessage = "Off the rim! Close shot.";
+                    player.AddAthleticsXP(3);
+                }
+                else
+                {
+                    bbMessage = "Missed! Try adjusting power and aim.";
+                }
+                bbMessageTimer = 2.5f;
+            }
+        }
+        else
+        {
+            bbShotTimer += dt;
+            if (bbShotTimer > 1.5f)
+            {
+                basketballActive = false;
+                bbShooting = false;
+                bbPowerLocked = false;
+            }
+        }
+
+        if (Raylib.IsKeyPressed(KeyboardKey.Q))
+        {
+            basketballActive = false;
+            bbMessage = $"Shooting session ended. {bbScore}/{bbAttempts} shots.";
+            bbMessageTimer = 2.5f;
+            bbAttempts = 0; bbScore = 0;
+        }
+    }
+}
+
       if (currentBuilding.BuildingName == "BANK")
 {
     // any of the 3 teller booths
@@ -4179,6 +4761,79 @@ foreach (Building building in buildings)
 {
     float bx = building.Bounds.X;
     float by = building.Bounds.Y;
+    if (building.BuildingName == "McDONALD'S")
+{
+
+    // Main body
+    Raylib.DrawRectangle((int)bx, (int)by, 200, 140, new Color((byte)210,(byte)30,(byte)30,(byte)255));
+    // Roof band
+    Raylib.DrawRectangle((int)bx - 5, (int)by - 12, 210, 14, new Color((byte)220,(byte)180,(byte)0,(byte)255));
+    Raylib.DrawRectangle((int)bx - 5, (int)by - 12, 210, 4, new Color((byte)255,(byte)210,(byte)0,(byte)255));
+    // Golden arches
+    Raylib.DrawCircleLines((int)bx + 65, (int)by + 20, 28, new Color((byte)255,(byte)210,(byte)0,(byte)255));
+    Raylib.DrawCircleLines((int)bx + 65, (int)by + 20, 26, new Color((byte)255,(byte)210,(byte)0,(byte)255));
+    Raylib.DrawCircleLines((int)bx + 105, (int)by + 20, 28, new Color((byte)255,(byte)210,(byte)0,(byte)255));
+    Raylib.DrawCircleLines((int)bx + 105, (int)by + 20, 26, new Color((byte)255,(byte)210,(byte)0,(byte)255));
+    Raylib.DrawRectangle((int)bx + 40, (int)by + 20, 100, 14, new Color((byte)210,(byte)30,(byte)30,(byte)255)); // mask bottom of arches
+    // Windows
+    Raylib.DrawRectangle((int)bx + 10, (int)by + 20, 55, 45, new Color((byte)160,(byte)200,(byte)220,(byte)200));
+    Raylib.DrawRectangleLines((int)bx + 10, (int)by + 20, 55, 45, new Color((byte)180,(byte)150,(byte)0,(byte)255));
+    Raylib.DrawRectangle((int)bx + 135, (int)by + 20, 55, 45, new Color((byte)160,(byte)200,(byte)220,(byte)200));
+    Raylib.DrawRectangleLines((int)bx + 135, (int)by + 20, 55, 45, new Color((byte)180,(byte)150,(byte)0,(byte)255));
+    // Door
+    Raylib.DrawRectangle((int)bx + 80, (int)by + 80, 40, 60, new Color((byte)160,(byte)200,(byte)215,(byte)200));
+    Raylib.DrawRectangleLines((int)bx + 80, (int)by + 80, 40, 60, new Color((byte)180,(byte)150,(byte)0,(byte)255));
+    Raylib.DrawRectangle((int)bx + 99, (int)by + 80, 2, 60, new Color((byte)160,(byte)150,(byte)0,(byte)180));
+    // Sign
+    Raylib.DrawRectangle((int)bx + 20, (int)by - 10, 160, 10, new Color((byte)200,(byte)160,(byte)0,(byte)220));
+    Raylib.DrawText("McDONALD'S", (int)bx + 22, (int)by - 9, 10, Color.White);
+}
+
+if (building.BuildingName == "SWIMMING COMPLEX")
+{
+    
+    Raylib.DrawRectangle((int)bx, (int)by, 300, 200, new Color((byte)20,(byte)100,(byte)180,(byte)255));
+    Raylib.DrawRectangle((int)bx - 5, (int)by - 12, 310, 14, new Color((byte)10,(byte)80,(byte)160,(byte)255));
+    Raylib.DrawRectangle((int)bx - 5, (int)by - 12, 310, 4, new Color((byte)30,(byte)120,(byte)210,(byte)255));
+    // Pool visible through "window"
+    Raylib.DrawRectangle((int)bx + 10, (int)by + 15, 130, 130, new Color((byte)30,(byte)140,(byte)210,(byte)200));
+    Raylib.DrawRectangleLines((int)bx + 10, (int)by + 15, 130, 130, new Color((byte)10,(byte)80,(byte)160,(byte)255));
+    Raylib.DrawRectangle((int)bx + 155, (int)by + 15, 130, 130, new Color((byte)30,(byte)140,(byte)210,(byte)200));
+    Raylib.DrawRectangleLines((int)bx + 155, (int)by + 15, 130, 130, new Color((byte)10,(byte)80,(byte)160,(byte)255));
+    // Lane lines
+    for (int ln = 0; ln < 4; ln++)
+        Raylib.DrawRectangle((int)bx + 10, (int)by + 15 + ln * 32, 130, 3, new Color((byte)255,(byte)200,(byte)0,(byte)180));
+    // Diving board hint
+    Raylib.DrawRectangle((int)bx + 160, (int)by + 20, 40, 6, new Color((byte)200,(byte)200,(byte)200,(byte)255));
+    // Door
+    Raylib.DrawRectangle((int)bx + 130, (int)by + 155, 40, 45, new Color((byte)160,(byte)200,(byte)215,(byte)200));
+    // Sign
+    Raylib.DrawRectangle((int)bx + 30, (int)by - 10, 240, 10, new Color((byte)10,(byte)80,(byte)160,(byte)220));
+    Raylib.DrawText("SWIMMING COMPLEX", (int)bx + 32, (int)by - 9, 10, Color.White);
+}
+
+if (building.BuildingName == "TENNIS COURT")
+{
+    
+    Raylib.DrawRectangle((int)bx, (int)by, 200, 120, new Color((byte)40,(byte)140,(byte)40,(byte)255));
+    // Court markings
+    Raylib.DrawRectangle((int)bx + 5, (int)by + 5, 190, 110, new Color((byte)50,(byte)160,(byte)50,(byte)255));
+    Raylib.DrawRectangleLines((int)bx + 10, (int)by + 10, 180, 100, Color.White);
+    Raylib.DrawRectangle((int)bx + 98, (int)by + 10, 4, 100, Color.White); // net
+    Raylib.DrawRectangle((int)bx + 20, (int)by - 10, 160, 10, new Color((byte)30,(byte)100,(byte)30,(byte)220));
+    Raylib.DrawText("TENNIS COURT", (int)bx + 22, (int)by - 9, 10, Color.White);
+}
+
+if (building.BuildingName == "BASKETBALL COURT")
+{
+    
+    Raylib.DrawRectangle((int)bx, (int)by, 200, 120, new Color((byte)180,(byte)90,(byte)20,(byte)255));
+    Raylib.DrawRectangle((int)bx + 5, (int)by + 5, 190, 110, new Color((byte)210,(byte)120,(byte)30,(byte)255));
+    Raylib.DrawRectangleLines((int)bx + 10, (int)by + 10, 180, 100, Color.White);
+    Raylib.DrawCircleLines((int)bx + 100, (int)by + 60, 25, Color.White);
+    Raylib.DrawRectangle((int)bx + 20, (int)by - 10, 160, 10, new Color((byte)140,(byte)70,(byte)10,(byte)220));
+    Raylib.DrawText("BASKETBALL", (int)bx + 22, (int)by - 9, 10, Color.White);
+}
  
     // ── MARAE (unchanged) ────────────────────────────────────────────────────
     if (building.BuildingName == "MARAE")
@@ -6595,6 +7250,333 @@ Raylib.DrawText("WELCOME", 610, 940, 22, new Color((byte)180, (byte)220, (byte)1
     Raylib.DrawRectangle(800, 600, 3, 400, new Color((byte)200, (byte)215, (byte)215, (byte)255));
 }
 
+if (currentBuilding.BuildingName == "McDONALD'S")
+{
+    // Floor — checkered yellow/red tiles
+    for (int tx = 0; tx < 1400; tx += 60)
+        for (int ty = 0; ty < 1000; ty += 60)
+        {
+            Color tileColor = ((tx / 60 + ty / 60) % 2 == 0)
+                ? new Color((byte)255,(byte)220,(byte)0,(byte)255)
+                : new Color((byte)220,(byte)30,(byte)30,(byte)255);
+            Raylib.DrawRectangle(tx, ty, 60, 60, tileColor);
+        }
+
+    // Ambient overlay to soften tiles
+    Raylib.DrawRectangle(0, 0, 1400, 1000, new Color((byte)255,(byte)200,(byte)0,(byte)40));
+
+    // Counter
+    Raylib.DrawRectangle(200, 80, 900, 50, new Color((byte)200,(byte)160,(byte)0,(byte)255));
+    Raylib.DrawRectangle(200, 80, 900, 8, new Color((byte)230,(byte)190,(byte)20,(byte)255));
+    Raylib.DrawRectangle(200, 80, 8, 50, new Color((byte)170,(byte)130,(byte)0,(byte)255));
+    Raylib.DrawRectangle(1092, 80, 8, 50, new Color((byte)170,(byte)130,(byte)0,(byte)255));
+
+    // Menu board behind counter
+    Raylib.DrawRectangle(150, 0, 1000, 75, new Color((byte)30,(byte)30,(byte)30,(byte)255));
+    string[] menuItems = { "Big Mac $8", "McChicken $7", "Fries $4", "McFlurry $5", "Happy Meal $9", "Nuggets $6" };
+    for (int m = 0; m < menuItems.Length; m++)
+        Raylib.DrawText(menuItems[m], 165 + m * 155, 22, 16, new Color((byte)255,(byte)220,(byte)0,(byte)255));
+
+    // Drink machine
+    Raylib.DrawRectangle(1110, 30, 80, 80, new Color((byte)50,(byte)50,(byte)50,(byte)255));
+    Raylib.DrawRectangle(1115, 35, 70, 50, new Color((byte)200,(byte)30,(byte)30,(byte)255));
+    Raylib.DrawText("DRINKS", 1118, 50, 12, Color.Gold);
+    for (int d = 0; d < 3; d++)
+        Raylib.DrawCircle(1130 + d * 16, 78, 5, new Color((byte)30,(byte)30,(byte)30,(byte)255));
+
+    // Tables with seats
+    Color tableColor = new Color((byte)200,(byte)160,(byte)20,(byte)255);
+    Color chairColor = new Color((byte)180,(byte)30,(byte)30,(byte)255);
+    int[] tableX = { 150, 450, 750 };
+    int[] tableY = { 400, 600 };
+    foreach (int ty2 in tableY)
+        foreach (int tx2 in tableX)
+        {
+            Raylib.DrawRectangle(tx2, ty2, 120, 70, tableColor);
+            Raylib.DrawRectangleLines(tx2, ty2, 120, 70, new Color((byte)160,(byte)120,(byte)0,(byte)255));
+            // chairs
+            Raylib.DrawRectangle(tx2 + 10, ty2 - 22, 30, 18, chairColor);
+            Raylib.DrawRectangle(tx2 + 80, ty2 - 22, 30, 18, chairColor);
+            Raylib.DrawRectangle(tx2 + 10, ty2 + 72, 30, 18, chairColor);
+            Raylib.DrawRectangle(tx2 + 80, ty2 + 72, 30, 18, chairColor);
+            // tray on table
+            Raylib.DrawRectangle(tx2 + 20, ty2 + 15, 35, 25, new Color((byte)180,(byte)140,(byte)10,(byte)200));
+            Raylib.DrawRectangle(tx2 + 65, ty2 + 15, 35, 25, new Color((byte)180,(byte)140,(byte)10,(byte)200));
+        }
+
+    // Play area
+    Raylib.DrawRectangle(1120, 300, 260, 600, new Color((byte)255,(byte)180,(byte)0,(byte)80));
+    Raylib.DrawRectangleLines(1120, 300, 260, 600, new Color((byte)220,(byte)30,(byte)30,(byte)255));
+    Raylib.DrawText("PLAY AREA", 1140, 320, 20, new Color((byte)220,(byte)30,(byte)30,(byte)255));
+    // slide
+    Raylib.DrawRectangle(1150, 360, 30, 120, new Color((byte)255,(byte)100,(byte)0,(byte)255));
+    Raylib.DrawRectangle(1200, 400, 120, 20, new Color((byte)0,(byte)180,(byte)0,(byte)255)); // platform
+
+    // Entrance mat
+    Raylib.DrawRectangle(560, 870, 280, 40, new Color((byte)200,(byte)30,(byte)30,(byte)255));
+    Raylib.DrawRectangleLines(560, 870, 280, 40, new Color((byte)255,(byte)200,(byte)0,(byte)255));
+    Raylib.DrawText("McDONALD'S", 602, 882, 18, new Color((byte)255,(byte)220,(byte)0,(byte)255));
+}
+
+if (currentBuilding.BuildingName == "SWIMMING COMPLEX")
+{
+    // Base floor — wet tiles
+    for (int tx = 0; tx < 1400; tx += 50)
+        for (int ty = 0; ty < 1000; ty += 50)
+        {
+            Color tc = ((tx / 50 + ty / 50) % 2 == 0)
+                ? new Color((byte)180,(byte)210,(byte)230,(byte)255)
+                : new Color((byte)160,(byte)195,(byte)220,(byte)255);
+            Raylib.DrawRectangle(tx, ty, 50, 50, tc);
+        }
+
+    // ── LANE POOL ──
+    Raylib.DrawRectangle(50, 100, 500, 340, new Color((byte)20,(byte)120,(byte)200,(byte)255));
+    Raylib.DrawRectangleLines(50, 100, 500, 340, new Color((byte)10,(byte)80,(byte)160,(byte)255));
+    // lane ropes
+    Color[] laneColors = { Color.Red, Color.White, Color.Red, Color.White };
+    for (int ln = 0; ln < 4; ln++)
+        Raylib.DrawRectangle(52, 152 + ln * 60, 496, 8,
+            new Color(laneColors[ln].R, laneColors[ln].G, laneColors[ln].B, (byte)180));
+    // lane numbers
+    for (int ln = 1; ln <= 5; ln++)
+        Raylib.DrawText($"{ln}", 24, 118 + (ln - 1) * 60, 18, Color.DarkGray);
+    // start blocks
+    for (int ln = 0; ln < 5; ln++)
+    {
+        Raylib.DrawRectangle(50, 118 + ln * 60, 28, 26, new Color((byte)60,(byte)60,(byte)70,(byte)255));
+        Raylib.DrawRectangle(53, 121 + ln * 60, 22, 8, new Color((byte)100,(byte)100,(byte)120,(byte)255));
+    }
+    // water shimmer
+    for (int wx = 80; wx < 540; wx += 60)
+        Raylib.DrawRectangle(wx, 108, 40, 4, new Color((byte)100,(byte)180,(byte)220,(byte)80));
+    Raylib.DrawText("LANE POOL", 220, 70, 24, new Color((byte)10,(byte)80,(byte)160,(byte)255));
+    Raylib.DrawText("E = Start Swimming", 170, 450, 18, Color.DarkGray);
+
+    // ── DIVING POOL ──
+    Raylib.DrawRectangle(700, 100, 450, 420, new Color((byte)10,(byte)100,(byte)190,(byte)255));
+    Raylib.DrawRectangleLines(700, 100, 450, 420, new Color((byte)10,(byte)80,(byte)160,(byte)255));
+    // depth markings
+    Raylib.DrawText("5m", 1110, 200, 16, new Color((byte)180,(byte)230,(byte)255,(byte)200));
+    Raylib.DrawText("10m", 1108, 400, 16, new Color((byte)180,(byte)230,(byte)255,(byte)200));
+    // water shimmer deep pool
+    for (int wx = 720; wx < 1140; wx += 80)
+        Raylib.DrawRectangle(wx, 108, 50, 4, new Color((byte)80,(byte)160,(byte)220,(byte)80));
+    // diving platform ladder
+    Raylib.DrawRectangle(700, 120, 16, 200, new Color((byte)160,(byte)165,(byte)170,(byte)255));
+    for (int rung = 0; rung < 8; rung++)
+        Raylib.DrawRectangle(700, 130 + rung * 22, 16, 5, new Color((byte)130,(byte)135,(byte)140,(byte)255));
+    // 5m board
+    Raylib.DrawRectangle(716, 170, 100, 12, new Color((byte)200,(byte)205,(byte)210,(byte)255));
+    Raylib.DrawRectangle(716, 170, 100, 4, new Color((byte)230,(byte)235,(byte)240,(byte)255));
+    Raylib.DrawText("5m", 760, 155, 14, new Color((byte)100,(byte)100,(byte)110,(byte)255));
+    // 10m board
+    Raylib.DrawRectangle(716, 280, 110, 12, new Color((byte)200,(byte)205,(byte)210,(byte)255));
+    Raylib.DrawRectangle(716, 280, 110, 4, new Color((byte)230,(byte)235,(byte)240,(byte)255));
+    Raylib.DrawText("10m", 760, 265, 14, new Color((byte)100,(byte)100,(byte)110,(byte)255));
+    Raylib.DrawText("DIVING POOL", 850, 70, 24, new Color((byte)10,(byte)80,(byte)160,(byte)255));
+    Raylib.DrawText("E = Dive (time your jump!)", 760, 540, 18, Color.DarkGray);
+
+    // lifeguard chairs
+    Raylib.DrawRectangle(580, 130, 30, 50, new Color((byte)220,(byte)50,(byte)50,(byte)255));
+    Raylib.DrawRectangle(575, 110, 40, 22, new Color((byte)200,(byte)30,(byte)30,(byte)255));
+    Raylib.DrawText("LIFEGUARD", 555, 90, 12, Color.Red);
+
+    // spectator bench
+    Raylib.DrawRectangle(100, 700, 1000, 30, new Color((byte)180,(byte)150,(byte)100,(byte)255));
+    Raylib.DrawRectangle(100, 700, 1000, 5, new Color((byte)210,(byte)180,(byte)130,(byte)255));
+    Raylib.DrawText("SPECTATOR AREA", 480, 740, 18, Color.DarkGray);
+
+    // towel hooks
+    for (int h = 0; h < 6; h++)
+    {
+        Raylib.DrawRectangle(80 + h * 180, 800, 12, 30, new Color((byte)80,(byte)80,(byte)90,(byte)255));
+        Raylib.DrawRectangle(78 + h * 180, 826, 16, 5, new Color((byte)60,(byte)60,(byte)70,(byte)255));
+    }
+
+    // entrance mat
+    Raylib.DrawRectangle(560, 870, 280, 40, new Color((byte)10,(byte)80,(byte)160,(byte)255));
+    Raylib.DrawText("SWIMMING COMPLEX", 575, 882, 16, Color.White);
+
+    // active swimming HUD
+    if (swimmingActive && swimmingPoolType == "lane")
+    {
+        // swimmer animation in lane pool
+        int swimX = (int)(80 + (swimLapTimer / swimLapDuration) * 440);
+        Raylib.DrawCircle(swimX, 200, 10, Program.player.SkinColor);
+        Raylib.DrawRectangle(swimX - 12, 208, 24, 16, Program.player.ShirtColor);
+    }
+
+    if (swimmingActive && swimmingPoolType == "diving")
+    {
+        if (!divingJumped)
+        {
+            // draw diver on board
+            Raylib.DrawCircle(770, 160, 10, Program.player.SkinColor);
+            Raylib.DrawRectangle(758, 168, 24, 16, Program.player.ShirtColor);
+        }
+        else
+        {
+            // diver falling
+            int diveY = 180 + (int)(divingFallTimer * 200f);
+            diveY = Math.Min(diveY, 490);
+            Raylib.DrawCircle(800, diveY, 10, Program.player.SkinColor);
+        }
+    }
+}
+
+if (currentBuilding.BuildingName == "TENNIS COURT")
+{
+    // Court surface
+    Raylib.DrawRectangle(0, 0, 1400, 1000, new Color((byte)50,(byte)160,(byte)50,(byte)255));
+
+    // Court lines
+    Raylib.DrawRectangleLines(60, 80, 1280, 560, Color.White);
+    // Service boxes
+    Raylib.DrawLine(700, 80, 700, 640, Color.White);   // centre line
+    Raylib.DrawLine(60, 360, 1340, 360, Color.White);  // service line
+    Raylib.DrawLine(60, 200, 700, 200, Color.White);   // left service boxes
+    Raylib.DrawLine(700, 200, 1340, 200, Color.White);
+    // Net
+    Raylib.DrawRectangle(670, 80, 10, 560, new Color((byte)200,(byte)200,(byte)200,(byte)255));
+    Raylib.DrawRectangle(665, 78, 20, 10, new Color((byte)160,(byte)160,(byte)160,(byte)255));
+    Raylib.DrawRectangle(665, 628, 20, 10, new Color((byte)160,(byte)160,(byte)160,(byte)255));
+    // Net mesh lines
+    for (int ny = 88; ny < 638; ny += 20)
+        Raylib.DrawLine(670, ny, 680, ny, new Color((byte)160,(byte)160,(byte)160,(byte)120));
+
+    // Baselines ticks
+    for (int bx2 = 60; bx2 <= 1340; bx2 += 64)
+        Raylib.DrawRectangle(bx2, 636, 4, 10, Color.White);
+
+    // Score display
+    Raylib.DrawRectangle(540, 0, 320, 70, new Color((byte)20,(byte)20,(byte)20,(byte)200));
+    Raylib.DrawText($"YOU: {tennisPlayerScore}  AI: {tennisAIScore}", 560, 15, 28, Color.Gold);
+
+    if (tennisActive)
+    {
+        // Player paddle (left)
+        Raylib.DrawRectangle(80, (int)tennisPlayerPaddleY, 22, 60, new Color((byte)255,(byte)200,(byte)0,(byte)255));
+        Raylib.DrawRectangleLines(80, (int)tennisPlayerPaddleY, 22, 60, Color.White);
+        // AI paddle (right)
+        Raylib.DrawRectangle(1270, (int)tennisAIPaddleY, 22, 60, new Color((byte)220,(byte)50,(byte)50,(byte)255));
+        Raylib.DrawRectangleLines(1270, (int)tennisAIPaddleY, 22, 60, Color.White);
+        // Ball
+        Raylib.DrawCircle((int)tennisBallPos.X, (int)tennisBallPos.Y, 10, new Color((byte)200,(byte)220,(byte)50,(byte)255));
+        Raylib.DrawCircleLines((int)tennisBallPos.X, (int)tennisBallPos.Y, 10, Color.DarkGreen);
+    }
+
+    Raylib.DrawText("YOU", 68, 72, 16, Color.Gold);
+    Raylib.DrawText("AI", 1272, 72, 16, new Color((byte)220,(byte)50,(byte)50,(byte)255));
+
+    if (tennisMessageTimer > 0)
+        Raylib.DrawText(tennisMessage, 200, 700, 22, Color.White);
+
+    if (!tennisActive)
+        Raylib.DrawText("E = Start Game (stand near net)", 400, 700, 22, Color.LightGray);
+    else if (tennisServing)
+        Raylib.DrawText("SPACE = Serve!", 560, 680, 24, Color.Gold);
+    else
+        Raylib.DrawText("W/S = Move  |  Q = Quit", 480, 680, 22, Color.LightGray);
+
+    // entrance mat
+    Raylib.DrawRectangle(560, 900, 280, 40, new Color((byte)30,(byte)100,(byte)30,(byte)255));
+    Raylib.DrawText("TENNIS COURT", 592, 912, 18, Color.White);
+}
+
+if (currentBuilding.BuildingName == "BASKETBALL COURT")
+{
+    // Court surface — hardwood
+    for (int bx2 = 0; bx2 < 1400; bx2 += 60)
+    {
+        Color plank = (bx2 / 60 % 2 == 0)
+            ? new Color((byte)200,(byte)140,(byte)60,(byte)255)
+            : new Color((byte)185,(byte)125,(byte)50,(byte)255);
+        Raylib.DrawRectangle(bx2, 0, 60, 1000, plank);
+        Raylib.DrawRectangle(bx2, 0, 1, 1000, new Color((byte)160,(byte)100,(byte)30,(byte)100));
+    }
+
+    // Court lines
+    Raylib.DrawRectangleLines(50, 80, 1300, 760, Color.White);
+    // Centre circle
+    Raylib.DrawCircleLines(700, 460, 80, Color.White);
+    Raylib.DrawLine(700, 80, 700, 840, Color.White);
+    // Key / paint areas
+    Raylib.DrawRectangleLines(50, 260, 220, 400, Color.White);
+    Raylib.DrawRectangleLines(1130, 260, 220, 400, Color.White);
+    // Free throw circles
+    Raylib.DrawCircleLines(160, 460, 80, Color.White);
+    Raylib.DrawCircleLines(1240, 460, 80, Color.White);
+    // 3-point arcs (approximate)
+    for (int angle = 0; angle <= 180; angle += 5)
+    {
+        float rad = angle * MathF.PI / 180f;
+        int ax = 160 + (int)(MathF.Cos(rad) * 260);
+        int ay = 460 + (int)(MathF.Sin(rad) * 260);
+        Raylib.DrawCircle(ax, ay, 3, Color.White);
+    }
+    for (int angle = 0; angle <= 180; angle += 5)
+    {
+        float rad = (180 + angle) * MathF.PI / 180f;
+        int ax = 1240 + (int)(MathF.Cos(rad) * 260);
+        int ay = 460 + (int)(MathF.Sin(rad) * 260);
+        Raylib.DrawCircle(ax, ay, 3, Color.White);
+    }
+
+    // Backboard + hoop left
+    Raylib.DrawRectangle(50, 340, 20, 240, new Color((byte)200,(byte)200,(byte)210,(byte)255));
+    Raylib.DrawRectangle(62, 400, 80, 50, new Color((byte)220,(byte)220,(byte)230,(byte)255));
+    Raylib.DrawRectangleLines(62, 400, 80, 50, Color.DarkGray);
+    Raylib.DrawCircle(142, 425, 22, new Color((byte)220,(byte)80,(byte)20,(byte)255));
+    Raylib.DrawCircleLines(142, 425, 22, new Color((byte)180,(byte)50,(byte)10,(byte)255));
+    // Net left
+    for (int ny = 0; ny < 5; ny++)
+        Raylib.DrawLine(130 + ny * 6, 447, 128 + ny * 6, 480, new Color((byte)200,(byte)200,(byte)200,(byte)180));
+
+    // Backboard + hoop right
+    Raylib.DrawRectangle(1330, 340, 20, 240, new Color((byte)200,(byte)200,(byte)210,(byte)255));
+    Raylib.DrawRectangle(1258, 400, 80, 50, new Color((byte)220,(byte)220,(byte)230,(byte)255));
+    Raylib.DrawRectangleLines(1258, 400, 80, 50, Color.DarkGray);
+    Raylib.DrawCircle(1258, 425, 22, new Color((byte)220,(byte)80,(byte)20,(byte)255));
+    Raylib.DrawCircleLines(1258, 425, 22, new Color((byte)180,(byte)50,(byte)10,(byte)255));
+    for (int ny = 0; ny < 5; ny++)
+        Raylib.DrawLine(1246 + ny * 6, 447, 1244 + ny * 6, 480, new Color((byte)200,(byte)200,(byte)200,(byte)180));
+
+    // Free throw line label
+    Raylib.DrawText("FREE THROW LINE", 280, 490, 16, new Color((byte)255,(byte)255,(byte)255,(byte)180));
+    Raylib.DrawLine(270, 460, 510, 460, new Color((byte)255,(byte)200,(byte)0,(byte)200));
+
+    // Score display
+    Raylib.DrawRectangle(540, 0, 320, 70, new Color((byte)20,(byte)20,(byte)20,(byte)200));
+    Raylib.DrawText($"SCORE: {bbScore}", 600, 18, 30, Color.Gold);
+
+    // Ball + shot animation
+    if (basketballActive && bbShooting)
+    {
+        float t = bbShotTimer / 1.5f;
+        int ballX = (int)(400 + t * (142 - 400));
+        int arcY = (int)(500 - MathF.Sin(t * MathF.PI) * 300 * bbPower);
+        Raylib.DrawCircle(ballX, arcY, 14, new Color((byte)220,(byte)80,(byte)20,(byte)255));
+        Raylib.DrawCircleLines(ballX, arcY, 14, new Color((byte)180,(byte)50,(byte)10,(byte)255));
+    }
+    else
+    {
+        // Ball sitting at free throw
+        Raylib.DrawCircle(400, 500, 14, new Color((byte)220,(byte)80,(byte)20,(byte)255));
+        Raylib.DrawCircleLines(400, 500, 14, new Color((byte)180,(byte)50,(byte)10,(byte)255));
+    }
+
+    if (bbMessageTimer > 0)
+        Raylib.DrawText(bbMessage, 200, 700, 24, Color.Gold);
+
+    Raylib.DrawText(!basketballActive ? "F = Shoot (near free throw)" : "SPACE = Lock Power, then SPACE = Lock Aim | Q = Quit",
+        130, 870, 20, Color.LightGray);
+
+    // entrance mat
+    Raylib.DrawRectangle(560, 920, 280, 40, new Color((byte)160,(byte)80,(byte)10,(byte)255));
+    Raylib.DrawText("BASKETBALL COURT", 578, 932, 16, Color.White);
+}
+
     if (currentBuilding.BuildingName == "GYM")
 {
     // dumbbell rack - matches collision rect (180,180,140,60)
@@ -6759,6 +7741,99 @@ Raylib.DrawText("FACILITIES", 1312, 172, 14, Color.LightGray);
         byte alpha = (byte)(255 * Math.Min(1f, shopMessageTimer));
         Raylib.DrawText(shopMessage, 480, 560, 30, new Color((byte)255, (byte)215, (byte)0, alpha));
     }
+
+    // Swimming minigame HUD
+if (currentBuilding.BuildingName == "SWIMMING COMPLEX" && swimmingActive)
+{
+    if (swimmingPoolType == "lane")
+    {
+        Raylib.DrawRectangle(0, 620, 1280, 100, new Color((byte)0,(byte)0,(byte)0,(byte)180));
+        Raylib.DrawText($"SWIMMING LAPS — Lap {swimLapsCompleted + 1}", 20, 630, 28, Color.SkyBlue);
+        int barW = 900;
+        float prog = swimLapTimer / swimLapDuration;
+        Raylib.DrawRectangle(190, 658, barW, 32, new Color((byte)20,(byte)60,(byte)120,(byte)255));
+        Raylib.DrawRectangle(190, 658, (int)(barW * prog), 32, new Color((byte)30,(byte)160,(byte)220,(byte)255));
+        Raylib.DrawRectangleLines(190, 658, barW, 32, Color.White);
+        Raylib.DrawText($"+30 Athletics XP per lap | Q = Stop", 190, 700, 18, Color.LightGray);
+    }
+    else if (swimmingPoolType == "diving")
+    {
+        Raylib.DrawRectangle(0, 620, 1280, 100, new Color((byte)0,(byte)0,(byte)0,(byte)180));
+
+        if (!divingJumped)
+        {
+            Raylib.DrawText("DIVING — Time your jump! Land near CENTRE for high score.", 20, 628, 22, Color.SkyBlue);
+            int barW = 900;
+            int barX = 190;
+            int barY = 658;
+            int barH = 32;
+            // background
+            Raylib.DrawRectangle(barX, barY, barW, barH, new Color((byte)20,(byte)40,(byte)80,(byte)255));
+            // sweet spot centre
+            int centreW = (int)(barW * 0.1f);
+            Raylib.DrawRectangle(barX + barW / 2 - centreW / 2, barY, centreW, barH,
+                new Color((byte)0,(byte)220,(byte)0,(byte)255));
+            // good zone
+            int goodW = (int)(barW * 0.24f);
+            Raylib.DrawRectangle(barX + barW / 2 - goodW / 2, barY, goodW, barH,
+                new Color((byte)100,(byte)220,(byte)50,(byte)180));
+            // cursor
+            int cursorX = barX + (int)(divingBarPos * barW) - 5;
+            Raylib.DrawRectangle(cursorX, barY - 6, 10, barH + 12, Color.White);
+            Raylib.DrawRectangleLines(barX, barY, barW, barH, Color.White);
+            Raylib.DrawText("SPACE = Jump!", 190, 698, 18, Color.LightGray);
+        }
+        else
+        {
+            Raylib.DrawText(divingScore >= 8 ? $"🤸 {divingResult}" : divingResult,
+                20, 648, 28, divingScore >= 8 ? Color.Gold : Color.White);
+        }
+    }
+}
+
+// Basketball power/aim HUD
+if (currentBuilding.BuildingName == "BASKETBALL COURT" && basketballActive && !bbShooting)
+{
+    Raylib.DrawRectangle(0, 620, 1280, 100, new Color((byte)0,(byte)0,(byte)0,(byte)200));
+    int barW = 900; int barX2 = 190;
+
+    if (!bbPowerLocked)
+    {
+        Raylib.DrawText("SHOT POWER — Hit SPACE when bar is in the sweet spot!", 20, 628, 22, Color.Gold);
+        Raylib.DrawRectangle(barX2, 658, barW, 32, new Color((byte)40,(byte)40,(byte)40,(byte)255));
+        // sweet spot (0.5–0.8)
+        int sweetX = barX2 + (int)(0.5f * barW);
+        int sweetW = (int)(0.3f * barW);
+        Raylib.DrawRectangle(sweetX, 658, sweetW, 32, new Color((byte)0,(byte)200,(byte)0,(byte)255));
+        // cursor
+        int cursorX2 = barX2 + (int)(bbPower * barW) - 6;
+        Raylib.DrawRectangle(cursorX2, 652, 12, 44, Color.White);
+        Raylib.DrawRectangleLines(barX2, 658, barW, 32, Color.White);
+        Raylib.DrawText("SPACE = Lock Power", barX2, 698, 18, Color.LightGray);
+    }
+    else
+    {
+        Raylib.DrawText("AIM — Hit SPACE when cursor is in the centre!", 20, 628, 22, Color.Gold);
+        Raylib.DrawRectangle(barX2, 658, barW, 32, new Color((byte)40,(byte)40,(byte)40,(byte)255));
+        // aim sweet spot (0.35–0.65)
+        int aimSweetX = barX2 + (int)(0.35f * barW);
+        int aimSweetW = (int)(0.3f * barW);
+        Raylib.DrawRectangle(aimSweetX, 658, aimSweetW, 32, new Color((byte)0,(byte)200,(byte)0,(byte)255));
+        int aimCursorX = barX2 + (int)(bbAimX * barW) - 6;
+        Raylib.DrawRectangle(aimCursorX, 652, 12, 44, Color.White);
+        Raylib.DrawRectangleLines(barX2, 658, barW, 32, Color.White);
+        Raylib.DrawText("SPACE = Shoot!", barX2, 698, 18, Color.LightGray);
+    }
+}
+
+// McDonald's message
+if (currentBuilding.BuildingName == "McDONALD'S" && mcdonaldsMessageTimer > 0)
+{
+    byte alpha = (byte)(255 * Math.Min(1f, mcdonaldsMessageTimer));
+    Raylib.DrawText(mcdonaldsMessage, 300, 560, 28,
+        new Color((byte)255,(byte)220,(byte)0, alpha));
+}
+
     if (currentBuilding.BuildingName == "BANK")
 {
     Vector2[] boothPositions = {
@@ -7082,10 +8157,19 @@ if (Vector2.Distance(player.Position, new Vector2(910, 365)) < 80)
     }
 }
 
+if (currentBuilding.BuildingName == "McDONALD'S" &&
+    Vector2.Distance(player.Position, currentBuilding.InteriorNPC.Position) < 120)
+{
+    Raylib.DrawRectangle(0, 620, 1280, 100, new Color((byte)0,(byte)0,(byte)0,(byte)180));
+    Raylib.DrawText("McDONALD'S", 20, 630, 30, new Color((byte)255,(byte)220,(byte)0,(byte)255));
+    Raylib.DrawText("E = Open Menu | Food restores HP", 20, 670, 24, Color.White);
+}
+
     DrawChestUI();
     DrawWardrobe();
     DrawShopUI();
     DrawSupermarketInventoryUI();
+    DrawMcDonaldsMenu();
 }
 
         static void DrawHUD()
@@ -7377,9 +8461,15 @@ AddGym(2700, 410);
 
 AddSupermarket(3600, 410);
 
+AddSwimmingComplex(4800, 340);
+
+AddTennisCourt(5800, 410);
+
+AddBasketballCourt(6400, 410);
+
+AddMcDonalds(2250, 400);
+
 gymCounterNPC = new NPC(new Vector2(780, 130), "Staff", "Grab a protein shake bro, $3 each.");
-
-
 
 AddPoliceStation(3200, 410);
 
@@ -8611,15 +9701,13 @@ class Rideable
             case FacingDirection.Down:
             case FacingDirection.Up:
                 // single centre wheel
-                Raylib.DrawCircle(x + 30, y + 42, 12, Color.DarkGray);
-                Raylib.DrawCircleLines(x + 30, y + 42, 12, Color.Gray);
-                Raylib.DrawCircle(x + 30, y + 42, 4, Color.Gray);
+                Raylib.DrawRectangle(x + 27, y + 42, 6, 24, Color.LightGray);
                 // frame coming down to wheel
                 Raylib.DrawLine(x + 30, y + 20, x + 30, y + 30, RideableColor);
                 // handlebars
                 Raylib.DrawRectangle(x + 10, y + 18, 40, 5, Color.DarkGray);
                 // seat
-                Raylib.DrawRectangle(x + 18, y + 14, 24, 5, Color.Black);
+                Raylib.DrawRectangle(x + 22, y + 30, 15, 10, Color.Black);
 
                 if (Riding) DrawRider(x + 8, y - 18, Program.player.SkinColor, Program.player.ShirtColor, Program.player.PantsColor);
                 break;
@@ -8672,15 +9760,14 @@ class Rideable
            case FacingDirection.Down:
             case FacingDirection.Up:
                 // single centre wheel
-                Raylib.DrawCircle(x + 30, y + 42, 10, Color.Black);
-                Raylib.DrawCircleLines(x + 30, y + 42, 10, Color.DarkGray);
-                Raylib.DrawCircle(x + 30, y + 42, 3, Color.DarkGray);
+                Raylib.DrawRectangle(x + 27, y + 42, 6, 24, Color.Black);
+                
                 // frame
                 Raylib.DrawLine(x + 30, y + 22, x + 30, y + 32, RideableColor);
                 // flat BMX bars
                 Raylib.DrawRectangle(x + 8, y + 16, 44, 4, Color.DarkGray);
                 // seat
-                Raylib.DrawRectangle(x + 18, y + 12, 24, 5, Color.Black);
+                Raylib.DrawRectangle(x + 22, y + 30, 15, 10, Color.Brown);
                 // pegs front-on — just left and right of the single wheel
                 Raylib.DrawRectangle(x + 16, y + 40, 6, 4, new Color((byte)192,(byte)192,(byte)192,(byte)255));
                 Raylib.DrawRectangle(x + 38, y + 40, 6, 4, new Color((byte)192,(byte)192,(byte)192,(byte)255));
@@ -9062,61 +10149,74 @@ public NPC(Vector2 pos)
                 Raylib.DrawRectangle(x + 62, y + 30, 10, 3, new Color((byte)180,(byte)180,(byte)180,(byte)255));
                 break;
 
-            case FacingDirection.Down:
-                // front-on view
-                Raylib.DrawRectangle(x + 10, y + 10, 80, 40, VehicleColor);
-                Raylib.DrawRectangle(x + 10, y + 10, 80, 4,
-                    new Color((byte)Math.Min(255,VehicleColor.R+40),(byte)Math.Min(255,VehicleColor.G+40),(byte)Math.Min(255,VehicleColor.B+40),(byte)255));
-                // windscreen
-                Raylib.DrawRectangle(x + 18, y + 14, 64, 20,
-                    new Color((byte)100,(byte)180,(byte)220,(byte)200));
-                // windscreen divider
-                Raylib.DrawRectangle(x + 48, y + 14, 4, 20, VehicleColor);
-                // headlights
-                Raylib.DrawRectangle(x + 12, y + 36, 18, 10,
-                    new Color((byte)255,(byte)240,(byte)150,(byte)255));
-                Raylib.DrawRectangle(x + 70, y + 36, 18, 10,
-                    new Color((byte)255,(byte)240,(byte)150,(byte)255));
-                // grille
-                Raylib.DrawRectangle(x + 34, y + 38, 32, 8, new Color((byte)40,(byte)40,(byte)40,(byte)255));
-                for (int i = x + 36; i < x + 64; i += 6)
-                    Raylib.DrawRectangle(i, y + 38, 2, 8, new Color((byte)80,(byte)80,(byte)80,(byte)255));
-                // wheels
-                Raylib.DrawCircle(x + 10, y + 46, 10, Color.Black);
-                Raylib.DrawCircleLines(x + 10, y + 46, 10, Color.DarkGray);
-                Raylib.DrawCircle(x + 90, y + 46, 10, Color.Black);
-                Raylib.DrawCircleLines(x + 90, y + 46, 10, Color.DarkGray);
-                break;
+   case FacingDirection.Down:
+    // front-on view
 
-            case FacingDirection.Up:
-                // rear view
-                Raylib.DrawRectangle(x + 10, y + 10, 80, 40, VehicleColor);
-                Raylib.DrawRectangle(x + 10, y + 10, 80, 4,
-                    new Color((byte)Math.Max(0,VehicleColor.R-40),(byte)Math.Max(0,VehicleColor.G-40),(byte)Math.Max(0,VehicleColor.B-40),(byte)255));
-                // rear window
-                Raylib.DrawRectangle(x + 18, y + 14, 64, 20,
-                    new Color((byte)80,(byte)160,(byte)200,(byte)160));
-                Raylib.DrawRectangle(x + 48, y + 14, 4, 20, VehicleColor);
-                // tail lights
-                Raylib.DrawRectangle(x + 12, y + 36, 18, 10,
-                    new Color((byte)220,(byte)30,(byte)30,(byte)255));
-                Raylib.DrawRectangle(x + 70, y + 36, 18, 10,
-                    new Color((byte)220,(byte)30,(byte)30,(byte)255));
-                // boot/trunk line
-                Raylib.DrawRectangle(x + 32, y + 38, 36, 2, new Color((byte)0,(byte)0,(byte)0,(byte)80));
-                // wheels
-                Raylib.DrawCircle(x + 10, y + 46, 10, Color.Black);
-                Raylib.DrawCircleLines(x + 10, y + 46, 10, Color.DarkGray);
-                Raylib.DrawCircle(x + 90, y + 46, 10, Color.Black);
-                Raylib.DrawCircleLines(x + 90, y + 46, 10, Color.DarkGray);
-                break;
+    // Wheels
+    Raylib.DrawRectangle(x + 15, y + 32, 13, 32, Color.Black);
+    Raylib.DrawRectangle(x + 62, y + 32, 13, 32, Color.Black);
+
+    // Car Body
+    Raylib.DrawRectangle(x + 7, y + 30, 76, 27, VehicleColor);
+    Raylib.DrawRectangle(x + 16, y + 9, 59, 22,
+        new Color((byte)Math.Min(255,VehicleColor.R+40),(byte)Math.Min(255,VehicleColor.G+40),(byte)Math.Min(255,VehicleColor.B+40),(byte)255));
+
+    // windscreen
+    Raylib.DrawRectangle(x + 20, y + 13, 52, 14,
+        new Color((byte)100,(byte)180,(byte)220,(byte)200));
+
+    // headlights
+    Raylib.DrawRectangle(x + 11, y + 32, 16, 9,
+        new Color((byte)255,(byte)240,(byte)150,(byte)255));
+    Raylib.DrawRectangle(x + 63, y + 32, 16, 9,
+        new Color((byte)255,(byte)240,(byte)150,(byte)255));
+
+    // grille
+    Raylib.DrawRectangle(x + 31, y + 34, 29, 7, new Color((byte)40,(byte)40,(byte)40,(byte)255));
+    for (int i = x + 32; i < x + 58; i += 5)
+        Raylib.DrawRectangle(i, y + 34, 2, 7, new Color((byte)80,(byte)80,(byte)80,(byte)255));
+
+    // Number plate
+    Raylib.DrawRectangle(x + 27, y + 45, 36, 6, Color.White);
+    break;
+
+           case FacingDirection.Up:
+    // rear view - draw wheels FIRST so body overlaps them
+    Raylib.DrawRectangle(x + 15, y + 32, 13, 32, Color.Black);
+    Raylib.DrawRectangle(x + 62, y + 32, 13, 32, Color.Black);
+
+    // Car Body
+    Raylib.DrawRectangle(x + 7, y + 30, 76, 27, VehicleColor);
+    Raylib.DrawRectangle(x + 16, y + 9, 59, 22,
+        new Color((byte)Math.Max(0,VehicleColor.R-20),(byte)Math.Max(0,VehicleColor.G-20),(byte)Math.Max(0,VehicleColor.B-20),(byte)255));
+
+    // exhaust pipe
+    Raylib.DrawCircle(x + 11, y + 50, 3, Color.Black);
+    Raylib.DrawCircleLines(x + 11, y + 50, 3, Color.Gray);
+
+    // Number plate
+    Raylib.DrawRectangle(x + 27, y + 45, 36, 6, Color.White);
+
+    // rear window
+    Raylib.DrawRectangle(x + 20, y + 13, 52, 14,
+        new Color((byte)80,(byte)160,(byte)200,(byte)160));
+
+    // tail lights
+    Raylib.DrawRectangle(x + 11, y + 32, 16, 9,
+        new Color((byte)220,(byte)30,(byte)30,(byte)255));
+    Raylib.DrawRectangle(x + 63, y + 32, 16, 9,
+        new Color((byte)220,(byte)30,(byte)30,(byte)255));
+
+    // boot/trunk line
+    Raylib.DrawRectangle(x + 29, y + 34, 32, 2, new Color((byte)0,(byte)0,(byte)0,(byte)80));
+    break;
         }
 
         // driver visible through window when riding
-        if (Driving)
+        //if (Driving)
         {
-            Raylib.DrawCircle((int)Position.X + 50, (int)Position.Y + 14, 7,
-                Program.player.SkinColor);
+            //Raylib.DrawCircle((int)Position.X + 50, (int)Position.Y + 14, 7,
+                //Program.player.SkinColor);
         }
     }
 
@@ -9198,58 +10298,86 @@ public NPC(Vector2 pos)
                 break;
 
             case FacingDirection.Down:
-                // wide front grille
-                Raylib.DrawRectangle(x + 5, y + 8, 90, 42, VehicleColor);
-                Raylib.DrawRectangle(x + 5, y + 8, 90, 4,
-                    new Color((byte)Math.Min(255,VehicleColor.R+40),(byte)Math.Min(255,VehicleColor.G+40),(byte)Math.Min(255,VehicleColor.B+40),(byte)255));
-                // windscreen
-                Raylib.DrawRectangle(x + 14, y + 12, 72, 22,
-                    new Color((byte)100,(byte)180,(byte)220,(byte)200));
-                Raylib.DrawRectangle(x + 48, y + 12, 4, 22, VehicleColor);
-                // large headlights
-                Raylib.DrawRectangle(x + 7,  y + 36, 22, 12,
-                    new Color((byte)255,(byte)240,(byte)150,(byte)255));
-                Raylib.DrawRectangle(x + 71, y + 36, 22, 12,
-                    new Color((byte)255,(byte)240,(byte)150,(byte)255));
-                // big grille
-                Raylib.DrawRectangle(x + 32, y + 38, 36, 10, new Color((byte)40,(byte)40,(byte)40,(byte)255));
-                for (int i = x + 34; i < x + 66; i += 6)
-                    Raylib.DrawRectangle(i, y + 39, 2, 8, new Color((byte)80,(byte)80,(byte)80,(byte)255));
-                // bull bar
-                Raylib.DrawRectangle(x + 5, y + 46, 90, 4, new Color((byte)60,(byte)60,(byte)60,(byte)255));
-                // wheels
-                Raylib.DrawCircle(x + 6,  y + 46, 10, Color.Black);
-                Raylib.DrawCircleLines(x + 6, y + 46, 10, Color.DarkGray);
-                Raylib.DrawCircle(x + 94, y + 46, 10, Color.Black);
-                Raylib.DrawCircleLines(x + 94, y + 46, 10, Color.DarkGray);
-                break;
 
-            case FacingDirection.Up:
-                // tray rear view
-                Raylib.DrawRectangle(x + 5, y + 8, 90, 42, panelColor);
-                Raylib.DrawRectangle(x + 5, y + 8, 90, 4,
-                    new Color((byte)Math.Max(0,panelColor.R-30),(byte)Math.Max(0,panelColor.G-30),(byte)Math.Max(0,panelColor.B-30),(byte)255));
-                // tray walls
-                Raylib.DrawRectangle(x + 5,  y + 8, 4, 42, new Color((byte)60,(byte)60,(byte)60,(byte)255));
-                Raylib.DrawRectangle(x + 91, y + 8, 4, 42, new Color((byte)60,(byte)60,(byte)60,(byte)255));
-                Raylib.DrawRectangle(x + 5,  y + 8, 90, 4, new Color((byte)60,(byte)60,(byte)60,(byte)255));
-                // tail lights
-                Raylib.DrawRectangle(x + 7,  y + 36, 22, 12,
-                    new Color((byte)220,(byte)30,(byte)30,(byte)255));
-                Raylib.DrawRectangle(x + 71, y + 36, 22, 12,
-                    new Color((byte)220,(byte)30,(byte)30,(byte)255));
-                // tow bar
-                Raylib.DrawRectangle(x + 44, y + 46, 12, 6, new Color((byte)60,(byte)60,(byte)60,(byte)255));
-                // wheels
-                Raylib.DrawCircle(x + 6,  y + 46, 10, Color.Black);
-                Raylib.DrawCircleLines(x + 6, y + 46, 10, Color.DarkGray);
-                Raylib.DrawCircle(x + 94, y + 46, 10, Color.Black);
-                Raylib.DrawCircleLines(x + 94, y + 46, 10, Color.DarkGray);
-                break;
+    // wheels
+    Raylib.DrawRectangle(x + 7, y + 47, 12, 25, Color.Black);
+    Raylib.DrawRectangle(x + 59, y + 47, 12, 25, Color.Black);
+
+    // wide front grille
+    Raylib.DrawRectangle(x + 5, y + 7, 68, 54, VehicleColor);
+    Raylib.DrawRectangle(x + 5, y + 7, 68, 4,
+        new Color((byte)Math.Min(255,VehicleColor.R+40),(byte)Math.Min(255,VehicleColor.G+40),(byte)Math.Min(255,VehicleColor.B+40),(byte)255));
+
+    // windscreen
+    Raylib.DrawRectangle(x + 13, y + 13, 54, 14,
+        new Color((byte)100,(byte)180,(byte)220,(byte)200));
+
+    // wing mirrors
+    Raylib.DrawRectangle(x - 2, y + 14, 4, 8, Color.Black);
+    Raylib.DrawRectangle(x + 74, y + 14, 4, 8, Color.Black);
+
+    // big grille
+    Raylib.DrawRectangle(x + 13, y + 34, 54, 9, new Color((byte)40,(byte)40,(byte)40,(byte)255));
+    for (int i = x + 18; i < x + 52; i += 5)
+        Raylib.DrawRectangle(i, y + 35, 2, 7, new Color((byte)80,(byte)80,(byte)80,(byte)255));
+
+    // smaller grille
+    Raylib.DrawRectangle(x + 18, y + 45, 43, 9, new Color((byte)40,(byte)40,(byte)40,(byte)255));
+    for (int i = x + 20; i < x + 41; i += 5)
+        Raylib.DrawRectangle(i, y + 45, 2, 7, new Color((byte)80,(byte)80,(byte)80,(byte)255));
+
+    // bull bar
+    Raylib.DrawRectangle(x + 5, y + 50, 68, 14, new Color((byte)60,(byte)60,(byte)60,(byte)255));
+    Raylib.DrawRectangleLines(x + 5, y + 50, 68, 14, Color.Black);
+
+    // large headlights
+    Raylib.DrawRectangle(x + 11, y + 52, 7, 7,
+        new Color((byte)255,(byte)240,(byte)150,(byte)255));
+    Raylib.DrawRectangle(x + 59, y + 52, 7, 7,
+        new Color((byte)255,(byte)240,(byte)150,(byte)255));
+
+    // Number plate
+    Raylib.DrawRectangle(x + 23, y + 59, 32, 5, Color.White);
+
+    break;
+
+case FacingDirection.Up:
+
+    // tray rear view
+    Raylib.DrawRectangle(x + 5, y + 7, 68, 50, panelColor);
+    Raylib.DrawRectangle(x + 5, y + 7, 68, 18,
+        new Color((byte)Math.Max(0,panelColor.R-30),(byte)Math.Max(0,panelColor.G-30),(byte)Math.Max(0,panelColor.B-30),(byte)255));
+
+    // wheels
+    Raylib.DrawRectangle(x + 7, y + 47, 12, 20, Color.Black);
+    Raylib.DrawRectangle(x + 59, y + 47, 12, 20, Color.Black);
+
+    // tray walls
+    Raylib.DrawRectangle(x + 5,  y + 18, 4, 38, new Color((byte)60,(byte)60,(byte)60,(byte)255));
+    Raylib.DrawRectangle(x + 68, y + 18, 4, 38, new Color((byte)60,(byte)60,(byte)60,(byte)255));
+    Raylib.DrawRectangle(x + 5,  y + 18, 68, 4, new Color((byte)60,(byte)60,(byte)60,(byte)255));
+
+    // wing mirrors
+    Raylib.DrawRectangle(x - 2, y + 14, 4, 8, Color.Black);
+    Raylib.DrawRectangle(x + 74, y + 14, 4, 8, Color.Black);
+
+    // tail lights
+    Raylib.DrawRectangle(x + 7,  y + 50, 9, 5,
+        new Color((byte)220,(byte)30,(byte)30,(byte)255));
+    Raylib.DrawRectangle(x + 59, y + 50, 9, 5,
+        new Color((byte)220,(byte)30,(byte)30,(byte)255));
+
+    // Number plate
+    Raylib.DrawRectangle(x + 23, y + 59, 32, 5, Color.White);
+
+    // tow bar
+    Raylib.DrawRectangle(x + 32, y + 54, 11, 5, new Color((byte)60,(byte)60,(byte)60,(byte)255));
+
+    break;
         }
 
-        if (Driving)
-            Raylib.DrawCircle((int)Position.X + 78, (int)Position.Y + 18, 7, Program.player.SkinColor);
+        //if (Driving)
+            //Raylib.DrawCircle((int)Position.X + 78, (int)Position.Y + 18, 7, Program.player.SkinColor);
     }
 
     // ── SUV ──────────────────────────────────────────────────────────────────
@@ -9293,10 +10421,11 @@ public NPC(Vector2 pos)
                 // tail lights
                 Raylib.DrawRectangle(x, y + 16, 6, 12,
                     new Color((byte)220,(byte)30,(byte)30,(byte)255));
+
                 // spare tyre on back
-                Raylib.DrawCircle(x + 4, y + 30, 8, Color.Black);
-                Raylib.DrawCircleLines(x + 4, y + 30, 8, Color.DarkGray);
-                Raylib.DrawCircle(x + 4, y + 30, 3, new Color((byte)80,(byte)80,(byte)80,(byte)255));
+                Raylib.DrawRectangle(x - 6, y + 10, 8, 20,
+                    Color.Black);
+
                 // skid plate / running boards
                 Raylib.DrawRectangle(x + 10, y + 46, 80, 4, new Color((byte)60,(byte)60,(byte)60,(byte)255));
                 // wheels — larger than sedan
@@ -9336,9 +10465,11 @@ public NPC(Vector2 pos)
                     new Color((byte)255,(byte)255,(byte)200,(byte)255));
                 Raylib.DrawRectangle(x + 94, y + 16, 6, 12,
                     new Color((byte)220,(byte)30,(byte)30,(byte)255));
-                Raylib.DrawCircle(x + 96, y + 30, 8, Color.Black);
-                Raylib.DrawCircleLines(x + 96, y + 30, 8, Color.DarkGray);
-                Raylib.DrawCircle(x + 96, y + 30, 3, new Color((byte)80,(byte)80,(byte)80,(byte)255));
+
+                // Spare wheel on back
+                Raylib.DrawRectangle(x + 98, y + 10, 8, 20,
+                    Color.Black);
+
                 Raylib.DrawRectangle(x + 10, y + 46, 80, 4, new Color((byte)60,(byte)60,(byte)60,(byte)255));
                 Raylib.DrawCircle(x + 20, y + 48, 14, Color.Black);
                 Raylib.DrawCircleLines(x + 20, y + 48, 14, Color.DarkGray);
@@ -9352,67 +10483,78 @@ public NPC(Vector2 pos)
                 break;
 
             case FacingDirection.Down:
+
+                // wheels
+                Raylib.DrawRectangle(x + 5, y + 32, 13, 32, Color.Black);
+                Raylib.DrawRectangle(x + 68, y + 32, 13, 32, Color.Black);
+
                 // boxy front
-                Raylib.DrawRectangle(x + 5, y + 6, 90, 44, VehicleColor);
-                Raylib.DrawRectangle(x + 5, y + 6, 90, 4,
+                Raylib.DrawRectangle(x + 5, y + 6, 76, 50, VehicleColor);
+                Raylib.DrawRectangle(x + 5, y + 6, 76, 4,
                     new Color((byte)Math.Min(255,VehicleColor.R+40),(byte)Math.Min(255,VehicleColor.G+40),(byte)Math.Min(255,VehicleColor.B+40),(byte)255));
+
                 // windscreen
-                Raylib.DrawRectangle(x + 14, y + 10, 72, 22,
+                Raylib.DrawRectangle(x + 9, y + 10, 68, 22,
                     new Color((byte)100,(byte)180,(byte)220,(byte)180));
-                Raylib.DrawRectangle(x + 48, y + 10, 4, 22, VehicleColor);
+                Raylib.DrawRectangle(x + 40, y + 10, 4, 22, VehicleColor);
                 // headlights — square and wide
-                Raylib.DrawRectangle(x + 7,  y + 34, 22, 14,
+                Raylib.DrawRectangle(x + 9,  y + 34, 16, 10,
                     new Color((byte)255,(byte)240,(byte)150,(byte)255));
-                Raylib.DrawRectangle(x + 71, y + 34, 22, 14,
+                Raylib.DrawRectangle(x + 64, y + 34, 16, 10,
                     new Color((byte)255,(byte)240,(byte)150,(byte)255));
                 // grille
-                Raylib.DrawRectangle(x + 32, y + 36, 36, 12, new Color((byte)40,(byte)40,(byte)40,(byte)255));
+                Raylib.DrawRectangle(x + 28, y + 36, 36, 20, new Color((byte)40,(byte)40,(byte)40,(byte)255));
                 for (int i = x + 34; i < x + 66; i += 6)
                     Raylib.DrawRectangle(i, y + 37, 2, 10, new Color((byte)80,(byte)80,(byte)80,(byte)255));
+
                 // bull bar
-                Raylib.DrawRectangle(x + 5, y + 48, 90, 4, new Color((byte)60,(byte)60,(byte)60,(byte)255));
-                // running boards
-                Raylib.DrawRectangle(x, y + 24, 6, 26, new Color((byte)60,(byte)60,(byte)60,(byte)255));
-                Raylib.DrawRectangle(x + 94, y + 24, 6, 26, new Color((byte)60,(byte)60,(byte)60,(byte)255));
-                // wheels
-                Raylib.DrawCircle(x + 6,  y + 46, 11, Color.Black);
-                Raylib.DrawCircleLines(x + 6, y + 46, 11, Color.DarkGray);
-                Raylib.DrawCircle(x + 94, y + 46, 11, Color.Black);
-                Raylib.DrawCircleLines(x + 94, y + 46, 11, Color.DarkGray);
+                Raylib.DrawRectangle(x + 5, y + 48, 76, 12, new Color((byte)60,(byte)60,(byte)60,(byte)255));
+
+                // Number plate
+                Raylib.DrawRectangle(x + 26, y + 55, 32, 5, Color.White);
+                
                 break;
 
             case FacingDirection.Up:
-                Raylib.DrawRectangle(x + 5, y + 6, 90, 44, VehicleColor);
-                Raylib.DrawRectangle(x + 5, y + 6, 90, 4,
+
+                // wheels
+                Raylib.DrawRectangle(x + 5, y + 32, 13, 32, Color.Black);
+                Raylib.DrawRectangle(x + 68, y + 32, 13, 32, Color.Black);
+
+                // Back view of SUV body
+                Raylib.DrawRectangle(x + 5, y + 6, 76, 50, VehicleColor);
+                Raylib.DrawRectangle(x + 5, y + 6, 76, 4,
                     new Color((byte)Math.Max(0,VehicleColor.R-40),(byte)Math.Max(0,VehicleColor.G-40),(byte)Math.Max(0,VehicleColor.B-40),(byte)255));
+
                 // rear window
-                Raylib.DrawRectangle(x + 14, y + 10, 72, 22,
+                Raylib.DrawRectangle(x + 9, y + 10, 68, 22,
                     new Color((byte)80,(byte)160,(byte)200,(byte)140));
-                Raylib.DrawRectangle(x + 48, y + 10, 4, 22, VehicleColor);
+                //Raylib.DrawRectangle(x + 48, y + 10, 4, 22, VehicleColor);
+
                 // tail lights — wide
-                Raylib.DrawRectangle(x + 7,  y + 34, 22, 14,
+                Raylib.DrawRectangle(x + 7,  y + 34, 14, 10,
                     new Color((byte)220,(byte)30,(byte)30,(byte)255));
-                Raylib.DrawRectangle(x + 71, y + 34, 22, 14,
+                Raylib.DrawRectangle(x + 62, y + 34, 14, 10,
                     new Color((byte)220,(byte)30,(byte)30,(byte)255));
                 // spare tyre
-                Raylib.DrawCircle(x + 50, y + 24, 14, Color.Black);
-                Raylib.DrawCircleLines(x + 50, y + 24, 14, Color.DarkGray);
-                Raylib.DrawCircle(x + 50, y + 24, 6, new Color((byte)80,(byte)80,(byte)80,(byte)255));
+                Raylib.DrawCircle(x + 38, y + 30, 14, Color.Black);
+                Raylib.DrawCircleLines(x + 38, y + 30, 14, Color.DarkGray);
+                Raylib.DrawCircle(x + 38, y + 30, 6, new Color((byte)80,(byte)80,(byte)80,(byte)255));
+
                 // tow hitch
                 Raylib.DrawRectangle(x + 44, y + 48, 12, 6, new Color((byte)60,(byte)60,(byte)60,(byte)255));
-                // running boards
-                Raylib.DrawRectangle(x, y + 24, 6, 26, new Color((byte)60,(byte)60,(byte)60,(byte)255));
-                Raylib.DrawRectangle(x + 94, y + 24, 6, 26, new Color((byte)60,(byte)60,(byte)60,(byte)255));
-                // wheels
-                Raylib.DrawCircle(x + 6,  y + 46, 11, Color.Black);
-                Raylib.DrawCircleLines(x + 6, y + 46, 11, Color.DarkGray);
-                Raylib.DrawCircle(x + 94, y + 46, 11, Color.Black);
-                Raylib.DrawCircleLines(x + 94, y + 46, 11, Color.DarkGray);
+
+                // exhaust pipe
+                Raylib.DrawCircle(x + 11, y + 47, 3, Color.Black);
+                Raylib.DrawCircleLines(x + 11, y + 47, 3, Color.Gray);
+
+                // Number plate
+                Raylib.DrawRectangle(x + 26, y + 55, 32, 5, Color.White);
                 break;
         }
 
-        if (Driving)
-            Raylib.DrawCircle((int)Position.X + 50, (int)Position.Y + 16, 7, Program.player.SkinColor);
+     //   if (Driving)
+      //      Raylib.DrawCircle((int)Position.X + 50, (int)Position.Y + 16, 7, Program.player.SkinColor);
     }
 }
 
