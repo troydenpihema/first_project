@@ -4522,7 +4522,7 @@ if (currentBuilding.BuildingName == "POLICE STATION")
     int mapH = 600;
     int mapX = ScreenWidth / 2 - mapW / 2;
     int mapY = ScreenHeight / 2 - mapH / 2;
-    float scale = 0.001f;
+    float scale = 0.003f;
 
     // background panel
     Raylib.DrawRectangle(mapX, mapY, mapW, mapH, new Color((byte)10,(byte)10,(byte)20,(byte)245));
@@ -8642,7 +8642,7 @@ if (currentBuilding.BuildingName == "McDONALD'S" &&
             Raylib.DrawText("F5 = Save", ScreenWidth - 280, 90, 18, Color.LightGray);
 
            Raylib.DrawRectangle(0, ScreenHeight - 34, ScreenWidth, 34, new Color((byte)0, (byte)0, (byte)0, (byte)170));
-            Raylib.DrawText("SPACE = Action/Chop | R = Fish | TAB = Inventory | E = Enter Building | F = Drive Vehicle", 20, ScreenHeight - 28, 20, Color.White);
+            Raylib.DrawText("SPACE = Action/Chop | R = Fish | TAB = Inventory | E = Enter Building | F = Drive Vehicle | Esc = Options", 20, ScreenHeight - 28, 20, Color.White);
 
             if (biomeMessageTimer > 0)
 {
@@ -8892,6 +8892,10 @@ AddPoliceStation(3200, 410);
             vehicles.Add(new Vehicle(new Vector2(300,  800), Color.Red,      650, Vehicle.VehicleType.Sedan));
             vehicles.Add(new Vehicle(new Vector2(1200, 700), Color.Yellow,   900, Vehicle.VehicleType.Truck));
             vehicles.Add(new Vehicle(new Vector2(-400, 650), Color.DarkBlue, 500, Vehicle.VehicleType.SUV));
+            vehicles.Add(new Vehicle(new Vector2(3082, 458), Color.Black, 500, Vehicle.VehicleType.PoliceCar));
+            vehicles.Add(new Vehicle(new Vector2(3082, 758), Color.Red, 500, Vehicle.VehicleType.FireTruck));
+            vehicles.Add(new Vehicle(new Vector2(510, -189), Color.White, 500, Vehicle.VehicleType.Ambulance));
+
 
             // Mountain bikes - safe zone and grasslands
             rideables.Add(new Rideable(new Vector2(600, 800),  Rideable.RideableType.MountainBike, new Color((byte)180,(byte)80,(byte)20,(byte)255)));
@@ -11031,7 +11035,7 @@ public NPC(Vector2 pos)
 
     class Vehicle
 {
-    public enum VehicleType { Sedan, Truck, SUV }
+    public enum VehicleType { Sedan, Truck, SUV, PoliceCar, Ambulance, FireTruck }
     public VehicleType Type;
     public Vector2 Position;
     public bool Driving = false;
@@ -11148,6 +11152,9 @@ public NPC(Vector2 pos)
             case VehicleType.Sedan: DrawSedan(); break;
             case VehicleType.Truck: DrawTruck(); break;
             case VehicleType.SUV:   DrawSUV();   break;
+            case VehicleType.PoliceCar:   DrawPoliceCar();   break;
+            case VehicleType.Ambulance:   DrawAmbulance();   break;
+            case VehicleType.FireTruck:   DrawFireTruck();   break;
         }
     }
 
@@ -11290,6 +11297,137 @@ public NPC(Vector2 pos)
                 //Program.player.SkinColor);
         }
     }
+
+    // ── Police Car ────────────────────────────────────────────────────────────────
+    void DrawPoliceCar()
+    {
+        int x = (int)Position.X;
+        int y = (int)Position.Y;
+
+        // helper colors
+Color bodyColor = new Color((byte)20, (byte)20, (byte)30, (byte)255); // dark police body
+Color stripeColor = new Color((byte)240, (byte)240, (byte)240, (byte)255); // white stripe/door
+Color windowTint = new Color((byte)100, (byte)180, (byte)220, (byte)200);
+Color sirenRed = new Color((byte)220, (byte)40, (byte)40, (byte)255);
+Color sirenBlue = new Color((byte)40, (byte)100, (byte)220, (byte)255);
+Color sirenBase = new Color((byte)200, (byte)200, (byte)200, (byte)255);
+
+switch (Facing)
+{
+    case FacingDirection.Right:
+        // body
+        Raylib.DrawRectangle(x, y + 18, 100, 28, bodyColor);
+        Raylib.DrawRectangle(x, y + 18, 100, 4,
+            new Color((byte)Math.Min(255, bodyColor.R + 40), (byte)Math.Min(255, bodyColor.G + 40), (byte)Math.Min(255, bodyColor.B + 40), (byte)255));
+        // white door stripe
+        Raylib.DrawRectangle(x + 28, y + 22, 44, 12, stripeColor);
+        // POLICE text on side
+        Raylib.DrawText("POLICE", x + 36, y + 24, 10, Color.Black);
+        // cabin
+        Raylib.DrawRectangle(x + 22, y + 4, 52, 16, bodyColor);
+        Raylib.DrawRectangle(x + 24, y + 6, 48, 12, windowTint);
+        // windscreen lines
+        Raylib.DrawLine(x + 24, y + 6, x + 48, y + 18, new Color((byte)60, (byte)140, (byte)180, (byte)180));
+        Raylib.DrawLine(x + 72, y + 6, x + 48, y + 18, new Color((byte)60, (byte)140, (byte)180, (byte)180));
+        // wheels
+        Raylib.DrawCircle(x + 18, y + 46, 12, Color.Black);
+        Raylib.DrawCircleLines(x + 18, y + 46, 12, Color.DarkGray);
+        Raylib.DrawCircle(x + 18, y + 46, 5, new Color((byte)80, (byte)80, (byte)80, (byte)255));
+        Raylib.DrawCircle(x + 80, y + 46, 12, Color.Black);
+        Raylib.DrawCircleLines(x + 80, y + 46, 12, Color.DarkGray);
+        Raylib.DrawCircle(x + 80, y + 46, 5, new Color((byte)80, (byte)80, (byte)80, (byte)255));
+        // headlights / tail
+        Raylib.DrawRectangle(x + 92, y + 22, 8, 10, new Color((byte)255, (byte)240, (byte)150, (byte)255));
+        Raylib.DrawRectangle(x, y + 22, 6, 10, new Color((byte)220, (byte)30, (byte)30, (byte)255));
+        // door line & handles
+        Raylib.DrawLine(x + 50, y + 18, x + 50, y + 46, new Color((byte)0, (byte)0, (byte)0, (byte)80));
+        Raylib.DrawRectangle(x + 38, y + 30, 10, 3, new Color((byte)160, (byte)160, (byte)160, (byte)255));
+        Raylib.DrawRectangle(x + 62, y + 30, 10, 3, new Color((byte)160, (byte)160, (byte)160, (byte)255));
+
+        // siren (roof) — centered above cabin for right-facing
+        Raylib.DrawRectangle(x + 40, y - 2, 20, 8, sirenBase);
+        Raylib.DrawRectangle(x + 42, y - 0, 8, 6, sirenRed);
+        Raylib.DrawRectangle(x + 50, y - 0, 8, 6, sirenBlue);
+        break;
+
+    case FacingDirection.Left:
+        Raylib.DrawRectangle(x, y + 18, 100, 28, bodyColor);
+        Raylib.DrawRectangle(x, y + 18, 100, 4,
+            new Color((byte)Math.Min(255, bodyColor.R + 40), (byte)Math.Min(255, bodyColor.G + 40), (byte)Math.Min(255, bodyColor.B + 40), (byte)255));
+        Raylib.DrawRectangle(x + 28, y + 22, 44, 12, stripeColor);
+        Raylib.DrawText("POLICE", x + 36, y + 24, 10, Color.Black);
+        Raylib.DrawRectangle(x + 26, y + 4, 52, 16, bodyColor);
+        Raylib.DrawRectangle(x + 28, y + 6, 48, 12, windowTint);
+        Raylib.DrawLine(x + 28, y + 6, x + 52, y + 18, new Color((byte)60, (byte)140, (byte)180, (byte)180));
+        Raylib.DrawLine(x + 76, y + 6, x + 52, y + 18, new Color((byte)60, (byte)140, (byte)180, (byte)180));
+        Raylib.DrawCircle(x + 18, y + 46, 12, Color.Black);
+        Raylib.DrawCircleLines(x + 18, y + 46, 12, Color.DarkGray);
+        Raylib.DrawCircle(x + 18, y + 46, 5, new Color((byte)80, (byte)80, (byte)80, (byte)255));
+        Raylib.DrawCircle(x + 80, y + 46, 12, Color.Black);
+        Raylib.DrawCircleLines(x + 80, y + 46, 12, Color.DarkGray);
+        Raylib.DrawCircle(x + 80, y + 46, 5, new Color((byte)80, (byte)80, (byte)80, (byte)255));
+        // headlights left side / tail
+        Raylib.DrawRectangle(x, y + 22, 8, 10, new Color((byte)255, (byte)240, (byte)150, (byte)255));
+        Raylib.DrawRectangle(x + 94, y + 22, 6, 10, new Color((byte)220, (byte)30, (byte)30, (byte)255));
+        Raylib.DrawLine(x + 50, y + 18, x + 50, y + 46, new Color((byte)0, (byte)0, (byte)0, (byte)80));
+        Raylib.DrawRectangle(x + 38, y + 30, 10, 3, new Color((byte)160, (byte)160, (byte)160, (byte)255));
+        Raylib.DrawRectangle(x + 62, y + 30, 10, 3, new Color((byte)160, (byte)160, (byte)160, (byte)255));
+
+        // siren centered for left-facing
+        Raylib.DrawRectangle(x + 40, y - 2, 20, 8, sirenBase);
+        Raylib.DrawRectangle(x + 42, y - 0, 8, 6, sirenBlue);
+        Raylib.DrawRectangle(x + 50, y - 0, 8, 6, sirenRed);
+        break;
+
+    case FacingDirection.Down:
+        // front-on view (same dimensions)
+        Raylib.DrawRectangle(x + 15, y + 32, 13, 32, Color.Black);
+        Raylib.DrawRectangle(x + 62, y + 32, 13, 32, Color.Black);
+        Raylib.DrawRectangle(x + 7, y + 30, 76, 27, bodyColor);
+        Raylib.DrawRectangle(x + 16, y + 9, 59, 22, new Color((byte)Math.Min(255, bodyColor.R + 40), (byte)Math.Min(255, bodyColor.G + 40), (byte)Math.Min(255, bodyColor.B + 40), (byte)255));
+        Raylib.DrawRectangle(x + 20, y + 13, 52, 14, windowTint);
+        Raylib.DrawRectangle(x + 11, y + 32, 16, 9, new Color((byte)255, (byte)240, (byte)150, (byte)255));
+        Raylib.DrawRectangle(x + 63, y + 32, 16, 9, new Color((byte)255, (byte)240, (byte)150, (byte)255));
+        Raylib.DrawRectangle(x + 31, y + 34, 29, 7, new Color((byte)40, (byte)40, (byte)40, (byte)255));
+        for (int i = x + 32; i < x + 58; i += 5)
+            Raylib.DrawRectangle(i, y + 34, 2, 7, new Color((byte)80, (byte)80, (byte)80, (byte)255));
+        Raylib.DrawRectangle(x + 27, y + 45, 36, 6, Color.White);
+
+        // POLICE on front bumper
+        Raylib.DrawText("POLICE", x + 30, y + 38, 8, Color.Black);
+
+        // siren — between the windscreen and front bonnet
+        Raylib.DrawRectangle(x + 34, y + 4, 32, 8, sirenBase);
+        Raylib.DrawRectangle(x + 36, y + 6, 12, 6, sirenRed);
+        Raylib.DrawRectangle(x + 52, y + 6, 12, 6, sirenBlue);
+        break;
+
+    case FacingDirection.Up:
+        // rear view
+        Raylib.DrawRectangle(x + 15, y + 32, 13, 32, Color.Black);
+        Raylib.DrawRectangle(x + 62, y + 32, 13, 32, Color.Black);
+        Raylib.DrawRectangle(x + 7, y + 30, 76, 27, bodyColor);
+        Raylib.DrawRectangle(x + 16, y + 9, 59, 22, new Color((byte)Math.Max(0, bodyColor.R - 20), (byte)Math.Max(0, bodyColor.G - 20), (byte)Math.Max(0, bodyColor.B - 20), (byte)255));
+        Raylib.DrawCircle(x + 11, y + 50, 3, Color.Black);
+        Raylib.DrawCircleLines(x + 11, y + 50, 3, Color.Gray);
+        Raylib.DrawRectangle(x + 27, y + 45, 36, 6, Color.White);
+        Raylib.DrawRectangle(x + 20, y + 13, 52, 14, new Color((byte)80, (byte)160, (byte)200, (byte)160));
+        Raylib.DrawRectangle(x + 11, y + 32, 16, 9, new Color((byte)220, (byte)30, (byte)30, (byte)255));
+        Raylib.DrawRectangle(x + 63, y + 32, 16, 9, new Color((byte)220, (byte)30, (byte)30, (byte)255));
+        Raylib.DrawRectangle(x + 29, y + 34, 32, 2, new Color((byte)0, (byte)0, (byte)0, (byte)80));
+
+        // POLICE on trunk
+        Raylib.DrawText("POLICE", x + 30, y + 36, 8, Color.Black);
+
+        // siren — mounted on roof near rear window in rear view
+        Raylib.DrawRectangle(x + 34, y + 4, 32, 8, sirenBase);
+        Raylib.DrawRectangle(x + 36, y + 6, 12, 6, sirenBlue);
+        Raylib.DrawRectangle(x + 52, y + 6, 12, 6, sirenRed);
+        break;
+}
+        }
+
+    
 
     // ── TRUCK ────────────────────────────────────────────────────────────────
     void DrawTruck()
@@ -11447,9 +11585,172 @@ case FacingDirection.Up:
     break;
         }
 
-        //if (Driving)
-            //Raylib.DrawCircle((int)Position.X + 78, (int)Position.Y + 18, 7, Program.player.SkinColor);
     }
+
+    // ── Fire Truck ────────────────────────────────────────────────────────────────
+    void DrawFireTruck()
+    {
+        int x = (int)Position.X;
+        int y = (int)Position.Y;
+        
+    // firetruck-specific colors
+Color truckRed = new Color((byte)200, (byte)30, (byte)30, (byte)255);
+Color trimWhite = new Color((byte)240, (byte)240, (byte)240, (byte)255);
+Color windowTint = new Color((byte)100, (byte)180, (byte)220, (byte)200);
+Color sirenRed = new Color((byte)220, (byte)40, (byte)40, (byte)255);
+Color sirenBlue = new Color((byte)40, (byte)100, (byte)220, (byte)255);
+Color sirenBase = new Color((byte)200, (byte)200, (byte)200, (byte)255);
+Color hoseDark = new Color((byte)40, (byte)40, (byte)40, (byte)255);
+
+switch (Facing)
+{
+    case FacingDirection.Right:
+        // tray / body (red with white trim)
+        Raylib.DrawRectangle(x, y + 8, 94, 40, Color.White);
+        Raylib.DrawRectangle(x, y + 14, 60, 34, truckRed);
+        Raylib.DrawRectangle(x, y + 14, 60, 4, new Color((byte)Math.Min(255, truckRed.R + 10), (byte)Math.Min(255, truckRed.G + 10), (byte)Math.Min(255, truckRed.B + 10), (byte)255));
+        Raylib.DrawRectangle(x + 6, y + 22, 48, 10, trimWhite); // white stripe
+        
+        // ladder on side (stacked rungs)
+        Raylib.DrawRectangle(x + 8, y + 18, 4, 28, new Color((byte)150, (byte)150, (byte)150, (byte)255));
+        for (int r = 0; r < 5; r++)
+            Raylib.DrawRectangle(x + 12, y + 20 + r * 6, 28, 3, new Color((byte)180, (byte)180, (byte)180, (byte)255));
+        // hose reel at rear
+        Raylib.DrawCircle(x + 12, y + 32, 8, hoseDark);
+        Raylib.DrawCircleLines(x + 12, y + 32, 8, Color.DarkGray);
+        // tray sides
+        Raylib.DrawRectangle(x, y + 14, 4, 34, new Color((byte)80, (byte)80, (byte)80, (byte)255));
+        Raylib.DrawRectangle(x, y + 44, 60, 4, new Color((byte)80, (byte)80, (byte)80, (byte)255));
+        // cab
+        Raylib.DrawRectangle(x + 58, y + 8, 42, 40, VehicleColor);
+        Raylib.DrawRectangle(x + 58, y + 8, 42, 4, new Color((byte)Math.Min(255, VehicleColor.R + 40), (byte)Math.Min(255, VehicleColor.G + 40), (byte)Math.Min(255, VehicleColor.B + 40), (byte)255));
+        Raylib.DrawRectangle(x + 64, y + 12, 28, 18, windowTint);
+        Raylib.DrawLine(x + 64, y + 12, x + 78, y + 30, new Color((byte)60, (byte)140, (byte)180, (byte)180));
+        // headlight and tail light
+        Raylib.DrawRectangle(x + 92, y + 20, 8, 10, new Color((byte)255, (byte)240, (byte)150, (byte)255));
+        Raylib.DrawRectangle(x, y + 20, 4, 8, new Color((byte)220, (byte)30, (byte)30, (byte)255));
+        // wheels — 
+        Raylib.DrawCircle(x + 18, y + 48, 12, Color.Black);
+        Raylib.DrawCircleLines(x + 18, y + 48, 12, Color.DarkGray);
+        Raylib.DrawCircle(x + 18, y + 48, 5, new Color((byte)80, (byte)80, (byte)80, (byte)255));
+        Raylib.DrawCircle(x + 82, y + 48, 12, Color.Black);
+        Raylib.DrawCircleLines(x + 82, y + 48, 12, Color.DarkGray);
+        Raylib.DrawCircle(x + 82, y + 48, 5, new Color((byte)80, (byte)80, (byte)80, (byte)255));
+        // exhaust
+        Raylib.DrawRectangle(x + 96, y + 10, 4, 16, new Color((byte)60, (byte)60, (byte)60, (byte)255));
+        // "FIRE" text on stripe
+        Raylib.DrawText("FIRE", x + 20, y + 22, 10, Color.Red);
+
+        // siren (roof) — centered above cabin
+        Raylib.DrawRectangle(x + 60, y - 2, 20, 8, sirenBase);
+        Raylib.DrawRectangle(x + 62, y - 0, 8, 6, sirenRed);
+        Raylib.DrawRectangle(x + 70, y - 0, 8, 6, sirenBlue);
+        break;
+
+    case FacingDirection.Left:
+        Raylib.DrawRectangle(x, y + 8, 96, 40, Color.White);
+        Raylib.DrawRectangle(x + 40, y + 14, 60, 34, truckRed);
+        Raylib.DrawRectangle(x + 40, y + 14, 60, 4, new Color((byte)Math.Min(255, truckRed.R + 10), (byte)Math.Min(255, truckRed.G + 10), (byte)Math.Min(255, truckRed.B + 10), (byte)255));
+        Raylib.DrawRectangle(x + 46, y + 22, 48, 10, trimWhite); // stripe
+        // ladder on side (mirrored)
+        Raylib.DrawRectangle(x + 96, y + 18, 4, 28, new Color((byte)150, (byte)150, (byte)150, (byte)255));
+        for (int r = 0; r < 5; r++)
+            Raylib.DrawRectangle(x + 56, y + 20 + r * 6, 28, 3, new Color((byte)180, (byte)180, (byte)180, (byte)255));
+        // hose reel at rear (mirrored)
+        Raylib.DrawCircle(x + 88, y + 32, 8, hoseDark);
+        Raylib.DrawCircleLines(x + 88, y + 32, 8, Color.DarkGray);
+        Raylib.DrawRectangle(x + 96, y + 14, 4, 34, new Color((byte)80, (byte)80, (byte)80, (byte)255));
+        Raylib.DrawRectangle(x + 40, y + 44, 60, 4, new Color((byte)80, (byte)80, (byte)80, (byte)255));
+        Raylib.DrawRectangle(x, y + 8, 42, 40, VehicleColor);
+        Raylib.DrawRectangle(x, y + 8, 42, 4, new Color((byte)Math.Min(255, VehicleColor.R + 40), (byte)Math.Min(255, VehicleColor.G + 40), (byte)Math.Min(255, VehicleColor.B + 40), (byte)255));
+        Raylib.DrawRectangle(x + 8, y + 12, 28, 18, windowTint);
+        Raylib.DrawLine(x + 36, y + 12, x + 22, y + 30, new Color((byte)60, (byte)140, (byte)180, (byte)180));
+        Raylib.DrawRectangle(x, y + 20, 8, 10, new Color((byte)255, (byte)240, (byte)150, (byte)255));
+        Raylib.DrawRectangle(x + 96, y + 20, 4, 8, new Color((byte)220, (byte)30, (byte)30, (byte)255));
+        Raylib.DrawCircle(x + 18, y + 48, 12, Color.Black);
+        Raylib.DrawCircleLines(x + 18, y + 48, 12, Color.DarkGray);
+        Raylib.DrawCircle(x + 18, y + 48, 5, new Color((byte)80, (byte)80, (byte)80, (byte)255));
+       
+        Raylib.DrawCircle(x + 82, y + 48, 12, Color.Black);
+        Raylib.DrawCircleLines(x + 82, y + 48, 12, Color.DarkGray);
+        Raylib.DrawCircle(x + 82, y + 48, 5, new Color((byte)80, (byte)80, (byte)80, (byte)255));
+        Raylib.DrawRectangle(x, y + 10, 4, 16, new Color((byte)60, (byte)60, (byte)60, (byte)255));
+        Raylib.DrawText("FIRE", x + 52, y + 22, 10, Color.Red);
+
+        // siren centered for left-facing (swap halves visually)
+        Raylib.DrawRectangle(x + 20, y - 2, 20, 8, sirenBase);
+        Raylib.DrawRectangle(x + 22, y - 0, 8, 6, sirenBlue);
+        Raylib.DrawRectangle(x + 30, y - 0, 8, 6, sirenRed);
+        break;
+
+    case FacingDirection.Down:
+        // wheels
+        Raylib.DrawRectangle(x + 7, y + 47, 12, 25, Color.Black);
+        Raylib.DrawRectangle(x + 59, y + 47, 12, 25, Color.Black);
+        // wide front grille (red with white trim)
+        Raylib.DrawRectangle(x + 5, y + 7, 68, 54, truckRed);
+        Raylib.DrawRectangle(x + 5, y + 7, 68, 4, new Color((byte)Math.Min(255, truckRed.R + 10), (byte)Math.Min(255, truckRed.G + 10), (byte)Math.Min(255, truckRed.B + 10), (byte)255));
+        // white stripe across front
+        Raylib.DrawRectangle(x + 12, y + 34, 44, 8, trimWhite);
+        // windscreen
+        Raylib.DrawRectangle(x + 13, y + 13, 54, 14, windowTint);
+        Raylib.DrawRectangle(x - 2, y + 14, 4, 8, Color.Black);
+        Raylib.DrawRectangle(x + 74, y + 14, 4, 8, Color.Black);
+        // grilles / bull bar
+        Raylib.DrawRectangle(x + 13, y + 34, 54, 9, new Color((byte)40, (byte)40, (byte)40, (byte)255));
+        for (int i = x + 18; i < x + 52; i += 5)
+            Raylib.DrawRectangle(i, y + 35, 2, 7, new Color((byte)80, (byte)80, (byte)80, (byte)255));
+        Raylib.DrawRectangle(x + 18, y + 45, 43, 9, new Color((byte)40, (byte)40, (byte)40, (byte)255));
+        for (int i = x + 20; i < x + 41; i += 5)
+            Raylib.DrawRectangle(i, y + 45, 2, 7, new Color((byte)80, (byte)80, (byte)80, (byte)255));
+        Raylib.DrawRectangle(x + 5, y + 50, 68, 14, new Color((byte)60, (byte)60, (byte)60, (byte)255));
+        Raylib.DrawRectangleLines(x + 5, y + 50, 68, 14, Color.Black);
+        Raylib.DrawRectangle(x + 11, y + 52, 7, 7, new Color((byte)255, (byte)240, (byte)150, (byte)255));
+        Raylib.DrawRectangle(x + 59, y + 52, 7, 7, new Color((byte)255, (byte)240, (byte)150, (byte)255));
+        Raylib.DrawRectangle(x + 23, y + 59, 32, 5, Color.White);
+        Raylib.DrawText("FIRE", x + 26, y + 38, 10, Color.White);
+
+        // front hose coupling detail
+        Raylib.DrawRectangle(x + 30, y + 42, 8, 6, hoseDark);
+        // siren — between windscreen and bonnet
+        Raylib.DrawRectangle(x + 28, y + 4, 32, 8, sirenBase);
+        Raylib.DrawRectangle(x + 30, y + 6, 12, 6, sirenRed);
+        Raylib.DrawRectangle(x + 46, y + 6, 12, 6, sirenBlue);
+        break;
+
+    case FacingDirection.Up:
+        // tray rear view (red)
+        Raylib.DrawRectangle(x + 5, y + 7, 68, 50, truckRed);
+        Raylib.DrawRectangle(x + 5, y + 7, 68, 18, new Color((byte)Math.Max(0, truckRed.R - 30), (byte)Math.Max(0, truckRed.G - 30), (byte)Math.Max(0, truckRed.B - 30), (byte)255));
+        // wheels
+        Raylib.DrawRectangle(x + 7, y + 47, 12, 20, Color.Black);
+        Raylib.DrawRectangle(x + 59, y + 47, 12, 20, Color.Black);
+        // tray walls
+        Raylib.DrawRectangle(x + 5, y + 18, 4, 38, new Color((byte)60, (byte)60, (byte)60, (byte)255));
+        Raylib.DrawRectangle(x + 68, y + 18, 4, 38, new Color((byte)60, (byte)60, (byte)60, (byte)255));
+        Raylib.DrawRectangle(x + 5, y + 18, 68, 4, Color.White);
+        Raylib.DrawRectangle(x - 2, y + 14, 4, 8, Color.Black);
+        Raylib.DrawRectangle(x + 74, y + 14, 4, 8, Color.Black);
+        // tail lights and tow bar
+        Raylib.DrawRectangle(x + 7, y + 50, 9, 5, new Color((byte)220, (byte)30, (byte)30, (byte)255));
+        Raylib.DrawRectangle(x + 59, y + 50, 9, 5, new Color((byte)220, (byte)30, (byte)30, (byte)255));
+        Raylib.DrawRectangle(x + 23, y + 59, 32, 5, Color.White);
+        Raylib.DrawRectangle(x + 32, y + 54, 11, 5, new Color((byte)60, (byte)60, (byte)60, (byte)255));
+        Raylib.DrawText("FIRE", x + 26, y + 36, 10, Color.White);
+
+        // ladder roof detail (rear view)
+        Raylib.DrawRectangle(x + 12, y + 8, 44, 4, new Color((byte)180, (byte)180, (byte)180, (byte)255));
+        for (int r = 0; r < 4; r++)
+            Raylib.DrawRectangle(x + 14 + r * 10, y + 12, 6, 3, new Color((byte)160, (byte)160, (byte)160, (byte)255));
+
+        // siren — mounted on roof near rear window (rear view)
+        Raylib.DrawRectangle(x + 28, y + 4, 32, 8, sirenBase);
+        Raylib.DrawRectangle(x + 30, y + 6, 12, 6, sirenBlue);
+        Raylib.DrawRectangle(x + 46, y + 6, 12, 6, sirenRed);
+        break;
+}
+    }
+
 
     // ── SUV ──────────────────────────────────────────────────────────────────
     void DrawSUV()
@@ -11623,9 +11924,147 @@ case FacingDirection.Up:
                 Raylib.DrawRectangle(x + 26, y + 55, 32, 5, Color.White);
                 break;
         }
+    }
 
-     //   if (Driving)
-      //      Raylib.DrawCircle((int)Position.X + 50, (int)Position.Y + 16, 7, Program.player.SkinColor);
+    // ── Ambulance ──────────────────────────────────────────────────────────────────
+    void DrawAmbulance()
+    {
+        int x = (int)Position.X;
+        int y = (int)Position.Y;
+        
+ // preserved wheel sizes/positions (same as SUV)
+// colors
+Color bodyWhite = new Color((byte)245, (byte)245, (byte)245, (byte)255);
+Color redStripe = new Color((byte)200, (byte)20, (byte)20, (byte)255);
+Color windowTint = new Color((byte)100, (byte)180, (byte)220, (byte)180);
+Color sirenRed = new Color((byte)220, (byte)40, (byte)40, (byte)255);
+Color sirenBlue = new Color((byte)40, (byte)100, (byte)220, (byte)255);
+Color sirenBase = new Color((byte)200, (byte)200, (byte)200, (byte)255);
+
+switch (Facing)
+{
+    case FacingDirection.Right:
+        // boxy cargo area (keeps overall width/height same)
+        Raylib.DrawRectangle(x, y + 6, 72, 44, bodyWhite);              // main box
+        Raylib.DrawRectangle(x + 72, y + 12, 8, 38, VehicleColor);     // cab
+        Raylib.DrawRectangle(x + 80, y + 30, 16, 20, VehicleColor);     // cab
+        
+        Raylib.DrawRectangle(x, y + 6, 72, 4, new Color((byte)230, (byte)230, (byte)230, (byte)255));
+        // red stripe mid-body
+        Raylib.DrawRectangle(x + 6, y + 22, 60, 8, redStripe);
+        // large rear roll-up door lines to suggest box truck
+        Raylib.DrawRectangleLines(x + 6, y + 10, 60, 36, new Color((byte)210,(byte)210,(byte)210,(byte)255));
+        for (int i = 14; i < 46; i += 8)
+            Raylib.DrawRectangle(x + 8, y + i, 56, 3, new Color((byte)230,(byte)230,(byte)230,(byte)255));
+        // small side window in cab
+        Raylib.DrawRectangle(x + 68, y + 13, 9, 18, windowTint);
+
+        // headlights/tail
+        Raylib.DrawRectangle(x + 90, y + 30, 5, 5, new Color((byte)255,(byte)240,(byte)150,(byte)255));
+        Raylib.DrawRectangle(x, y + 28, 6, 10, new Color((byte)220,(byte)30,(byte)30,(byte)255));
+        // preserved wheels (positions unchanged)
+        Raylib.DrawCircle(x + 20, y + 48, 10, Color.Black);
+        Raylib.DrawCircleLines(x + 20, y + 48, 10, Color.DarkGray);
+        Raylib.DrawCircle(x + 20, y + 48, 6, new Color((byte)80,(byte)80,(byte)80,(byte)255));
+        Raylib.DrawCircle(x + 80, y + 48, 10, Color.Black);
+        Raylib.DrawCircleLines(x + 80, y + 48, 10, Color.DarkGray);
+        Raylib.DrawCircle(x + 80, y + 48, 6, new Color((byte)80,(byte)80,(byte)80,(byte)255));
+        // Medical cross
+        Raylib.DrawRectangle(x + 10, y + 18, 10, 4, Color.Red);
+        Raylib.DrawRectangle(x + 13, y + 16, 4, 10, Color.Red);
+        // siren on roof (centered)
+        Raylib.DrawRectangle(x + 36, y - 2, 28, 8, sirenBase);
+        Raylib.DrawRectangle(x + 38, y, 10, 6, sirenRed);
+        Raylib.DrawRectangle(x + 50, y, 10, 6, sirenBlue);
+        break;
+
+    case FacingDirection.Left:
+        // mirror layout: cab on left, box on right
+
+        Raylib.DrawRectangle(x + 24, y + 6, 72, 44, bodyWhite);   // main box
+        Raylib.DrawRectangle(x + 16, y + 12, 8, 38, VehicleColor);     // cab
+        Raylib.DrawRectangle(x, y + 30, 16, 20, VehicleColor);     // cab
+
+        Raylib.DrawRectangle(x + 24, y + 6, 72, 4, new Color((byte)230, (byte)230, (byte)230, (byte)255));
+        Raylib.DrawRectangle(x + 30, y + 22, 60, 8, redStripe);
+        // Roll up doors
+        Raylib.DrawRectangleLines(x + 34, y + 10, 60, 36, new Color((byte)210,(byte)210,(byte)210,(byte)255));
+        for (int i = 14; i < 46; i += 8)
+            Raylib.DrawRectangle(x + 38, y + i, 56, 3, new Color((byte)230,(byte)230,(byte)230,(byte)255));
+        // Cab window
+        Raylib.DrawRectangle(x + 17, y + 13, 9, 18, windowTint);
+        // Head and tail lights
+        Raylib.DrawRectangle(x + 90, y + 30, 6, 10, new Color((byte)220,(byte)30,(byte)30,(byte)255)); 
+        Raylib.DrawRectangle(x, y + 30, 5, 5, new Color((byte)255,(byte)240,(byte)150,(byte)255));
+        // wheels (same)
+        Raylib.DrawCircle(x + 20, y + 48, 10, Color.Black);
+        Raylib.DrawCircleLines(x + 20, y + 48, 10, Color.DarkGray);
+        Raylib.DrawCircle(x + 20, y + 48, 6, new Color((byte)80,(byte)80,(byte)80,(byte)255));
+        Raylib.DrawCircle(x + 80, y + 48, 10, Color.Black);
+        Raylib.DrawCircleLines(x + 80, y + 48, 10, Color.DarkGray);
+        Raylib.DrawCircle(x + 80, y + 48, 6, new Color((byte)80,(byte)80,(byte)80,(byte)255));
+        
+        // mirrored medical cross
+        Raylib.DrawRectangle(x + 82, y + 18, 10, 4, Color.Red);
+        Raylib.DrawRectangle(x + 85, y + 16, 4, 10, Color.Red);
+        // siren
+        Raylib.DrawRectangle(x + 36, y - 2, 28, 8, sirenBase);
+        Raylib.DrawRectangle(x + 38, y, 10, 6, sirenBlue);
+        Raylib.DrawRectangle(x + 50, y, 10, 6, sirenRed);
+        break;
+
+    case FacingDirection.Down:
+        // wheels (same)
+        Raylib.DrawRectangle(x + 7, y + 32, 12, 28, Color.Black);
+        Raylib.DrawRectangle(x + 60, y + 32, 12, 28, Color.Black);
+        // front box face
+        Raylib.DrawRectangle(x + 6, y + 6, 68, 48, bodyWhite);
+        // cab windshield integrated at top center
+        Raylib.DrawRectangle(x + 16, y + 16, 44, 12, windowTint);
+        // red stripe across front
+        Raylib.DrawRectangle(x + 16, y + 30, 44, 8, redStripe);
+        // grille / bumper
+        Raylib.DrawRectangle(x + 6, y + 46, 68, 6, new Color((byte)60,(byte)60,(byte)60,(byte)255));
+        Raylib.DrawRectangle(x + 22, y + 36, 32, 6, new Color((byte)40,(byte)40,(byte)40,(byte)255));
+        // headlights
+        Raylib.DrawRectangle(x + 9, y + 40, 8, 6, new Color((byte)255,(byte)240,(byte)150,(byte)255));
+        Raylib.DrawRectangle(x + 59, y + 40, 8, 6, new Color((byte)255,(byte)240,(byte)150,(byte)255));
+        // siren centered on roof/front
+        Raylib.DrawRectangle(x + 24, y + 4, 32, 8, sirenBase);
+        Raylib.DrawRectangle(x + 20, y + 6, 12, 6, sirenRed);
+        Raylib.DrawRectangle(x + 42, y + 6, 12, 6, sirenBlue);
+        break;
+
+    case FacingDirection.Up:
+        // wheels (same)
+        Raylib.DrawRectangle(x + 7, y + 32, 12, 28, Color.Black);
+        Raylib.DrawRectangle(x + 60, y + 32, 12, 28, Color.Black);
+        // rear box face
+        Raylib.DrawRectangle(x + 6, y + 6, 68, 48, bodyWhite);
+        // rear window small
+        Raylib.DrawRectangle(x + 22, y + 16, 16, 28, windowTint);
+        Raylib.DrawRectangle(x + 42, y + 16, 16, 28, windowTint);
+        // red stripe near middle
+        Raylib.DrawRectangle(x + 16, y + 50, 44, 4, redStripe);
+        
+        // tail lights and bumper
+        Raylib.DrawRectangle(x + 8, y + 38, 10, 10, new Color((byte)220,(byte)30,(byte)30,(byte)255));
+        Raylib.DrawRectangle(x + 62, y + 38, 10, 10, new Color((byte)220,(byte)30,(byte)30,(byte)255));
+        //Raylib.DrawRectangle(x + 6, y + 44, 68, 6, new Color((byte)60,(byte)60,(byte)60,(byte)255));
+        // rear door seams
+        Raylib.DrawRectangleLines(x + 10, y + 12, 56, 32, new Color((byte)210,(byte)210,(byte)210,(byte)255));
+        // roof ladder detail
+        Raylib.DrawRectangle(x + 20, y + 8, 44, 4, new Color((byte)180,(byte)180,(byte)180,(byte)255));
+        for (int r = 0; r < 4; r++)
+            Raylib.DrawRectangle(x + 14 + r * 10, y + 12, 6, 3, new Color((byte)160,(byte)160,(byte)160,(byte)255));
+        // siren rear-mounted orientation
+        Raylib.DrawRectangle(x + 24, y + 4, 32, 8, sirenBase);
+        Raylib.DrawRectangle(x + 26, y + 6, 12, 6, sirenBlue);
+        Raylib.DrawRectangle(x + 42, y + 6, 12, 6, sirenRed);
+        break;
+}
+
+
     }
 }
 
