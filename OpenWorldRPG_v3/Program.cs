@@ -125,6 +125,16 @@ namespace OpenWorldRPG
         static List<(Vector2 pos, Color color)> forestMushrooms = new();
         static List<(Vector2 pos, Color color)> grasslandFlowers = new();
         static List<(Vector2 pos, float radius, Color color)> grasslandPatches = new();
+        static List<(Vector2 pos, float radius, Color color)> oceanPatches = new();
+        static List<(Vector2 pos, Color color)> oceanCoral = new();
+        static List<(Vector2 pos, Color color)> oceanShells = new();
+        static List<(Vector2 pos, float radius, Color color)> swampPatches = new();
+        static List<(Vector2 pos, Color color)> swampReeds = new();
+        static List<(Vector2 pos, Color color)> swampLilies = new();
+        static List<(Vector2 pos, float radius, Color color)> volcanoPatches = new();
+        static List<(Vector2 pos, Color color)> lavaVents = new();
+        static List<(Vector2 pos, float radius, Color color)> mountainPatches = new();
+        static List<(Vector2 pos, Color color)> mountainTrees = new();
         static List<Vector2> raindrops = new();
         static List<TreeObject> trees = new();
         static List<Lake> lakes = new();
@@ -1169,6 +1179,134 @@ static void AddPoliceStation(float x, float y)
             grasslandFlowers.Add((pos, flowerColors[Math.Abs(x + y) % flowerColors.Length]));
         }
     }
+
+    // OCEAN/BEACH sand ripples
+    for (int x = 26000; x < 30000; x += 400)
+    {
+        for (int y = -39000; y < 39000; y += 400)
+        {
+            Vector2 pos = new Vector2(x + 80, y + 80);
+            float radius = 20 + (Math.Abs(x * y) % 30);
+            byte r = (byte)(200 + Math.Abs(x + y) % 40);
+            byte g = (byte)(180 + Math.Abs(x - y) % 30);
+            oceanPatches.Add((pos, radius, new Color(r, g, (byte)110, (byte)100)));
+        }
+    }
+
+    // OCEAN shells
+    Color[] shellColors = {
+        new Color((byte)240,(byte)220,(byte)200,(byte)255),
+        new Color((byte)220,(byte)180,(byte)160,(byte)255),
+        new Color((byte)200,(byte)150,(byte)130,(byte)255)
+    };
+    for (int x = 26200; x < 30000; x += 350)
+    {
+        for (int y = -39000; y < 39000; y += 300)
+        {
+            Vector2 pos = new Vector2(x + 60, y + 60);
+            oceanShells.Add((pos, shellColors[Math.Abs(x + y) % shellColors.Length]));
+        }
+    }
+
+    // OCEAN coral
+    Color[] coralColors = {
+        new Color((byte)220,(byte)90,(byte)90,(byte)200),
+        new Color((byte)255,(byte)160,(byte)60,(byte)200),
+        new Color((byte)180,(byte)80,(byte)180,(byte)200)
+    };
+    for (int x = 30000; x < 60000; x += 600)
+    {
+        for (int y = -39000; y < 39000; y += 550)
+        {
+            Vector2 pos = new Vector2(x + 100, y + 100);
+            oceanCoral.Add((pos, coralColors[Math.Abs(x + y) % coralColors.Length]));
+        }
+    }
+
+    // SWAMP murky patches
+    for (int x = -55000; x < -30000; x += 450)
+    {
+        for (int y = -39000; y < 39000; y += 450)
+        {
+            Vector2 pos = new Vector2(x + 80, y + 80);
+            float radius = 25 + (Math.Abs(x * y) % 35);
+            byte g = (byte)(55 + Math.Abs(x + y) % 35);
+            swampPatches.Add((pos, radius, new Color((byte)30, g, (byte)25, (byte)160)));
+        }
+    }
+
+    // SWAMP reeds
+    for (int x = -55000; x < -30000; x += 280)
+    {
+        for (int y = -39000; y < 39000; y += 260)
+        {
+            Vector2 pos = new Vector2(x + 50, y + 50);
+            Color reedColor = new Color((byte)50, (byte)90, (byte)30, (byte)220);
+            swampReeds.Add((pos, reedColor));
+        }
+    }
+
+    // SWAMP lily pads
+    for (int x = -54000; x < -30000; x += 600)
+    {
+        for (int y = -39000; y < 39000; y += 550)
+        {
+            Vector2 pos = new Vector2(x + 120, y + 120);
+            bool hasFlower = (Math.Abs(x + y) % 3 == 0);
+            Color lilyColor = hasFlower
+                ? new Color((byte)240,(byte)220,(byte)80,(byte)220)
+                : new Color((byte)40,(byte)110,(byte)40,(byte)200);
+            swampLilies.Add((pos, lilyColor));
+        }
+    }
+
+    // VOLCANO lava patches
+    for (int x = 26000; x < 60000; x += 500)
+    {
+        for (int y = -20000; y < -2000; y += 500)
+        {
+            Vector2 pos = new Vector2(x + 80, y + 80);
+            float radius = 15 + (Math.Abs(x * y) % 25);
+            bool bright = (Math.Abs(x + y) % 3 == 0);
+            Color lavaColor = bright
+                ? new Color((byte)255,(byte)180,(byte)0,(byte)200)
+                : new Color((byte)200,(byte)60,(byte)0,(byte)200);
+            volcanoPatches.Add((pos, radius, lavaColor));
+        }
+    }
+
+    // VOLCANO steam vents
+    for (int x = 27000; x < 60000; x += 1000)
+    {
+        for (int y = -20000; y < -2000; y += 900)
+        {
+            Vector2 pos = new Vector2(x + 200, y + 200);
+            lavaVents.Add((pos, new Color((byte)80,(byte)70,(byte)65,(byte)180)));
+        }
+    }
+
+    // MOUNTAIN rocky patches
+    for (int x = -60000; x < -26000; x += 420)
+    {
+        for (int y = -20000; y < -2000; y += 400)
+        {
+            Vector2 pos = new Vector2(x + 80, y + 80);
+            float radius = 10 + (Math.Abs(x * y) % 20);
+            byte shade = (byte)(75 + Math.Abs(x + y) % 30);
+            mountainPatches.Add((pos, radius, new Color(shade, (byte)(shade - 5), (byte)(shade - 10), (byte)255)));
+        }
+    }
+
+    // MOUNTAIN pine trees
+    for (int x = -59500; x < -26000; x += 550)
+    {
+        for (int y = -20000; y < -2000; y += 500)
+        {
+            if (Math.Abs(x + y) % 3 != 0) continue; // keep sparse
+            Vector2 pos = new Vector2(x + 100, y + 100);
+            mountainTrees.Add((pos, new Color((byte)25,(byte)55,(byte)30,(byte)255)));
+        }
+    }
 }
         static void ShowNotification(string message)
         {
@@ -1353,6 +1491,141 @@ static void DrawBiomeTextures()
             Raylib.DrawCircle((int)flower.pos.X + 5, (int)flower.pos.Y - 10, 4, flower.color);
         }
 
+// OCEAN sand patches
+    foreach (var patch in oceanPatches)
+        if (patch.pos.X > viewLeft && patch.pos.X < viewRight &&
+            patch.pos.Y > viewTop && patch.pos.Y < viewBottom)
+            Raylib.DrawCircle((int)patch.pos.X, (int)patch.pos.Y, patch.radius, patch.color);
+
+    // OCEAN shells
+    foreach (var shell in oceanShells)
+        if (shell.pos.X > viewLeft && shell.pos.X < viewRight &&
+            shell.pos.Y > viewTop && shell.pos.Y < viewBottom)
+        {
+            int sx = (int)shell.pos.X;
+            int sy = (int)shell.pos.Y;
+            Raylib.DrawCircle(sx,     sy,     6, shell.color);
+            Raylib.DrawCircle(sx + 3, sy - 2, 3, shell.color);
+            Raylib.DrawCircle(sx + 5, sy - 4, 2, shell.color);
+        }
+
+    // OCEAN coral
+    foreach (var coral in oceanCoral)
+        if (coral.pos.X > viewLeft && coral.pos.X < viewRight &&
+            coral.pos.Y > viewTop && coral.pos.Y < viewBottom)
+        {
+            int cx2 = (int)coral.pos.X;
+            int cy2 = (int)coral.pos.Y;
+            Raylib.DrawLineEx(new Vector2(cx2, cy2),      new Vector2(cx2,      cy2 - 18), 4, coral.color);
+            Raylib.DrawLineEx(new Vector2(cx2, cy2 - 10), new Vector2(cx2 - 10, cy2 - 20), 3, coral.color);
+            Raylib.DrawLineEx(new Vector2(cx2, cy2 - 10), new Vector2(cx2 + 10, cy2 - 20), 3, coral.color);
+            Raylib.DrawCircle(cx2,      cy2 - 18, 4, coral.color);
+            Raylib.DrawCircle(cx2 - 10, cy2 - 20, 3, coral.color);
+            Raylib.DrawCircle(cx2 + 10, cy2 - 20, 3, coral.color);
+        }
+
+    // SWAMP murky patches
+    foreach (var patch in swampPatches)
+        if (patch.pos.X > viewLeft && patch.pos.X < viewRight &&
+            patch.pos.Y > viewTop && patch.pos.Y < viewBottom)
+            Raylib.DrawCircle((int)patch.pos.X, (int)patch.pos.Y, patch.radius, patch.color);
+
+    // SWAMP reeds
+    foreach (var reed in swampReeds)
+        if (reed.pos.X > viewLeft && reed.pos.X < viewRight &&
+            reed.pos.Y > viewTop && reed.pos.Y < viewBottom)
+        {
+            int gx = (int)reed.pos.X;
+            int gy = (int)reed.pos.Y;
+            Raylib.DrawLineEx(new Vector2(gx,     gy), new Vector2(gx - 3, gy - 22), 2, reed.color);
+            Raylib.DrawLineEx(new Vector2(gx + 6, gy), new Vector2(gx + 4, gy - 18), 2, reed.color);
+            Raylib.DrawLineEx(new Vector2(gx - 5, gy), new Vector2(gx - 8, gy - 20), 2, reed.color);
+            Raylib.DrawEllipse(gx - 3, gy - 22, 3, 6, new Color((byte)80, (byte)50, (byte)20, (byte)255));
+            Raylib.DrawEllipse(gx + 4, gy - 18, 3, 6, new Color((byte)80, (byte)50, (byte)20, (byte)255));
+            Raylib.DrawEllipse(gx - 8, gy - 20, 3, 6, new Color((byte)80, (byte)50, (byte)20, (byte)255));
+        }
+
+    // SWAMP lily pads
+    foreach (var lily in swampLilies)
+        if (lily.pos.X > viewLeft && lily.pos.X < viewRight &&
+            lily.pos.Y > viewTop && lily.pos.Y < viewBottom)
+        {
+            int lx = (int)lily.pos.X;
+            int ly = (int)lily.pos.Y;
+            Raylib.DrawCircle(lx, ly, 12, new Color((byte)40, (byte)110, (byte)40, (byte)200));
+            Raylib.DrawTriangle(
+                new Vector2(lx,     ly),
+                new Vector2(lx + 6, ly - 12),
+                new Vector2(lx - 6, ly - 12),
+                new Color((byte)30, (byte)55, (byte)25, (byte)180));
+            if (lily.color.R > 200)
+                Raylib.DrawCircle(lx, ly - 4, 4, lily.color);
+        }
+
+    // VOLCANO lava patches
+    foreach (var patch in volcanoPatches)
+        if (patch.pos.X > viewLeft && patch.pos.X < viewRight &&
+            patch.pos.Y > viewTop && patch.pos.Y < viewBottom)
+            Raylib.DrawCircle((int)patch.pos.X, (int)patch.pos.Y, patch.radius, patch.color);
+
+    // VOLCANO rocks (sparse, offset from patch positions)
+    foreach (var patch in volcanoPatches)
+        if (patch.pos.X > viewLeft && patch.pos.X < viewRight &&
+            patch.pos.Y > viewTop && patch.pos.Y < viewBottom)
+            if ((int)(patch.pos.X + patch.pos.Y) % 3 == 0)
+            {
+                int rx = (int)patch.pos.X + 20;
+                int ry = (int)patch.pos.Y + 15;
+                Color rockCol = new Color((byte)35, (byte)18, (byte)8, (byte)255);
+                Raylib.DrawCircle(rx,      ry,     10, rockCol);
+                Raylib.DrawCircle(rx + 10, ry + 5,  7, rockCol);
+                Raylib.DrawCircle(rx - 6,  ry + 7,  6, rockCol);
+            }
+
+    // VOLCANO steam vents
+    foreach (var vent in lavaVents)
+        if (vent.pos.X > viewLeft && vent.pos.X < viewRight &&
+            vent.pos.Y > viewTop && vent.pos.Y < viewBottom)
+        {
+            int vx = (int)vent.pos.X;
+            int vy = (int)vent.pos.Y;
+            for (int s = 0; s < 4; s++)
+                Raylib.DrawEllipse(vx, vy - s * 10, 8 - s, 5 - s,
+                    new Color((byte)200, (byte)200, (byte)200, (byte)(80 - s * 18)));
+        }
+
+    // MOUNTAIN rocky patches with snow dusting
+    foreach (var patch in mountainPatches)
+        if (patch.pos.X > viewLeft && patch.pos.X < viewRight &&
+            patch.pos.Y > viewTop && patch.pos.Y < viewBottom)
+        {
+            int rx = (int)patch.pos.X;
+            int ry = (int)patch.pos.Y;
+            Raylib.DrawCircle(rx,      ry,     patch.radius, patch.color);
+            Raylib.DrawCircle(rx + 12, ry + 6, patch.radius * 0.7f, patch.color);
+            Raylib.DrawEllipse(rx, ry - 4, (int)(patch.radius * 0.6f), 3,
+                new Color((byte)230, (byte)235, (byte)245, (byte)180));
+        }
+
+    // MOUNTAIN pine trees
+    foreach (var tree in mountainTrees)
+        if (tree.pos.X > viewLeft && tree.pos.X < viewRight &&
+            tree.pos.Y > viewTop && tree.pos.Y < viewBottom)
+        {
+            int tx = (int)tree.pos.X;
+            int ty = (int)tree.pos.Y;
+            Raylib.DrawRectangle(tx - 3, ty, 6, 16, new Color((byte)70, (byte)50, (byte)30, (byte)255));
+            Raylib.DrawTriangle(
+                new Vector2(tx,      ty - 28), new Vector2(tx - 18, ty),      new Vector2(tx + 18, ty),
+                tree.color);
+            Raylib.DrawTriangle(
+                new Vector2(tx,      ty - 38), new Vector2(tx - 13, ty - 14), new Vector2(tx + 13, ty - 14),
+                new Color((byte)30, (byte)65, (byte)35, (byte)255));
+            Raylib.DrawTriangle(
+                new Vector2(tx,     ty - 46), new Vector2(tx - 8, ty - 28), new Vector2(tx + 8, ty - 28),
+                new Color((byte)35, (byte)75, (byte)40, (byte)255));
+            Raylib.DrawCircle(tx, ty - 46, 3, new Color((byte)230, (byte)235, (byte)245, (byte)200));
+        }
 }
 
         static void DrawStreetLight(float x, float y)
@@ -2460,6 +2733,36 @@ static void DrawMcDonaldsMenu()
     int snowLeftX = cx + (int)((-3000 - player.Position.X) * minimapScale);
     Raylib.DrawRectangle(minimapX, minimapY, Math.Clamp(snowLeftX - minimapX, 0, minimapSize), minimapSize, new Color((byte)220,(byte)235,(byte)255,(byte)220));
 
+    // Ocean/Beach right (X > 26000)
+    int beachX = cx + (int)((26000 - player.Position.X) * minimapScale);
+    int oceanX = cx + (int)((30000 - player.Position.X) * minimapScale);
+    Raylib.DrawRectangle(beachX, minimapY, Math.Clamp(oceanX - beachX, 0, minimapSize), minimapSize, new Color((byte)240,(byte)220,(byte)150,(byte)220)); // sand
+    Raylib.DrawRectangle(oceanX, minimapY, Math.Clamp(minimapX + minimapSize - oceanX, 0, minimapSize), minimapSize, new Color((byte)30,(byte)100,(byte)180,(byte)220)); // deep water
+
+    // Swamp far left (X < -30000)
+    int swampRightX = cx + (int)((-30000 - player.Position.X) * minimapScale);
+    Raylib.DrawRectangle(minimapX, minimapY, Math.Clamp(swampRightX - minimapX, 0, minimapSize), minimapSize, new Color((byte)55,(byte)75,(byte)35,(byte)220));
+
+    // Volcano — far right, top (X > 26000, Y < -2000)
+    int volcanoLeftX  = cx + (int)((26000 - player.Position.X) * minimapScale);
+    int volcanoBottomY = cy + (int)((-2000 - player.Position.Y) * minimapScale);
+    Raylib.DrawRectangle(
+        Math.Clamp(volcanoLeftX, minimapX, minimapX + minimapSize),
+        minimapY,
+        Math.Clamp(minimapX + minimapSize - volcanoLeftX, 0, minimapSize),
+        Math.Clamp(volcanoBottomY - minimapY, 0, minimapSize),
+        new Color((byte)40,(byte)20,(byte)10,(byte)220));
+
+    // Mountains — far left, top (X < -26000, Y < -2000)
+    int mountainRightX  = cx + (int)((-26000 - player.Position.X) * minimapScale);
+    int mountainBottomY = cy + (int)((-2000 - player.Position.Y) * minimapScale);
+    Raylib.DrawRectangle(
+        minimapX,
+        minimapY,
+        Math.Clamp(mountainRightX - minimapX, 0, minimapSize),
+        Math.Clamp(mountainBottomY - minimapY, 0, minimapSize),
+        new Color((byte)100,(byte)95,(byte)90,(byte)220));
+
     // safe zone overlay
     int szX = cx + (int)((-3000 - player.Position.X) * minimapScale);
     int szY = cy + (int)((-1500 - player.Position.Y) * minimapScale);
@@ -2816,6 +3119,14 @@ static void DrawMcDonaldsMenu()
                 else if (enemy.Type == "Wolf") damage = 10;
                 else if (enemy.Type == "Scorpion") damage = 8;
                 else if (enemy.Type == "Bear") damage = 15;
+                else if (enemy.Type == "Crab")          damage = 12;
+                else if (enemy.Type == "Shark")         damage = 18;
+                else if (enemy.Type == "Snake")         damage = 14;
+                else if (enemy.Type == "Crocodile")     damage = 20;
+                else if (enemy.Type == "Fire Lizard")   damage = 16;
+                else if (enemy.Type == "Magma Beetle")  damage = 22;
+                else if (enemy.Type == "Eagle")         damage = 13;
+                else if (enemy.Type == "Mountain Goat") damage = 17;
 
                 player.TakeDamage(damage);
                 TriggerShake(0.2f);
@@ -2853,23 +3164,33 @@ static void DrawMcDonaldsMenu()
                         if (enemy.Health <= 0)
                         {
                             enemy.Dead = true;
-
+                            
                             if (enemy.Type == "Wild Dog") player.AddCombatXP(20);
                                 else if (enemy.Type == "Wolf") player.AddCombatXP(35);
                                 else if (enemy.Type == "Scorpion") player.AddCombatXP(30);
                                 else if (enemy.Type == "Bear") player.AddCombatXP(50);
+                                else if (enemy.Type == "Crab")          player.AddCombatXP(55);
+                                else if (enemy.Type == "Shark")         player.AddCombatXP(70);
+                                else if (enemy.Type == "Snake")         player.AddCombatXP(55);
+                                else if (enemy.Type == "Crocodile")     player.AddCombatXP(75);
+                                else if (enemy.Type == "Fire Lizard")   player.AddCombatXP(65);
+                                else if (enemy.Type == "Magma Beetle")  player.AddCombatXP(80);
+                                else if (enemy.Type == "Eagle")         player.AddCombatXP(60);
+                                else if (enemy.Type == "Mountain Goat") player.AddCombatXP(70);
 
-                           if (enemy.Type == "Wild Dog")
-                                lootDrops.Add(new LootDrop(enemy.Position, "Bone"));
-
-                            else if (enemy.Type == "Wolf")
-                                lootDrops.Add(new LootDrop(enemy.Position, "Fur"));
-
-                            else if (enemy.Type == "Scorpion")
-                                lootDrops.Add(new LootDrop(enemy.Position, "Stinger"));
-
-                            else if (enemy.Type == "Bear")
-                                lootDrops.Add(new LootDrop(enemy.Position, "Bear Pelt"));
+                           // Loot drops
+                            if      (enemy.Type == "Wild Dog")      lootDrops.Add(new LootDrop(enemy.Position, "Bone"));
+                            else if (enemy.Type == "Wolf")          lootDrops.Add(new LootDrop(enemy.Position, "Fur"));
+                            else if (enemy.Type == "Scorpion")      lootDrops.Add(new LootDrop(enemy.Position, "Stinger"));
+                            else if (enemy.Type == "Bear")          lootDrops.Add(new LootDrop(enemy.Position, "Bear Pelt"));
+                            else if (enemy.Type == "Crab")          lootDrops.Add(new LootDrop(enemy.Position, "Crab Claw"));
+                            else if (enemy.Type == "Shark")         lootDrops.Add(new LootDrop(enemy.Position, "Shark Fin"));
+                            else if (enemy.Type == "Snake")         lootDrops.Add(new LootDrop(enemy.Position, "Snake Skin"));
+                            else if (enemy.Type == "Crocodile")     lootDrops.Add(new LootDrop(enemy.Position, "Croc Scale"));
+                            else if (enemy.Type == "Fire Lizard")   lootDrops.Add(new LootDrop(enemy.Position, "Lizard Scale"));
+                            else if (enemy.Type == "Magma Beetle")  lootDrops.Add(new LootDrop(enemy.Position, "Magma Shard"));
+                            else if (enemy.Type == "Eagle")         lootDrops.Add(new LootDrop(enemy.Position, "Feather"));
+                            else if (enemy.Type == "Mountain Goat") lootDrops.Add(new LootDrop(enemy.Position, "Horn"));
                         }
                     }
                 }
@@ -4595,153 +4916,229 @@ static void DrawCheatsMenu()
         }
             Raylib.BeginMode2D(camera);
 
-           // base
-            Raylib.DrawRectangle(-40000, -40000, 80000, 80000, new Color(90, 170, 90, 255));
+// base
+Raylib.DrawRectangle(-40000, -40000, 80000, 80000, new Color(90, 170, 90, 255));
 
-            // forest top
-            Raylib.DrawRectangle(-40000, -40000, 80000, 400, new Color(40, 100, 40, 255));
+// forest top
+Raylib.DrawRectangle(-40000, -40000, 80000, 39700, new Color(40, 100, 40, 255));
 
-            // forest bottom
-            Raylib.DrawRectangle(-40000, 1000, 80000, 39000, new Color(40, 100, 40, 255));
+// forest bottom
+Raylib.DrawRectangle(-40000, 1000, 80000, 39000, new Color(40, 100, 40, 255));
 
-            // desert (right)
-            Raylib.DrawRectangle(4000, -40000, 36000, 80000, new Color(210, 180, 100, 255));
+// desert (right, X 4000 to 26000, middle strip only)
+Raylib.DrawRectangle(4000, -300, 22000, 1300, new Color(210, 180, 100, 255));
 
-            // snow (left)
-            Raylib.DrawRectangle(-40000, -40000, 37000, 80000, new Color(220, 235, 255, 255));
+// snow (left, X -30000 to -3000, middle strip only)
+Raylib.DrawRectangle(-30000, -300, 27000, 1300, new Color(220, 235, 255, 255));
 
-            // safe zone
-            Raylib.DrawRectangle(-3000, -1500, 7000, 4000, new Color(90, 170, 90, 255));
-            DrawSafeZoneTexture();
-            DrawBiomeTextures();
+// ocean beach sand (X 26000 to 30000)
+Raylib.DrawRectangle(26000, -40000, 4000, 80000, new Color(240, 220, 150, 255));
 
-            // forecourt road surface - same grey as roads so physics treat it normally
-            Raylib.DrawRectangle(300, -1000, 700, 580, Color.DarkGray);
+// ocean water (X 30000+)
+Raylib.DrawRectangle(30000, -40000, 10000, 80000, new Color(30, 100, 180, 255));
 
-            // sidewalk - main horizontal road top
-            Raylib.DrawRectangle(-40000, 540, 80000, 15, new Color((byte)180,(byte)180,(byte)180,(byte)255));
+// swamp (far left, X -55000 to -30000)
+Raylib.DrawRectangle(-55000, -40000, 25000, 80000, new Color(55, 75, 35, 255));
 
-            // sidewalk - main horizontal road bottom
-            Raylib.DrawRectangle(-40000, 728, 80000, 15, new Color((byte)180,(byte)180,(byte)180,(byte)255));
+// volcano (far right top, X 26000+, Y -40000 to -2000)
+Raylib.DrawRectangle(26000, -40000, 14000, 38000, new Color(40, 20, 10, 255));
 
-            // sidewalk - north highway left
-            Raylib.DrawRectangle(188, -40000, 15, 40000, new Color((byte)180,(byte)180,(byte)180,(byte)255));
+// mountains (far left top, X -55000 to -26000, Y -40000 to -2000)
+Raylib.DrawRectangle(-55000, -40000, 29000, 38000, new Color(100, 95, 90, 255));
 
-            // sidewalk - north highway right
-            Raylib.DrawRectangle(318, -40000, 15, 40000, new Color((byte)180,(byte)180,(byte)180,(byte)255));
+// safe zone
+Raylib.DrawRectangle(-3000, -1500, 7000, 4000, new Color(90, 170, 90, 255));
+DrawSafeZoneTexture();
+DrawBiomeTextures();
 
-            // sidewalk - south highway left
-            Raylib.DrawRectangle(188, 730, 15, 39270, new Color((byte)180,(byte)180,(byte)180,(byte)255));
+// forecourt road surface
+Raylib.DrawRectangle(300, -1000, 700, 580, Color.DarkGray);
 
-            // sidewalk - south highway right
-            Raylib.DrawRectangle(318, 730, 15, 39270, new Color((byte)180,(byte)180,(byte)180,(byte)255));
+// =====================
+// SIDEWALKS
+// =====================
 
-            // sidewalk - desert side road top
-            Raylib.DrawRectangle(4000, 188, 36000, 15, new Color((byte)180,(byte)180,(byte)180,(byte)255));
+// main horizontal road
+Raylib.DrawRectangle(-55000, 540, 95000, 15, new Color((byte)180,(byte)180,(byte)180,(byte)255));
+Raylib.DrawRectangle(-55000, 728, 95000, 15, new Color((byte)180,(byte)180,(byte)180,(byte)255));
 
-            // sidewalk - desert side road bottom
-            Raylib.DrawRectangle(4000, 318, 36000, 15, new Color((byte)180,(byte)180,(byte)180,(byte)255));
+// north highway
+Raylib.DrawRectangle(188, -55000, 15, 55000, new Color((byte)180,(byte)180,(byte)180,(byte)255));
+Raylib.DrawRectangle(318, -55000, 15, 55000, new Color((byte)180,(byte)180,(byte)180,(byte)255));
 
-            // sidewalk - snow side road top
-            Raylib.DrawRectangle(-40000, 188, 37000, 15, new Color((byte)180,(byte)180,(byte)180,(byte)255));
+// south highway
+Raylib.DrawRectangle(188, 730, 15, 54270, new Color((byte)180,(byte)180,(byte)180,(byte)255));
+Raylib.DrawRectangle(318, 730, 15, 54270, new Color((byte)180,(byte)180,(byte)180,(byte)255));
 
-            // sidewalk - snow side road bottom
-            Raylib.DrawRectangle(-40000, 318, 37000, 15, new Color((byte)180,(byte)180,(byte)180,(byte)255));
+// desert side road
+Raylib.DrawRectangle(4000, 188, 51000, 15, new Color((byte)180,(byte)180,(byte)180,(byte)255));
+Raylib.DrawRectangle(4000, 318, 51000, 15, new Color((byte)180,(byte)180,(byte)180,(byte)255));
 
-            // main horizontal road
-            Raylib.DrawRectangle(-40000, 550, 80000, 180, Color.DarkGray);
+// snow side road
+Raylib.DrawRectangle(-55000, 188, 52000, 15, new Color((byte)180,(byte)180,(byte)180,(byte)255));
+Raylib.DrawRectangle(-55000, 318, 52000, 15, new Color((byte)180,(byte)180,(byte)180,(byte)255));
 
-            // north highway
-            Raylib.DrawRectangle(200, -40000, 120, 40000, Color.DarkGray);
+// volcano access road (horizontal, top right)
+Raylib.DrawRectangle(26000, -10188, 14000, 15, new Color((byte)180,(byte)180,(byte)180,(byte)255));
+Raylib.DrawRectangle(26000, -10318, 14000, 15, new Color((byte)180,(byte)180,(byte)180,(byte)255));
 
-            // south highway
-            Raylib.DrawRectangle(200, 730, 120, 39270, Color.DarkGray);
+// mountain access road (horizontal, top left)
+Raylib.DrawRectangle(-55000, -10188, 29000, 15, new Color((byte)180,(byte)180,(byte)180,(byte)255));
+Raylib.DrawRectangle(-55000, -10318, 29000, 15, new Color((byte)180,(byte)180,(byte)180,(byte)255));
 
-            // desert side road
-            Raylib.DrawRectangle(4000, 200, 36000, 120, Color.DarkGray);
+// =====================
+// ROADS
+// =====================
 
-            // snow side road
-            Raylib.DrawRectangle(-40000, 200, 37000, 120, Color.DarkGray);
+// main horizontal road (extended to cover all biomes)
+Raylib.DrawRectangle(-55000, 550, 95000, 180, Color.DarkGray);
 
-            // vertical road to bank
-            Raylib.DrawRectangle(1020, -200, 120, 760, Color.DarkGray);
+// north highway (extended to mountains/volcano top)
+Raylib.DrawRectangle(200, -55000, 120, 55000, Color.DarkGray);
 
-            // vertical road to store
-            Raylib.DrawRectangle(-1260, -200, 120, 760, Color.DarkGray);
+// south highway (extended to map bottom)
+Raylib.DrawRectangle(200, 730, 120, 54270, Color.DarkGray);
 
-            // vertical road to hospital
-            Raylib.DrawRectangle(200, -200, 120, 760, Color.DarkGray);
+// desert/ocean side road (extended to ocean edge)
+Raylib.DrawRectangle(4000, 200, 51000, 120, Color.DarkGray);
 
-            // vertical road to weapons shop
-            Raylib.DrawRectangle(500, -200, 120, 760, Color.DarkGray);
+// snow/swamp side road (extended to swamp edge)
+Raylib.DrawRectangle(-55000, 200, 52000, 120, Color.DarkGray);
 
-            // road markings main road
-            for (int i = -40000; i < 40000; i += 200)
-            {
-                Raylib.DrawRectangle(i, 630, 100, 12, Color.Yellow);
-            }
+// volcano access road (horizontal connector at Y -10200)
+Raylib.DrawRectangle(26000, -10200, 14000, 120, Color.DarkGray);
 
-            // road markings north highway
-            for (int i = -40000; i < 730; i += 200)
-            {
-                Raylib.DrawRectangle(248, i, 12, 100, Color.Yellow);
-            }
+// mountain access road (horizontal connector at Y -10200)
+Raylib.DrawRectangle(-55000, -10200, 29000, 120, Color.DarkGray);
 
-            // road markings south highway
-            for (int i = 730; i < 40000; i += 200)
-            {
-                Raylib.DrawRectangle(248, i, 12, 100, Color.Yellow);
-            }
+// north highway extension to volcano/mountain road (vertical connector)
+Raylib.DrawRectangle(200, -55000, 120, 44800, Color.DarkGray);
 
-            // outer ring road - top
-            Raylib.DrawRectangle(-40000, -38000, 80000, 180, Color.DarkGray);
+// swamp vertical connector (links swamp side road to ring road)
+Raylib.DrawRectangle(-40000, -10200, 120, 10920, Color.DarkGray);
+Raylib.DrawRectangle(-50000, -10200, 120, 10920, Color.DarkGray);
 
-            // outer ring road - bottom
-            Raylib.DrawRectangle(-40000, 38000, 80000, 180, Color.DarkGray);
+// ocean/beach vertical connector
+Raylib.DrawRectangle(28000, -10200, 120, 10920, Color.DarkGray);
+Raylib.DrawRectangle(35000, -10200, 120, 10920, Color.DarkGray);
 
-            // outer ring road - left
-            Raylib.DrawRectangle(-40000, -38000, 180, 76180, Color.DarkGray);
+// vertical road to bank
+Raylib.DrawRectangle(1020, -200, 120, 760, Color.DarkGray);
 
-            // outer ring road - right
-            Raylib.DrawRectangle(39820, -38000, 180, 76180, Color.DarkGray);
+// vertical road to store
+Raylib.DrawRectangle(-1260, -200, 120, 760, Color.DarkGray);
 
-            // snow zone vertical connectors
-            Raylib.DrawRectangle(-20000, -38000, 120, 76180, Color.DarkGray);
-            Raylib.DrawRectangle(-10000, -38000, 120, 76180, Color.DarkGray);
+// vertical road to hospital
+Raylib.DrawRectangle(200, -200, 120, 760, Color.DarkGray);
 
-            // desert zone vertical connectors
-            Raylib.DrawRectangle(15000, -38000, 120, 76180, Color.DarkGray);
-            Raylib.DrawRectangle(25000, -38000, 120, 76180, Color.DarkGray);
+// vertical road to weapons shop
+Raylib.DrawRectangle(500, -200, 120, 760, Color.DarkGray);
 
-            // ring road markings top
-            for (int i = -40000; i < 40000; i += 200)
-                Raylib.DrawRectangle(i, -37920, 100, 12, Color.Yellow);
+// =====================
+// ROAD MARKINGS
+// =====================
 
-            // ring road markings bottom
-            for (int i = -40000; i < 40000; i += 200)
-                Raylib.DrawRectangle(i, 38080, 100, 12, Color.Yellow);
+// main horizontal road markings (extended)
+for (int i = -55000; i < 40000; i += 200)
+    Raylib.DrawRectangle(i, 630, 100, 12, Color.Yellow);
 
-            // ring road markings left
-            for (int i = -38000; i < 38000; i += 200)
-                Raylib.DrawRectangle(-37920, i, 12, 100, Color.Yellow);
+// north highway markings
+for (int i = -55000; i < 730; i += 200)
+    Raylib.DrawRectangle(248, i, 12, 100, Color.Yellow);
 
-            // ring road markings right
-            for (int i = -38000; i < 38000; i += 200)
-                Raylib.DrawRectangle(39900, i, 12, 100, Color.Yellow);
+// south highway markings
+for (int i = 730; i < 55000; i += 200)
+    Raylib.DrawRectangle(248, i, 12, 100, Color.Yellow);
 
-            // snow connector markings
-            for (int i = -38000; i < 38000; i += 200)
-            {
-                Raylib.DrawRectangle(-19920, i, 12, 100, Color.Yellow);
-                Raylib.DrawRectangle(-9920, i, 12, 100, Color.Yellow);
-            }
+// desert/ocean side road markings
+for (int i = 4000; i < 55000; i += 200)
+    Raylib.DrawRectangle(i, 248, 12, 100, Color.Yellow);
 
-            // desert connector markings
-            for (int i = -38000; i < 38000; i += 200)
-            {
-                Raylib.DrawRectangle(15080, i, 12, 100, Color.Yellow);
-                Raylib.DrawRectangle(25080, i, 12, 100, Color.Yellow);
-            }
+// snow/swamp side road markings
+for (int i = -55000; i < -3000; i += 200)
+    Raylib.DrawRectangle(i, 248, 12, 100, Color.Yellow);
+
+// volcano access road markings
+for (int i = 26000; i < 40000; i += 200)
+    Raylib.DrawRectangle(i, -10140, 100, 12, Color.Yellow);
+
+// mountain access road markings
+for (int i = -55000; i < -26000; i += 200)
+    Raylib.DrawRectangle(i, -10140, 100, 12, Color.Yellow);
+
+// swamp vertical connector markings
+for (int i = -10200; i < 730; i += 200)
+{
+    Raylib.DrawRectangle(-39920, i, 12, 100, Color.Yellow);
+    Raylib.DrawRectangle(-49920, i, 12, 100, Color.Yellow);
+}
+
+// ocean vertical connector markings
+for (int i = -10200; i < 730; i += 200)
+{
+    Raylib.DrawRectangle(28080, i, 12, 100, Color.Yellow);
+    Raylib.DrawRectangle(35080, i, 12, 100, Color.Yellow);
+}
+
+// =====================
+// OUTER RING ROAD
+// =====================
+
+// outer ring road - top
+Raylib.DrawRectangle(-55000, -53000, 95000, 180, Color.DarkGray);
+
+// outer ring road - bottom
+Raylib.DrawRectangle(-55000, 53000, 95000, 180, Color.DarkGray);
+
+// outer ring road - left
+Raylib.DrawRectangle(-55000, -53000, 180, 106180, Color.DarkGray);
+
+// outer ring road - right
+Raylib.DrawRectangle(39820, -53000, 180, 106180, Color.DarkGray);
+
+// snow/swamp vertical connectors
+Raylib.DrawRectangle(-20000, -53000, 120, 106180, Color.DarkGray);
+Raylib.DrawRectangle(-10000, -53000, 120, 106180, Color.DarkGray);
+Raylib.DrawRectangle(-40000, -53000, 120, 106180, Color.DarkGray);
+Raylib.DrawRectangle(-50000, -53000, 120, 106180, Color.DarkGray);
+
+// desert/ocean vertical connectors
+Raylib.DrawRectangle(15000, -53000, 120, 106180, Color.DarkGray);
+Raylib.DrawRectangle(25000, -53000, 120, 106180, Color.DarkGray);
+Raylib.DrawRectangle(35000, -53000, 120, 106180, Color.DarkGray);
+
+// ring road markings top
+for (int i = -55000; i < 40000; i += 200)
+    Raylib.DrawRectangle(i, -52920, 100, 12, Color.Yellow);
+
+// ring road markings bottom
+for (int i = -55000; i < 40000; i += 200)
+    Raylib.DrawRectangle(i, 53080, 100, 12, Color.Yellow);
+
+// ring road markings left
+for (int i = -53000; i < 53000; i += 200)
+    Raylib.DrawRectangle(-54920, i, 12, 100, Color.Yellow);
+
+// ring road markings right
+for (int i = -53000; i < 53000; i += 200)
+    Raylib.DrawRectangle(39900, i, 12, 100, Color.Yellow);
+
+// snow/swamp connector markings
+for (int i = -53000; i < 53000; i += 200)
+{
+    Raylib.DrawRectangle(-19920, i, 12, 100, Color.Yellow);
+    Raylib.DrawRectangle(-9920,  i, 12, 100, Color.Yellow);
+    Raylib.DrawRectangle(-39920, i, 12, 100, Color.Yellow);
+    Raylib.DrawRectangle(-49920, i, 12, 100, Color.Yellow);
+}
+
+// desert/ocean connector markings
+for (int i = -53000; i < 53000; i += 200)
+{
+    Raylib.DrawRectangle(15080, i, 12, 100, Color.Yellow);
+    Raylib.DrawRectangle(25080, i, 12, 100, Color.Yellow);
+    Raylib.DrawRectangle(35080, i, 12, 100, Color.Yellow);
+}
             
 
             foreach (var ft in floatingTexts)
@@ -8177,6 +8574,12 @@ if (currentBuilding.BuildingName == "McDONALD'S" &&
             DrawSkillsUI();
             DrawQuestsUI();
 
+            // Coordinates display with background
+            string coordText = $"X: {(int)player.Position.X}  Y: {(int)player.Position.Y}";
+            int coordWidth = Raylib.MeasureText(coordText, 18);
+            Raylib.DrawRectangle(244, 6, coordWidth + 8, 26, new Color((byte)0, (byte)0, (byte)0, (byte)150));
+            Raylib.DrawText(coordText, 250, 10, 18, Color.White);
+
             foreach (Vehicle vehicle in vehicles)
             {
                 if (vehicle.Driving)
@@ -8541,6 +8944,46 @@ AddPoliceStation(3200, 410);
             enemies.Add(new Enemy(new Vector2(-20000, 700), "Bear", 8, new Color((byte)100, (byte)100, (byte)120, (byte)255)));
             enemies.Add(new Enemy(new Vector2(-25000, 300), "Bear", 8, new Color((byte)100, (byte)100, (byte)120, (byte)255)));
 
+            // Ocean/Beach (X 26000–45000)
+            enemies.Add(new Enemy(new Vector2(27000,  400), "Crab", 10, new Color((byte)210, (byte)80,  (byte)30,  (byte)255)));
+            enemies.Add(new Enemy(new Vector2(28500,  200), "Crab", 10, new Color((byte)210, (byte)80,  (byte)30,  (byte)255)));
+            enemies.Add(new Enemy(new Vector2(29500, -300), "Crab", 10, new Color((byte)210, (byte)80,  (byte)30,  (byte)255)));
+            enemies.Add(new Enemy(new Vector2(27800,  600), "Crab", 10, new Color((byte)210, (byte)80,  (byte)30,  (byte)255)));
+            enemies.Add(new Enemy(new Vector2(29000, -100), "Crab", 10, new Color((byte)210, (byte)80,  (byte)30,  (byte)255)));
+            enemies.Add(new Enemy(new Vector2(32000,  300), "Shark", 13, new Color((byte)70,  (byte)100, (byte)140, (byte)255)));
+            enemies.Add(new Enemy(new Vector2(36000, -200), "Shark", 13, new Color((byte)70,  (byte)100, (byte)140, (byte)255)));
+            enemies.Add(new Enemy(new Vector2(40000,  500), "Shark", 13, new Color((byte)70,  (byte)100, (byte)140, (byte)255)));
+
+            // Swamp (X -30000 to -55000)
+            enemies.Add(new Enemy(new Vector2(-31000,  300), "Snake", 10, new Color((byte)40,  (byte)100, (byte)40,  (byte)255)));
+            enemies.Add(new Enemy(new Vector2(-34000, -200), "Snake", 10, new Color((byte)40,  (byte)100, (byte)40,  (byte)255)));
+            enemies.Add(new Enemy(new Vector2(-37000,  500), "Snake", 10, new Color((byte)40,  (byte)100, (byte)40,  (byte)255)));
+            enemies.Add(new Enemy(new Vector2(-40000,  100), "Snake", 10, new Color((byte)40,  (byte)100, (byte)40,  (byte)255)));
+            enemies.Add(new Enemy(new Vector2(-43000, -400), "Snake", 10, new Color((byte)40,  (byte)100, (byte)40,  (byte)255)));
+            enemies.Add(new Enemy(new Vector2(-33000,  600), "Crocodile", 14, new Color((byte)50,  (byte)80,  (byte)30,  (byte)255)));
+            enemies.Add(new Enemy(new Vector2(-39000, -300), "Crocodile", 14, new Color((byte)50,  (byte)80,  (byte)30,  (byte)255)));
+            enemies.Add(new Enemy(new Vector2(-46000,  400), "Crocodile", 14, new Color((byte)50,  (byte)80,  (byte)30,  (byte)255)));
+
+            // Volcano (X 26000–55000, Y -2000 to -20000)
+            enemies.Add(new Enemy(new Vector2(28000, -3000), "Fire Lizard", 12, new Color((byte)180, (byte)60,  (byte)10,  (byte)255)));
+            enemies.Add(new Enemy(new Vector2(32000, -5000), "Fire Lizard", 12, new Color((byte)180, (byte)60,  (byte)10,  (byte)255)));
+            enemies.Add(new Enemy(new Vector2(37000, -4000), "Fire Lizard", 12, new Color((byte)180, (byte)60,  (byte)10,  (byte)255)));
+            enemies.Add(new Enemy(new Vector2(42000, -6000), "Fire Lizard", 12, new Color((byte)180, (byte)60,  (byte)10,  (byte)255)));
+            enemies.Add(new Enemy(new Vector2(48000, -3500), "Fire Lizard", 12, new Color((byte)180, (byte)60,  (byte)10,  (byte)255)));
+            enemies.Add(new Enemy(new Vector2(30000, -7000), "Magma Beetle", 15, new Color((byte)120, (byte)30,  (byte)0,   (byte)255)));
+            enemies.Add(new Enemy(new Vector2(38000, -5500), "Magma Beetle", 15, new Color((byte)120, (byte)30,  (byte)0,   (byte)255)));
+            enemies.Add(new Enemy(new Vector2(45000, -8000), "Magma Beetle", 15, new Color((byte)120, (byte)30,  (byte)0,   (byte)255)));
+
+            // Mountains (X -26000 to -55000, Y -2000 to -20000)
+            enemies.Add(new Enemy(new Vector2(-28000, -3000), "Eagle", 11, new Color((byte)100, (byte)70,  (byte)20,  (byte)255)));
+            enemies.Add(new Enemy(new Vector2(-32000, -5000), "Eagle", 11, new Color((byte)100, (byte)70,  (byte)20,  (byte)255)));
+            enemies.Add(new Enemy(new Vector2(-37000, -4000), "Eagle", 11, new Color((byte)100, (byte)70,  (byte)20,  (byte)255)));
+            enemies.Add(new Enemy(new Vector2(-43000, -6000), "Eagle", 11, new Color((byte)100, (byte)70,  (byte)20,  (byte)255)));
+            enemies.Add(new Enemy(new Vector2(-49000, -3500), "Eagle", 11, new Color((byte)100, (byte)70,  (byte)20,  (byte)255)));
+            enemies.Add(new Enemy(new Vector2(-30000, -7000), "Mountain Goat", 13, new Color((byte)200, (byte)195, (byte)185, (byte)255)));
+            enemies.Add(new Enemy(new Vector2(-38000, -5500), "Mountain Goat", 13, new Color((byte)200, (byte)195, (byte)185, (byte)255)));
+            enemies.Add(new Enemy(new Vector2(-46000, -8000), "Mountain Goat", 13, new Color((byte)200, (byte)195, (byte)185, (byte)255)));
+
             GenerateSafeZoneTexture();
             GenerateBiomeTextures();
 
@@ -8656,19 +9099,647 @@ AddPoliceStation(3200, 410);
     }
 
     public void Draw()
+{
+    if (Dead) return;
+
+    int x = (int)Position.X;
+    int y = (int)Position.Y;
+
+    switch (Type)
     {
-        if (Dead) return;
+        case "Wild Dog":
+            DrawWildDog(x, y);
+            break;
+        case "Wolf":
+            DrawWolf(x, y);
+            break;
+        case "Scorpion":
+            DrawScorpion(x, y);
+            break;
+        case "Bear":
+            DrawBear(x, y);
+            break;
+        case "Crab":          DrawCrab(x, y);         break;
+        case "Shark":         DrawShark(x, y);        break;
+        case "Snake":         DrawSnake(x, y);        break;
+        case "Crocodile":     DrawCrocodile(x, y);    break;
+        case "Fire Lizard":   DrawFireLizard(x, y);   break;
+        case "Magma Beetle":  DrawMagmaBeetle(x, y);  break;
+        case "Eagle":         DrawEagle(x, y);        break;
+        case "Mountain Goat": DrawMountainGoat(x, y); break;
+            }
 
-        Raylib.DrawRectangleRec(Bounds, EnemyColor);
-        Raylib.DrawText(Type, (int)Position.X - 10, (int)Position.Y - 20, 16, Color.White);
+    // Health bar background
+    Raylib.DrawRectangle(x, y - 10, 40, 6, Color.DarkGray);
 
-        // health bar background
-        Raylib.DrawRectangle((int)Position.X, (int)Position.Y - 10, 40, 6, Color.DarkGray);
+    // Health bar fill
+    float healthPercent = (float)Health / MaxHealth;
+    Raylib.DrawRectangle(x, y - 10, (int)(40 * healthPercent), 6, Color.Red);
+}
 
-        // health bar fill
-        float healthPercent = (float)Health / MaxHealth;
-        Raylib.DrawRectangle((int)Position.X, (int)Position.Y - 10, (int)(40 * healthPercent), 6, Color.Red);
+private void DrawWildDog(int x, int y)
+{
+    Color brown = Color.Brown;
+    Color dark = new Color((byte)80, (byte)40, (byte)10, (byte)255);
+
+    // Body
+    Raylib.DrawEllipse(x + 20, y + 26, 16, 10, brown);
+
+    // Head
+    Raylib.DrawCircle(x + 32, y + 18, 9, brown);
+
+    // Snout
+    Raylib.DrawEllipse(x + 39, y + 20, 5, 4, dark);
+
+    // Nose
+    Raylib.DrawCircle(x + 42, y + 19, 2, Color.Black);
+
+    // Eye
+    Raylib.DrawCircle(x + 35, y + 16, 2, Color.Black);
+    Raylib.DrawCircle(x + 36, y + 15, 1, Color.White); // shine
+
+    // Ears
+    Raylib.DrawTriangle(
+        new Vector2(x + 28, y + 10),
+        new Vector2(x + 24, y + 18),
+        new Vector2(x + 32, y + 18),
+        dark
+    );
+    Raylib.DrawTriangle(
+        new Vector2(x + 35, y + 9),
+        new Vector2(x + 31, y + 17),
+        new Vector2(x + 38, y + 16),
+        dark
+    );
+
+    // Legs (4 short rectangles)
+    Raylib.DrawRectangle(x + 8,  y + 33, 5, 8, dark);
+    Raylib.DrawRectangle(x + 15, y + 33, 5, 8, dark);
+    Raylib.DrawRectangle(x + 24, y + 33, 5, 8, dark);
+    Raylib.DrawRectangle(x + 31, y + 33, 5, 8, dark);
+
+    // Tail (curved via small circles)
+    Raylib.DrawCircle(x + 5,  y + 24, 3, brown);
+    Raylib.DrawCircle(x + 2,  y + 20, 3, brown);
+    Raylib.DrawCircle(x + 1,  y + 16, 2, brown);
+}
+
+private void DrawWolf(int x, int y)
+{
+    Color gray = Color.DarkGray;
+    Color light = new Color((byte)180, (byte)180, (byte)190, (byte)255);
+    Color dark = new Color((byte)40, (byte)40, (byte)50, (byte)255);
+
+    // Body — bigger and bulkier than dog
+    Raylib.DrawEllipse(x + 20, y + 27, 18, 12, gray);
+
+    // Chest lighter patch
+    Raylib.DrawEllipse(x + 28, y + 28, 7, 8, light);
+
+    // Head
+    Raylib.DrawCircle(x + 33, y + 17, 11, gray);
+
+    // Snout — longer and more pointed
+    Raylib.DrawTriangle(
+        new Vector2(x + 33, y + 18),
+        new Vector2(x + 33, y + 23),
+        new Vector2(x + 46, y + 21),
+        dark
+    );
+
+    // Nose
+    Raylib.DrawCircle(x + 44, y + 20, 2, Color.Black);
+
+    // Eyes — more menacing
+    Raylib.DrawCircle(x + 36, y + 14, 2, new Color((byte)200, (byte)200, (byte)0, (byte)255)); // yellow
+    Raylib.DrawCircle(x + 36, y + 14, 1, Color.Black);
+
+    // Ears — tall and pointed
+    Raylib.DrawTriangle(
+        new Vector2(x + 27, y + 7),
+        new Vector2(x + 23, y + 18),
+        new Vector2(x + 32, y + 17),
+        dark
+    );
+    Raylib.DrawTriangle(
+        new Vector2(x + 37, y + 6),
+        new Vector2(x + 33, y + 16),
+        new Vector2(x + 41, y + 15),
+        dark
+    );
+
+    // Legs — longer than dog
+    Raylib.DrawRectangle(x + 6,  y + 35, 5, 10, dark);
+    Raylib.DrawRectangle(x + 14, y + 35, 5, 10, dark);
+    Raylib.DrawRectangle(x + 24, y + 35, 5, 10, dark);
+    Raylib.DrawRectangle(x + 32, y + 35, 5, 10, dark);
+
+    // Tail
+    Raylib.DrawCircle(x + 4,  y + 26, 4, gray);
+    Raylib.DrawCircle(x + 1,  y + 21, 3, gray);
+    Raylib.DrawCircle(x + 0,  y + 16, 3, light); // white tail tip
+}
+
+private void DrawScorpion(int x, int y)
+{
+    Color shell = new Color((byte)180, (byte)120, (byte)0, (byte)255);
+    Color dark  = new Color((byte)100, (byte)60,  (byte)0, (byte)255);
+    Color sting = new Color((byte)220, (byte)60,  (byte)0, (byte)255);
+
+    // Body segments
+    Raylib.DrawEllipse(x + 20, y + 26, 10, 7, shell);  // abdomen
+    Raylib.DrawEllipse(x + 28, y + 24, 7,  6, shell);  // mid
+    Raylib.DrawEllipse(x + 34, y + 22, 6,  5, shell);  // thorax
+
+    // Head
+    Raylib.DrawCircle(x + 38, y + 20, 6, dark);
+
+    // Eyes (two small dots)
+    Raylib.DrawCircle(x + 36, y + 18, 1, Color.Black);
+    Raylib.DrawCircle(x + 40, y + 18, 1, Color.Black);
+
+    // Claws (left)
+    Raylib.DrawLineEx(new Vector2(x + 14, y + 20), new Vector2(x + 7,  y + 15), 3, dark);
+    Raylib.DrawCircle(x + 5,  y + 13, 5, shell);
+    Raylib.DrawCircle(x + 9,  y + 10, 3, shell);
+
+    // Claws (right)
+    Raylib.DrawLineEx(new Vector2(x + 14, y + 22), new Vector2(x + 6, y + 28), 3, dark);
+    Raylib.DrawCircle(x + 4,  y + 30, 5, shell);
+    Raylib.DrawCircle(x + 8,  y + 34, 3, shell);
+
+    // Legs (3 per side)
+    Raylib.DrawLineEx(new Vector2(x + 18, y + 28), new Vector2(x + 12, y + 22), 2, dark);
+    Raylib.DrawLineEx(new Vector2(x + 20, y + 30), new Vector2(x + 13, y + 36), 2, dark);
+    Raylib.DrawLineEx(new Vector2(x + 23, y + 30), new Vector2(x + 18, y + 38), 2, dark);
+    Raylib.DrawLineEx(new Vector2(x + 26, y + 28), new Vector2(x + 32, y + 22), 2, dark);
+    Raylib.DrawLineEx(new Vector2(x + 24, y + 30), new Vector2(x + 31, y + 36), 2, dark);
+    Raylib.DrawLineEx(new Vector2(x + 22, y + 30), new Vector2(x + 27, y + 38), 2, dark);
+
+    // Tail segments curving up and over
+    Raylib.DrawCircle(x + 13, y + 20, 4, shell);
+    Raylib.DrawCircle(x + 9,  y + 15, 4, shell);
+    Raylib.DrawCircle(x + 7,  y + 9,  4, shell);
+    Raylib.DrawCircle(x + 10, y + 4,  3, shell);
+
+    // Stinger tip
+    Raylib.DrawTriangle(
+        new Vector2(x + 10, y + 1),
+        new Vector2(x + 7,  y + 4),
+        new Vector2(x + 14, y + 4),
+        sting
+    );
+}
+
+private void DrawBear(int x, int y)
+{
+    Color fur  = new Color((byte)100, (byte)100, (byte)120, (byte)255); // blue-gray for snow bear
+    Color dark = new Color((byte)50,  (byte)50,  (byte)65,  (byte)255);
+    Color snout = new Color((byte)140, (byte)130, (byte)140, (byte)255);
+
+    // Large body
+    Raylib.DrawEllipse(x + 20, y + 28, 20, 15, fur);
+
+    // Head — large and round
+    Raylib.DrawCircle(x + 20, y + 14, 14, fur);
+
+    // Snout
+    Raylib.DrawEllipse(x + 20, y + 18, 7, 5, snout);
+
+    // Nose
+    Raylib.DrawEllipse(x + 20, y + 14, 4, 3, Color.Black);
+
+    // Eyes
+    Raylib.DrawCircle(x + 14, y + 11, 3, Color.Black);
+    Raylib.DrawCircle(x + 26, y + 11, 3, Color.Black);
+    Raylib.DrawCircle(x + 15, y + 10, 1, Color.White); // shine left
+    Raylib.DrawCircle(x + 27, y + 10, 1, Color.White); // shine right
+
+    // Round ears
+    Raylib.DrawCircle(x + 10, y + 3, 5, fur);
+    Raylib.DrawCircle(x + 30, y + 3, 5, fur);
+    Raylib.DrawCircle(x + 10, y + 3, 3, dark); // inner ear
+    Raylib.DrawCircle(x + 30, y + 3, 3, dark);
+
+    // Thick legs
+    Raylib.DrawRectangleRounded(new Rectangle(x + 4,  y + 36, 9, 12), 0.4f, 4, dark);
+    Raylib.DrawRectangleRounded(new Rectangle(x + 14, y + 36, 9, 12), 0.4f, 4, dark);
+    Raylib.DrawRectangleRounded(new Rectangle(x + 24, y + 36, 9, 12), 0.4f, 4, dark);
+    Raylib.DrawRectangleRounded(new Rectangle(x + 34, y + 36, 9, 12), 0.4f, 4, dark);
+
+    // Claws
+    for (int i = 0; i < 3; i++)
+    {
+        Raylib.DrawLineEx(
+            new Vector2(x + 5  + i * 3, y + 48),
+            new Vector2(x + 4  + i * 3, y + 52),
+            2, Color.White
+        );
+        Raylib.DrawLineEx(
+            new Vector2(x + 15 + i * 3, y + 48),
+            new Vector2(x + 14 + i * 3, y + 52),
+            2, Color.White
+        );
+        Raylib.DrawLineEx(
+            new Vector2(x + 25 + i * 3, y + 48),
+            new Vector2(x + 24 + i * 3, y + 52),
+            2, Color.White
+        );
+        Raylib.DrawLineEx(
+            new Vector2(x + 35 + i * 3, y + 48),
+            new Vector2(x + 34 + i * 3, y + 52),
+            2, Color.White
+        );
     }
+}
+private void DrawCrab(int x, int y)
+{
+    Color shell = new Color((byte)210, (byte)80,  (byte)30,  (byte)255);
+    Color dark  = new Color((byte)140, (byte)40,  (byte)10,  (byte)255);
+    Color white = Color.White;
+
+    // Body — wide oval
+    Raylib.DrawEllipse(x + 20, y + 24, 16, 10, shell);
+
+    // Eyes on stalks
+    Raylib.DrawLineEx(new Vector2(x + 14, y + 16), new Vector2(x + 12, y + 12), 2, dark);
+    Raylib.DrawLineEx(new Vector2(x + 26, y + 16), new Vector2(x + 28, y + 12), 2, dark);
+    Raylib.DrawCircle(x + 12, y + 11, 3, dark);
+    Raylib.DrawCircle(x + 12, y + 11, 1, white);
+    Raylib.DrawCircle(x + 28, y + 11, 3, dark);
+    Raylib.DrawCircle(x + 28, y + 11, 1, white);
+
+    // Big claws
+    Raylib.DrawLineEx(new Vector2(x + 6,  y + 20), new Vector2(x - 4, y + 14), 3, dark);
+    Raylib.DrawEllipse(x - 6, y + 12, 6, 4, shell);
+    Raylib.DrawEllipse(x - 4, y + 16, 4, 3, shell);
+
+    Raylib.DrawLineEx(new Vector2(x + 34, y + 20), new Vector2(x + 44, y + 14), 3, dark);
+    Raylib.DrawEllipse(x + 46, y + 12, 6, 4, shell);
+    Raylib.DrawEllipse(x + 44, y + 16, 4, 3, shell);
+
+    // Walking legs (3 per side)
+    Raylib.DrawLineEx(new Vector2(x + 8,  y + 26), new Vector2(x + 2,  y + 20), 2, dark);
+    Raylib.DrawLineEx(new Vector2(x + 8,  y + 28), new Vector2(x + 1,  y + 34), 2, dark);
+    Raylib.DrawLineEx(new Vector2(x + 10, y + 30), new Vector2(x + 5,  y + 38), 2, dark);
+    Raylib.DrawLineEx(new Vector2(x + 32, y + 26), new Vector2(x + 38, y + 20), 2, dark);
+    Raylib.DrawLineEx(new Vector2(x + 32, y + 28), new Vector2(x + 39, y + 34), 2, dark);
+    Raylib.DrawLineEx(new Vector2(x + 30, y + 30), new Vector2(x + 35, y + 38), 2, dark);
+}
+
+private void DrawShark(int x, int y)
+{
+    Color blue  = new Color((byte)70,  (byte)100, (byte)140, (byte)255);
+    Color light = new Color((byte)200, (byte)220, (byte)230, (byte)255);
+    Color dark  = new Color((byte)30,  (byte)50,  (byte)80,  (byte)255);
+
+    // Body — long torpedo shape
+    Raylib.DrawEllipse(x + 20, y + 22, 20, 10, blue);
+
+    // Belly (lighter underside)
+    Raylib.DrawEllipse(x + 20, y + 26, 14, 6, light);
+
+    // Dorsal fin on top
+    Raylib.DrawTriangle(
+        new Vector2(x + 18, y + 12),
+        new Vector2(x + 14, y + 22),
+        new Vector2(x + 26, y + 22),
+        dark
+    );
+
+    // Tail fin
+    Raylib.DrawTriangle(
+        new Vector2(x + 0,  y + 16),
+        new Vector2(x + 8,  y + 22),
+        new Vector2(x + 2,  y + 30),
+        dark
+    );
+
+    // Pectoral fins
+    Raylib.DrawTriangle(
+        new Vector2(x + 14, y + 24),
+        new Vector2(x + 6,  y + 30),
+        new Vector2(x + 18, y + 30),
+        blue
+    );
+    Raylib.DrawTriangle(
+        new Vector2(x + 26, y + 24),
+        new Vector2(x + 34, y + 30),
+        new Vector2(x + 22, y + 30),
+        blue
+    );
+
+    // Eye
+    Raylib.DrawCircle(x + 32, y + 20, 3, Color.Black);
+    Raylib.DrawCircle(x + 33, y + 19, 1, Color.White);
+
+    // Mouth with teeth
+    Raylib.DrawLineEx(new Vector2(x + 36, y + 24), new Vector2(x + 42, y + 22), 2, dark);
+    Raylib.DrawTriangle(
+        new Vector2(x + 37, y + 24),
+        new Vector2(x + 39, y + 24),
+        new Vector2(x + 38, y + 27),
+        Color.White
+    );
+    Raylib.DrawTriangle(
+        new Vector2(x + 40, y + 23),
+        new Vector2(x + 42, y + 23),
+        new Vector2(x + 41, y + 26),
+        Color.White
+    );
+}
+
+private void DrawSnake(int x, int y)
+{
+    Color green  = new Color((byte)40,  (byte)100, (byte)40,  (byte)255);
+    Color dark   = new Color((byte)20,  (byte)60,  (byte)20,  (byte)255);
+    Color yellow = new Color((byte)200, (byte)200, (byte)50,  (byte)255);
+
+    // Body — S-curve using circles
+    Raylib.DrawCircle(x + 30, y + 30, 6, green);
+    Raylib.DrawCircle(x + 24, y + 26, 6, green);
+    Raylib.DrawCircle(x + 18, y + 24, 6, green);
+    Raylib.DrawCircle(x + 13, y + 26, 5, green);
+    Raylib.DrawCircle(x + 9,  y + 30, 5, green);
+    Raylib.DrawCircle(x + 7,  y + 34, 4, green);
+
+    // Scale pattern stripes
+    Raylib.DrawCircle(x + 24, y + 26, 3, dark);
+    Raylib.DrawCircle(x + 13, y + 26, 3, dark);
+
+    // Tail tip
+    Raylib.DrawCircle(x + 5,  y + 37, 2, dark);
+
+    // Head
+    Raylib.DrawEllipse(x + 35, y + 28, 7, 5, green);
+
+    // Eyes
+    Raylib.DrawCircle(x + 37, y + 26, 2, yellow);
+    Raylib.DrawCircle(x + 37, y + 26, 1, Color.Black);
+
+    // Forked tongue
+    Raylib.DrawLineEx(new Vector2(x + 41, y + 28), new Vector2(x + 45, y + 26), 1, Color.Red);
+    Raylib.DrawLineEx(new Vector2(x + 41, y + 28), new Vector2(x + 45, y + 30), 1, Color.Red);
+}
+
+private void DrawCrocodile(int x, int y)
+{
+    Color green = new Color((byte)50,  (byte)80,  (byte)30,  (byte)255);
+    Color dark  = new Color((byte)25,  (byte)45,  (byte)15,  (byte)255);
+    Color belly = new Color((byte)120, (byte)140, (byte)80,  (byte)255);
+
+    // Body — long and low
+    Raylib.DrawEllipse(x + 20, y + 28, 20, 9, green);
+
+    // Belly
+    Raylib.DrawEllipse(x + 20, y + 30, 14, 5, belly);
+
+    // Armored back bumps
+    Raylib.DrawCircle(x + 10, y + 22, 4, dark);
+    Raylib.DrawCircle(x + 17, y + 21, 4, dark);
+    Raylib.DrawCircle(x + 24, y + 21, 4, dark);
+    Raylib.DrawCircle(x + 31, y + 22, 3, dark);
+
+    // Head — wide flat snout
+    Raylib.DrawEllipse(x + 36, y + 27, 10, 6, green);
+
+    // Teeth
+    for (int i = 0; i < 3; i++)
+    {
+        Raylib.DrawTriangle(
+            new Vector2(x + 38 + i * 4, y + 22),
+            new Vector2(x + 36 + i * 4, y + 26),
+            new Vector2(x + 40 + i * 4, y + 26),
+            Color.White
+        );
+    }
+
+    // Eyes on top of head
+    Raylib.DrawCircle(x + 33, y + 23, 3, new Color((byte)200, (byte)200, (byte)50, (byte)255));
+    Raylib.DrawCircle(x + 39, y + 23, 3, new Color((byte)200, (byte)200, (byte)50, (byte)255));
+    Raylib.DrawCircle(x + 39, y + 23, 3, new Color((byte)200, (byte)200, (byte)50, (byte)255));
+    Raylib.DrawCircle(x + 39, y + 23, 1, Color.Black);
+
+    // Legs
+    Raylib.DrawRectangle(x + 6,  y + 34, 6, 6, dark);
+    Raylib.DrawRectangle(x + 14, y + 34, 6, 6, dark);
+    Raylib.DrawRectangle(x + 22, y + 34, 6, 6, dark);
+    Raylib.DrawRectangle(x + 30, y + 34, 6, 6, dark);
+
+    // Tail
+    Raylib.DrawCircle(x + 3,  y + 28, 5, green);
+    Raylib.DrawCircle(x - 2, y + 27, 3, green);
+}
+
+private void DrawFireLizard(int x, int y)
+{
+    Color orange = new Color((byte)180, (byte)60,  (byte)10,  (byte)255);
+    Color red    = new Color((byte)220, (byte)30,  (byte)0,   (byte)255);
+    Color yellow = new Color((byte)255, (byte)200, (byte)0,   (byte)255);
+    Color dark   = new Color((byte)80,  (byte)20,  (byte)0,   (byte)255);
+
+    // Body
+    Raylib.DrawEllipse(x + 20, y + 26, 14, 9, orange);
+
+    // Fire pattern on back
+    Raylib.DrawTriangle(
+        new Vector2(x + 12, y + 18),
+        new Vector2(x + 9,  y + 26),
+        new Vector2(x + 15, y + 26),
+        red
+    );
+    Raylib.DrawTriangle(
+        new Vector2(x + 20, y + 16),
+        new Vector2(x + 17, y + 26),
+        new Vector2(x + 23, y + 26),
+        red
+    );
+    Raylib.DrawTriangle(
+        new Vector2(x + 28, y + 18),
+        new Vector2(x + 25, y + 26),
+        new Vector2(x + 31, y + 26),
+        red
+    );
+
+    // Head
+    Raylib.DrawEllipse(x + 33, y + 22, 8, 6, orange);
+
+    // Spiky crest on head
+    Raylib.DrawTriangle(
+        new Vector2(x + 30, y + 16),
+        new Vector2(x + 28, y + 22),
+        new Vector2(x + 33, y + 22),
+        red
+    );
+    Raylib.DrawTriangle(
+        new Vector2(x + 35, y + 14),
+        new Vector2(x + 32, y + 21),
+        new Vector2(x + 38, y + 21),
+        yellow
+    );
+
+    // Eye
+    Raylib.DrawCircle(x + 36, y + 21, 2, yellow);
+    Raylib.DrawCircle(x + 36, y + 21, 1, Color.Black);
+
+    // Legs
+    Raylib.DrawRectangle(x + 8,  y + 32, 5, 8, dark);
+    Raylib.DrawRectangle(x + 16, y + 32, 5, 8, dark);
+    Raylib.DrawRectangle(x + 24, y + 32, 5, 8, dark);
+    Raylib.DrawRectangle(x + 30, y + 32, 5, 8, dark);
+
+    // Tail with flame tip
+    Raylib.DrawCircle(x + 6,  y + 26, 4, orange);
+    Raylib.DrawCircle(x + 2,  y + 23, 3, red);
+    Raylib.DrawCircle(x + 0,  y + 19, 2, yellow);
+}
+
+private void DrawMagmaBeetle(int x, int y)
+{
+    Color black  = new Color((byte)30,  (byte)15,  (byte)5,   (byte)255);
+    Color lava   = new Color((byte)220, (byte)80,  (byte)0,   (byte)255);
+    Color glow   = new Color((byte)255, (byte)180, (byte)0,   (byte)255);
+
+    // Shell — large domed oval
+    Raylib.DrawEllipse(x + 20, y + 24, 17, 13, black);
+
+    // Lava cracks on shell
+    Raylib.DrawLineEx(new Vector2(x + 12, y + 18), new Vector2(x + 20, y + 28), 2, lava);
+    Raylib.DrawLineEx(new Vector2(x + 20, y + 18), new Vector2(x + 26, y + 30), 2, lava);
+    Raylib.DrawLineEx(new Vector2(x + 28, y + 18), new Vector2(x + 20, y + 28), 2, lava);
+    Raylib.DrawLineEx(new Vector2(x + 16, y + 28), new Vector2(x + 12, y + 34), 2, lava);
+
+    // Glowing lava spots
+    Raylib.DrawCircle(x + 16, y + 22, 3, glow);
+    Raylib.DrawCircle(x + 24, y + 20, 2, glow);
+    Raylib.DrawCircle(x + 22, y + 30, 3, glow);
+
+    // Head
+    Raylib.DrawCircle(x + 34, y + 22, 6, black);
+
+    // Glowing eyes
+    Raylib.DrawCircle(x + 32, y + 20, 2, glow);
+    Raylib.DrawCircle(x + 37, y + 20, 2, glow);
+
+    // Horn
+    Raylib.DrawTriangle(
+        new Vector2(x + 38, y + 16),
+        new Vector2(x + 35, y + 22),
+        new Vector2(x + 41, y + 22),
+        lava
+    );
+
+    // Legs
+    Raylib.DrawLineEx(new Vector2(x + 8,  y + 28), new Vector2(x + 2,  y + 22), 3, black);
+    Raylib.DrawLineEx(new Vector2(x + 8,  y + 30), new Vector2(x + 1,  y + 36), 3, black);
+    Raylib.DrawLineEx(new Vector2(x + 10, y + 32), new Vector2(x + 4,  y + 38), 3, black);
+    Raylib.DrawLineEx(new Vector2(x + 28, y + 28), new Vector2(x + 34, y + 22), 3, black);
+    Raylib.DrawLineEx(new Vector2(x + 28, y + 30), new Vector2(x + 35, y + 36), 3, black);
+    Raylib.DrawLineEx(new Vector2(x + 26, y + 32), new Vector2(x + 32, y + 38), 3, black);
+}
+
+private void DrawEagle(int x, int y)
+{
+    Color brown  = new Color((byte)100, (byte)70,  (byte)20,  (byte)255);
+    Color white  = Color.White;
+    Color yellow = new Color((byte)240, (byte)180, (byte)0,   (byte)255);
+    Color dark   = new Color((byte)40,  (byte)25,  (byte)5,   (byte)255);
+
+    // Body
+    Raylib.DrawEllipse(x + 20, y + 26, 12, 9, brown);
+
+    // White head
+    Raylib.DrawCircle(x + 30, y + 18, 9, white);
+
+    // Beak
+    Raylib.DrawTriangle(
+        new Vector2(x + 37, y + 18),
+        new Vector2(x + 44, y + 20),
+        new Vector2(x + 37, y + 22),
+        yellow
+    );
+
+    // Eye
+    Raylib.DrawCircle(x + 33, y + 16, 2, Color.Black);
+    Raylib.DrawCircle(x + 34, y + 15, 1, white);
+
+    // Wings spread wide
+    Raylib.DrawTriangle(
+        new Vector2(x + 10, y + 22),
+        new Vector2(x - 8,  y + 16),
+        new Vector2(x - 4,  y + 30),
+        brown
+    );
+    Raylib.DrawTriangle(
+        new Vector2(x + 10, y + 22),
+        new Vector2(x - 4,  y + 30),
+        new Vector2(x + 14, y + 30),
+        dark
+    );
+    Raylib.DrawTriangle(
+        new Vector2(x + 28, y + 22),
+        new Vector2(x + 48, y + 16),
+        new Vector2(x + 44, y + 30),
+        brown
+    );
+    Raylib.DrawTriangle(
+        new Vector2(x + 28, y + 22),
+        new Vector2(x + 44, y + 30),
+        new Vector2(x + 24, y + 30),
+        dark
+    );
+
+    // Talons
+    Raylib.DrawLineEx(new Vector2(x + 16, y + 34), new Vector2(x + 12, y + 40), 2, yellow);
+    Raylib.DrawLineEx(new Vector2(x + 18, y + 34), new Vector2(x + 16, y + 41), 2, yellow);
+    Raylib.DrawLineEx(new Vector2(x + 20, y + 34), new Vector2(x + 20, y + 41), 2, yellow);
+    Raylib.DrawLineEx(new Vector2(x + 22, y + 34), new Vector2(x + 24, y + 41), 2, yellow);
+}
+
+private void DrawMountainGoat(int x, int y)
+{
+    Color white = new Color((byte)200, (byte)195, (byte)185, (byte)255);
+    Color dark  = new Color((byte)80,  (byte)75,  (byte)65,  (byte)255);
+    Color horn  = new Color((byte)60,  (byte)45,  (byte)20,  (byte)255);
+
+    // Body — stocky
+    Raylib.DrawEllipse(x + 20, y + 26, 16, 11, white);
+
+    // Shaggy chest tuft
+    Raylib.DrawEllipse(x + 30, y + 30, 7, 9, white);
+
+    // Head
+    Raylib.DrawCircle(x + 33, y + 17, 9, white);
+
+    // Snout
+    Raylib.DrawEllipse(x + 39, y + 19, 5, 4, dark);
+    Raylib.DrawCircle(x + 42, y + 18, 2, Color.Black);
+
+    // Eye
+    Raylib.DrawCircle(x + 35, y + 14, 2, Color.Black);
+    Raylib.DrawCircle(x + 36, y + 13, 1, Color.White);
+
+    // Curved horns
+    Raylib.DrawLineEx(new Vector2(x + 30, y + 9),  new Vector2(x + 24, y + 4),  3, horn);
+    Raylib.DrawLineEx(new Vector2(x + 24, y + 4),  new Vector2(x + 20, y + 8),  3, horn);
+    Raylib.DrawLineEx(new Vector2(x + 36, y + 8),  new Vector2(x + 42, y + 3),  3, horn);
+    Raylib.DrawLineEx(new Vector2(x + 42, y + 3),  new Vector2(x + 46, y + 8),  3, horn);
+
+    // Beard
+    Raylib.DrawEllipse(x + 37, y + 25, 3, 5, dark);
+
+    // Sturdy legs
+    Raylib.DrawRectangle(x + 7,  y + 34, 6, 10, dark);
+    Raylib.DrawRectangle(x + 15, y + 34, 6, 10, dark);
+    Raylib.DrawRectangle(x + 23, y + 34, 6, 10, dark);
+    Raylib.DrawRectangle(x + 31, y + 34, 6, 10, dark);
+
+    // Hooves
+    Raylib.DrawRectangle(x + 7,  y + 43, 6, 3, Color.Black);
+    Raylib.DrawRectangle(x + 15, y + 43, 6, 3, Color.Black);
+    Raylib.DrawRectangle(x + 23, y + 43, 6, 3, Color.Black);
+    Raylib.DrawRectangle(x + 31, y + 43, 6, 3, Color.Black);
+}
 }
     class Quest
 {
@@ -9486,7 +10557,7 @@ class Rideable
         {
             RideableType.MountainBike => 400f,
             RideableType.BMX          => 500f,
-            RideableType.Horse        => 550f,
+            RideableType.Horse        => 1000f,
             _                         => 400f
         };
     }
