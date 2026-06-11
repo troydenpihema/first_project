@@ -32,7 +32,7 @@ namespace OpenWorldRPG
         static float totalPlayTime = 0f;
         static SceneState currentScene = SceneState.MainMenu;
         static Camera2D camera = new Camera2D();
-        public static Player player = new Player(new Vector2(0, 650));
+        public static Player player = new Player(new Vector2(-1917, -9720));
         static int dayOfWeek = 0; // 0-6, Monday to Sunday
         static string[] dayNames = { "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday" };
         static float dayCounter = 0f; // tracks full day cycles
@@ -195,6 +195,8 @@ namespace OpenWorldRPG
         static int chestFur = 0;
         static int chestStingers = 0;
         static int chestBearPelts = 0;
+        static int chestDogFangs = 0;
+
         static int chestSelectedSlot = -1;
         static bool isLoadingGame = false;
         static bool slotSelected = false;
@@ -261,6 +263,7 @@ namespace OpenWorldRPG
         static List<LootDrop> lootDrops = new();
         static List<(Vector2 pos, float radius, Color color)> grassPatches = new();
         static List<(Vector2 pos, Color color)> flowers = new();
+        
         static bool worldTextureGenerated = false;
         static Building currentBuilding = null;
         static float shakeDuration = 0f;
@@ -3002,7 +3005,7 @@ static void DrawSupermarketInventoryUI()
     int[] invCounts = {
         player.Logs, player.BirchLogs, player.OakLogs, player.PineLogs,
         player.ArcticLogs, player.DeadWood, player.Fish, player.Bones,
-        player.Fur, player.Stingers, player.BearPelts
+        player.Fur, player.Stingers, player.BearPelts, player.DogFangs
     };
 
     // draw shop price list on left
@@ -3126,6 +3129,7 @@ static void SellItem(string itemName, int amount, int price)
         case "Fur": player.Fur -= amount; break;
         case "Stingers": player.Stingers -= amount; break;
         case "Pelts": player.BearPelts -= amount; break;
+        case "Dog Fangs": player.DogFangs -= amount; break;
     }
 }
 
@@ -3144,6 +3148,7 @@ static int GetItemCount(string itemName)
         "Fur" => player.Fur,
         "Stingers" => player.Stingers,
         "Pelts" => player.BearPelts,
+        "Dog Fangs" => player.DogFangs,
         _ => 0
     };
 }
@@ -3460,9 +3465,9 @@ static void DrawBurgerKingMenu()
     // divider
     Raylib.DrawRectangle(panelX + 415, panelY + 10, 4, 540, new Color((byte)80,(byte)80,(byte)80,(byte)255));
 
-    string[] itemNames = { "Logs", "Fish", "Bones", "Fur", "Stingers", "Pelts" };
-    int[] chestCounts = { chestLogs, chestFish, chestBones, chestFur, chestStingers, chestBearPelts };
-    int[] invCounts = { player.Logs, player.Fish, player.Bones, player.Fur, player.Stingers, player.BearPelts };
+    string[] itemNames = { "Logs", "Fish", "Bones", "Fur", "Stingers", "Pelts",};
+    int[] chestCounts = { chestLogs, chestFish, chestBones, chestFur, chestStingers, chestBearPelts, chestDogFangs, };
+    int[] invCounts = { player.Logs, player.Fish, player.Bones, player.Fur, player.Stingers, player.BearPelts, player.DogFangs, };
 
     Vector2 mouse = Raylib.GetMousePosition();
 
@@ -3497,6 +3502,7 @@ static void DrawBurgerKingMenu()
                         case 3: player.Fur++; chestFur--; break;
                         case 4: player.Stingers++; chestStingers--; break;
                         case 5: player.BearPelts++; chestBearPelts--; break;
+                        case 6: player.DogFangs++; chestDogFangs--; break;
                     }
                 }
             }
@@ -3534,6 +3540,7 @@ static void DrawBurgerKingMenu()
                         case 3: chestFur++; player.Fur--; break;
                         case 4: chestStingers++; player.Stingers--; break;
                         case 5: chestBearPelts++; player.BearPelts--; break;
+                        case 6: chestDogFangs++; player.DogFangs--; break;
                     }
                 }
             }
@@ -4665,6 +4672,7 @@ Raylib.DrawText(priceText, px, by + slotH - 22, 16, Color.Gold);
                     player = new Player(new Vector2(0, 650));
                     chestLogs = 0; chestFish = 0; chestBones = 0;
                     chestFur = 0; chestStingers = 0; chestBearPelts = 0;
+                    chestDogFangs = 0;
                     timeOfDay = 0f; dayOfWeek = 0;
                     quests[0].Progress = 0; quests[0].Completed = false;
                     quests[1].Progress = 0; quests[1].Completed = false;
@@ -4892,6 +4900,60 @@ if (Raylib.IsKeyPressed(KeyboardKey.G))
                                     player.Stingers++;
                                     break;
                                 case "Bear Pelt":
+                                    player.BearPelts++;
+                                    break;
+                                case "Dog Fang":
+                                    player.DogFangs++;
+                                    break;
+                                case "Wolf Claw":
+                                    player.BearPelts++;
+                                    break;
+                                case "Venom sac":
+                                    player.BearPelts++;
+                                    break;
+                                case "Crab Claw":
+                                    player.BearPelts++;
+                                    break;
+                                case "Bear Claw":
+                                    player.BearPelts++;
+                                    break;
+                                case "Crab Shell":
+                                    player.BearPelts++;
+                                    break;
+                                case "Shark Fin":
+                                    player.BearPelts++;
+                                    break;
+                                case "Shark Tooth":
+                                    player.BearPelts++;
+                                    break;
+                                case "Snake Fang":
+                                    player.BearPelts++;
+                                    break;
+                                case "Croc Scale":
+                                    player.BearPelts++;
+                                    break;
+                                case "Croc Tooth":
+                                    player.BearPelts++;
+                                    break;
+                                case "Lizard Scale":
+                                    player.BearPelts++;
+                                    break;
+                                case "Ember Stone":
+                                    player.BearPelts++;
+                                    break;
+                                case "Magma Shard":
+                                    player.BearPelts++;
+                                    break;
+                                case "Lava Core":
+                                    player.BearPelts++;
+                                    break;
+                                case "Feather":
+                                    player.BearPelts++;
+                                    break;
+                                case "Eagle Talon":
+                                    player.BearPelts++;
+                                    break;
+                                case "Goat Hoof":
                                     player.BearPelts++;
                                     break;
                             }
@@ -7035,6 +7097,7 @@ static void DrawCheatsMenu()
                     player.Fur += 50;
                     player.Stingers += 50;
                     player.BearPelts += 50;
+                    player.DogFangs += 50;
                     ShowNotification("Inventory filled!");
                     break;
                 case 3:
@@ -11867,6 +11930,7 @@ if (currentBuilding.BuildingName == "McDONALD'S" &&
     if (player.Fur > 0) items.Add(("Fur", player.Fur));
     if (player.Stingers > 0) items.Add(("Stingers", player.Stingers));
     if (player.BearPelts > 0) items.Add(("Pelts", player.BearPelts));
+    if (player.DogFangs > 0) items.Add(("Bones", player.DogFangs));
     if (player.Money > 0) items.Add(("Money", player.Money));
     if (player.HasAxe) items.Add(("Axe", 1));
 
@@ -13133,6 +13197,7 @@ private void DrawMountainGoat(int x, int y)
         public enum FacingDirection { Down, Up, Left, Right }
         public FacingDirection Facing = FacingDirection.Down;
         float walkTimer = 0f;
+        float bobOffset = 0f;
         bool walkFrame = false; // alternates legs
         bool isMoving = false;
         float chopAnimAngle = 0f;
@@ -13168,6 +13233,7 @@ private void DrawMountainGoat(int x, int y)
         public int Fur = 0;
         public int Stingers = 0;
         public int BearPelts = 0;
+        public int DogFangs = 0;
         public int Health = 100;
         public int MaxHealth = 100;
         public int CombatLevel = 1;
@@ -13191,6 +13257,7 @@ private void DrawMountainGoat(int x, int y)
         public int DrunkLevel = 0;
         public float DrunkTimer = 0f;
         public float DrunkSpeedMultiplier => DrunkLevel == 0 ? 1f : Math.Max(0.3f, 1f - (DrunkLevel * 0.15f));
+        List<(Vector2 pos, float timer, Color color)> dustParticles = new();
         public Color BootsColor => Program.armorBoots != null
         ? new Color((byte)120, (byte)80, (byte)30, (byte)255)  // leather brown default
         : new Color((byte)0, (byte)0, (byte)0, (byte)0);       // transparent = no boots
@@ -13201,19 +13268,86 @@ private void DrawMountainGoat(int x, int y)
         {
             Position = position;
         }
+     void DrawPickaxeSwingLeft(int x, int y)
+{
+    float swingAngle = chopAnimAngle * MathF.PI / 180f;
 
-        public void DrawPickaxeSwing(int x, int y)
+    // pivot at hand — shifted further out from body
+    Vector2 pivot = new Vector2(x + 8, y + 36);
+
+    float handleLength = 26f;
+
+    Vector2 handleEnd = new Vector2(
+        pivot.X - MathF.Sin(swingAngle) * handleLength,
+        pivot.Y - MathF.Cos(swingAngle) * handleLength
+    );
+
+    // draw handle
+    Raylib.DrawLineEx(pivot, handleEnd, 5,
+        new Color((byte)120, (byte)80, (byte)30, (byte)255));
+
+    // head bar — perpendicular to handle, spread 12px each side
+    float perpAngle = swingAngle + MathF.PI / 2f;
+    Vector2 headTop = new Vector2(
+        handleEnd.X + MathF.Cos(perpAngle) * 12f,
+        handleEnd.Y + MathF.Sin(perpAngle) * 12f
+    );
+    Vector2 headBot = new Vector2(
+        handleEnd.X - MathF.Cos(perpAngle) * 12f,
+        handleEnd.Y - MathF.Sin(perpAngle) * 12f
+    );
+
+    Raylib.DrawLineEx(headTop, headBot, 4,
+        new Color((byte)160, (byte)160, (byte)170, (byte)255));
+
+    // spike direction — points away from player (same dir as handle)
+    Vector2 spikeDir = new Vector2(
+        -(handleEnd.X - pivot.X),
+        -(handleEnd.Y - pivot.Y)
+    );
+    // normalize
+    float len = MathF.Sqrt(spikeDir.X * spikeDir.X + spikeDir.Y * spikeDir.Y);
+    spikeDir = new Vector2(spikeDir.X / len, spikeDir.Y / len);
+
+    // bottom spike tip
+    Vector2 botSpikeTip = new Vector2(
+        headBot.X + spikeDir.X * 10f,
+        headBot.Y + spikeDir.Y * 10f
+    );
+
+    // top spike tip (shorter, points back)
+    Vector2 topSpikeTip = new Vector2(
+        headTop.X - spikeDir.X * 8f,
+        headTop.Y - spikeDir.Y * 8f
+    );
+
+    // bottom spike triangle — wide enough to be visible (4px base)
+    Raylib.DrawTriangle(
+        new Vector2(headBot.X + MathF.Cos(perpAngle) * 3f, headBot.Y + MathF.Sin(perpAngle) * 3f),
+        new Vector2(headBot.X - MathF.Cos(perpAngle) * 3f, headBot.Y - MathF.Sin(perpAngle) * 3f),
+        botSpikeTip,
+        new Color((byte)160, (byte)160, (byte)170, (byte)255));
+
+    // top spike triangle
+    Raylib.DrawTriangle(
+        new Vector2(headTop.X + MathF.Cos(perpAngle) * 3f, headTop.Y + MathF.Sin(perpAngle) * 3f),
+        new Vector2(headTop.X - MathF.Cos(perpAngle) * 3f, headTop.Y - MathF.Sin(perpAngle) * 3f),
+        topSpikeTip,
+        new Color((byte)160, (byte)160, (byte)170, (byte)255));
+}
+
+    void DrawPickaxeSwingRight(int x, int y)
 {
     // chopAnimAngle goes 0 -> 360, we want pickaxe to start pointing up
     // then swing down through 180 degrees
-    float swingAngle = chopAnimAngle * MathF.PI / 260f;
+    float swingAngle = chopAnimAngle * MathF.PI / 300f;
 
     // pivot point where hand holds the pickaxe
-    Vector2 pivot = new Vector2(x + 26, y + 42);
+    Vector2 pivot = new Vector2(x + 25, y + 40);
 
     // handle direction — starts pointing up (angle 0 = up)
-    float handleLength = 20f;
-    float headOffset   = 6f;
+    float handleLength = 22f;
+    float headOffset   = 8f;
 
     // calculate handle end point from pivot using angle
     Vector2 handleEnd = new Vector2(
@@ -13221,9 +13355,12 @@ private void DrawMountainGoat(int x, int y)
         pivot.Y - MathF.Cos(swingAngle) * handleLength
     );
 
-   
+    // draw handle
+    Raylib.DrawLineEx(pivot, handleEnd, 5,
+        new Color((byte)120, (byte)80, (byte)30, (byte)255));
+
     // pickaxe head perpendicular to handle at the end
-    float perpAngle = swingAngle + MathF.PI / 12f;
+    float perpAngle = swingAngle + MathF.PI / 10f;
     Vector2 headLeft = new Vector2(
         handleEnd.X - MathF.Cos(perpAngle) * headOffset,
         handleEnd.Y - MathF.Sin(perpAngle) * headOffset
@@ -13233,12 +13370,8 @@ private void DrawMountainGoat(int x, int y)
         handleEnd.Y + MathF.Sin(perpAngle) * headOffset
     );
 
-    // draw handle
-    Raylib.DrawLineEx(pivot, handleEnd, 5,
-        new Color((byte)120, (byte)80, (byte)30, (byte)255));
-
     // draw pickaxe head bar
-    Raylib.DrawLineEx(headLeft, headRight, 4,
+    Raylib.DrawLineEx(headLeft, headRight, 3,
         new Color((byte)160, (byte)160, (byte)170, (byte)255));
 
     // left spike (curves down)
@@ -13246,17 +13379,16 @@ private void DrawMountainGoat(int x, int y)
         headLeft.X - MathF.Sin(swingAngle) * 10f,
         headLeft.Y + MathF.Cos(swingAngle) * 10f
     );
-    Raylib.DrawLineEx(headLeft, leftSpike, 3,
-        new Color((byte)160, (byte)160, (byte)170, (byte)255)); 
+    Raylib.DrawLineEx(headLeft, leftSpike, 2,
+        new Color((byte)160, (byte)160, (byte)170, (byte)255));
 
     // right spike
     Vector2 rightSpike = new Vector2(
         headRight.X - MathF.Sin(swingAngle) * 10f,
         headRight.Y + MathF.Cos(swingAngle) * 10f
     );
-    Raylib.DrawLineEx(headRight, rightSpike, 3,
+    Raylib.DrawLineEx(headRight, rightSpike, 2,
         new Color((byte)140, (byte)140, (byte)150, (byte)255));
-    
 }
         public void TakeDamage(int damage)
 {
@@ -13398,6 +13530,16 @@ foreach (RockObject rock in Program.rocks)
         move = Vector2.Normalize(move);
         AddAthleticsXP(1);
 
+
+        dustParticles.Add((
+            new Vector2(Position.X + 20, Position.Y + 66),
+            0.3f,
+            new Color((byte)Raylib.GetRandomValue(100, 150),
+                      (byte)Raylib.GetRandomValue(100, 150),
+                      (byte)Raylib.GetRandomValue(50, 80),
+                      (byte)180)
+        ));
+
         // update facing — horizontal takes priority for side view
         if (MathF.Abs(move.X) >= MathF.Abs(move.Y))
             Facing = move.X < 0 ? FacingDirection.Left : FacingDirection.Right;
@@ -13410,6 +13552,16 @@ foreach (RockObject rock in Program.rocks)
     {
         isMoving = false;
     }
+float dt = Raylib.GetFrameTime();
+    // update dust particles
+for (int i = dustParticles.Count - 1; i >= 0; i--)
+{
+    var p = dustParticles[i];
+    p.timer -= dt;
+    dustParticles[i] = p;
+    if (p.timer <= 0) dustParticles.RemoveAt(i);
+}
+
 
     return move * DrunkSpeedMultiplier;
 }
@@ -13529,6 +13681,16 @@ public void TriggerMineAnim()  { isMining  = true; chopAnimAngle = 0f; }
     // update walk animation timer
     if (isMoving)
     {
+        // dust particles
+    foreach (var p in dustParticles)
+    {
+        byte alpha = (byte)(255 * (p.timer / 0.3f));
+        float size = 4f * (p.timer / 0.3f);
+        Raylib.DrawCircle((int)p.pos.X + Raylib.GetRandomValue(-4, 4),
+                          (int)p.pos.Y,
+                          size,
+                          new Color(p.color.R, p.color.G, p.color.B, alpha));
+    }
         walkTimer += Raylib.GetFrameTime() * 8f;
         if (walkTimer >= 1f)
         {
@@ -13806,7 +13968,7 @@ void DrawHeldItem(int x, int y, string tool)
                     break;
                 case "Pickaxe":
                 if (isMining)
-                    DrawPickaxeSwing(x, y);
+                    DrawPickaxeSwingRight(x, y);
                     else
                     {
                     Raylib.DrawLineEx(new Vector2(x + 25, y + 40 + armSwingRight), new Vector2(x + 45, y + 40 + armSwingRight), 5,
@@ -13872,6 +14034,10 @@ void DrawHeldItem(int x, int y, string tool)
                         new Color((byte)160,(byte)160,(byte)170,(byte)255));
                     break;
                 case "Pickaxe":
+                if (isMining)
+                    DrawPickaxeSwingLeft(x, y);
+                    else
+                    {
                     Raylib.DrawLineEx(new Vector2(x + 15, y + 40 + armSwingLeft), new Vector2(x - 5, y + 40 + armSwingLeft), 5,
                         new Color((byte)120,(byte)80,(byte)30,(byte)255));
                     Raylib.DrawLineEx(new Vector2(x - 5, y + 34 + armSwingLeft), new Vector2(x - 5, y + 44 + armSwingLeft), 3,
@@ -13886,6 +14052,7 @@ void DrawHeldItem(int x, int y, string tool)
                         new Vector2(x, y + 30 + armSwingLeft),
                         new Vector2(x - 6, y + 34 + armSwingLeft),  
                         new Color((byte)160,(byte)160,(byte)170,(byte)255));
+                    }
                     break;
                 case "Stick":
                     Raylib.DrawLineEx(new Vector2(x + 15, y + 40 + armSwingLeft), new Vector2(x - 5, y + 40 + armSwingLeft), 5,
@@ -14039,6 +14206,15 @@ void DrawHeldBasket(int x, int y)
 {
     // basket appears on the player's side depending on facing
     int bx, by;
+    foreach (var p in dustParticles)
+    {
+        byte alpha = (byte)(255 * (p.timer / 0.3f));
+        float size = 4f * (p.timer / 0.3f);
+        Raylib.DrawCircle((int)p.pos.X + Raylib.GetRandomValue(-4, 4),
+                          (int)p.pos.Y,
+                          size,
+                          new Color(p.color.R, p.color.G, p.color.B, alpha));
+    }
     switch (Facing)
     {
         case FacingDirection.Down:
@@ -14272,6 +14448,117 @@ void DrawPushedTrolley(int x, int y)
                 break;
         }
 
+        // crack overlay based on damage taken
+if (Health < MaxHealth)
+{
+    float damagePercent = 1f - ((float)Health / MaxHealth);
+
+    int tx = (int)Position.X + 30; // centre of tree trunk
+    int ty = (int)Position.Y + 50;
+
+    // get equipped tool to determine chop mark style
+    string equippedTool = Program.GetEquippedTool();
+    Color chopColor = new Color((byte)60, (byte)30, (byte)10, (byte)220);  // default wood colour
+    float chopWidth = 2f;
+
+    if (equippedTool != null && equippedTool.Contains("Iron"))
+    {
+        chopColor = new Color((byte)40, (byte)20, (byte)5, (byte)240);
+        chopWidth = 3f;  // deeper cuts
+    }
+    else if (equippedTool != null && equippedTool.Contains("Steel"))
+    {
+        chopColor = new Color((byte)25, (byte)12, (byte)3, (byte)255);
+        chopWidth = 4f;  // even deeper
+    }
+    else if (equippedTool != null && equippedTool.Contains("Gold"))
+    {
+        chopColor = new Color((byte)20, (byte)10, (byte)2, (byte)255);
+        chopWidth = 5f;  // deepest cuts
+    }
+
+    // first chop mark — any damage
+    if (damagePercent > 0f)
+    {
+        // V shaped chop mark on trunk
+        Raylib.DrawLineEx(
+            new Vector2(tx - 8, ty - 4),
+            new Vector2(tx,     ty + 4),
+            chopWidth, chopColor);
+        Raylib.DrawLineEx(
+            new Vector2(tx,     ty + 4),
+            new Vector2(tx + 8, ty - 4),
+            chopWidth, chopColor);
+        // wood chip flying off
+        Raylib.DrawCircle(tx - 12, ty - 8, 3,
+            new Color((byte)120, (byte)80, (byte)30, (byte)200));
+        Raylib.DrawCircle(tx - 14, ty - 12, 2,
+            new Color((byte)100, (byte)60, (byte)20, (byte)180));
+    }
+
+    // second chop mark at 40% damage — deeper cut
+    if (damagePercent > 0.4f)
+    {
+        // second V cut slightly above first
+        Raylib.DrawLineEx(
+            new Vector2(tx - 7, ty - 14),
+            new Vector2(tx,     ty - 6),
+            chopWidth, chopColor);
+        Raylib.DrawLineEx(
+            new Vector2(tx,     ty - 6),
+            new Vector2(tx + 7, ty - 14),
+            chopWidth, chopColor);
+        // exposed wood grain inside cut
+        Raylib.DrawRectangle(tx - 4, ty - 10, 8, 6,
+            new Color((byte)180, (byte)130, (byte)70, (byte)180));
+        // more chips
+        Raylib.DrawCircle(tx + 14, ty - 10, 3,
+            new Color((byte)120, (byte)80, (byte)30, (byte)200));
+        Raylib.DrawCircle(tx + 16, ty - 16, 2,
+            new Color((byte)100, (byte)60, (byte)20, (byte)180));
+
+        // bark cracking up the trunk
+        Raylib.DrawLineEx(
+            new Vector2(tx - 2, ty - 20),
+            new Vector2(tx + 4, ty - 10),
+            2f, new Color((byte)40, (byte)20, (byte)5, (byte)200));
+    }
+
+    // near breaking at 66% damage — trunk splitting
+    if (damagePercent > 0.66f)
+    {
+        // deep split running up through trunk
+        Raylib.DrawLineEx(
+            new Vector2(tx,     ty - 30),
+            new Vector2(tx - 4, ty),
+            chopWidth + 1f, new Color((byte)15, (byte)8, (byte)2, (byte)255));
+
+        // large exposed wood patch
+        Raylib.DrawRectangle(tx - 6, ty - 18, 12, 14,
+            new Color((byte)200, (byte)150, (byte)80, (byte)200));
+        Raylib.DrawRectangle(tx - 4, ty - 16, 8, 10,
+            new Color((byte)220, (byte)170, (byte)90, (byte)180));
+
+        // bark chunks falling
+        Raylib.DrawRectangle(tx - 18, ty - 20, 6, 8,
+            new Color((byte)100, (byte)60, (byte)20, (byte)220));
+        Raylib.DrawRectangle(tx + 12, ty - 14, 5, 7,
+            new Color((byte)100, (byte)60, (byte)20, (byte)220));
+        Raylib.DrawCircle(tx - 20, ty - 28, 4,
+            new Color((byte)80, (byte)50, (byte)15, (byte)200));
+        Raylib.DrawCircle(tx + 18, ty - 22, 3,
+            new Color((byte)80, (byte)50, (byte)15, (byte)200));
+
+        // canopy shaking — draw some loose leaves falling
+        Raylib.DrawCircle(tx - 24, ty - 40, 5,
+            new Color((byte)0, (byte)100, (byte)0, (byte)160));
+        Raylib.DrawCircle(tx + 20, ty - 38, 4,
+            new Color((byte)0, (byte)120, (byte)0, (byte)140));
+        Raylib.DrawCircle(tx - 10, ty - 50, 4,
+            new Color((byte)0, (byte)110, (byte)0, (byte)150));
+    }
+}
+
         // level requirement label
        // if (LevelRequired > 1)
        // {
@@ -14402,6 +14689,67 @@ class RockObject
                     new Color((byte)160,(byte)200,(byte)225,(byte)220));
                 break;
         }
+
+        // crack overlay based on damage taken
+if (Health < MaxHealth)
+{
+    float damagePercent = 1f - ((float)Health / MaxHealth);
+    
+    int rx = (int)Position.X;
+    int ry = (int)Position.Y;
+
+    // first crack appears after any damage
+    if (damagePercent > 0f)
+    {
+        Raylib.DrawLineEx(
+            new Vector2(rx - 2, ry - 12),
+            new Vector2(rx + 6, ry - 2),
+            2f, new Color((byte)30, (byte)30, (byte)30, (byte)200));
+        Raylib.DrawLineEx(
+            new Vector2(rx + 6, ry - 2),
+            new Vector2(rx + 2, ry + 8),
+            2f, new Color((byte)30, (byte)30, (byte)30, (byte)200));
+    }
+
+    // second crack at 40% damage
+    if (damagePercent > 0.4f)
+    {
+        Raylib.DrawLineEx(
+            new Vector2(rx - 8, ry),
+            new Vector2(rx,     ry + 6),
+            2f, new Color((byte)30, (byte)30, (byte)30, (byte)200));
+        Raylib.DrawLineEx(
+            new Vector2(rx,     ry + 6),
+            new Vector2(rx - 4, ry + 14),
+            2f, new Color((byte)30, (byte)30, (byte)30, (byte)200));
+        // small chip flaking off
+        Raylib.DrawCircle(rx - 10, ry - 6, 3,
+            new Color((byte)80, (byte)80, (byte)85, (byte)255));
+    }
+
+    // third crack at 66% damage — rock is nearly broken
+    if (damagePercent > 0.66f)
+    {
+        Raylib.DrawLineEx(
+            new Vector2(rx + 4,  ry - 8),
+            new Vector2(rx + 14, ry + 4),
+            2f, new Color((byte)20, (byte)20, (byte)20, (byte)220));
+        Raylib.DrawLineEx(
+            new Vector2(rx + 14, ry + 4),
+            new Vector2(rx + 8,  ry + 14),
+            2f, new Color((byte)20, (byte)20, (byte)20, (byte)220));
+        // more chips
+        Raylib.DrawCircle(rx + 16, ry - 4, 3,
+            new Color((byte)80, (byte)80, (byte)85, (byte)255));
+        Raylib.DrawCircle(rx + 10, ry + 16, 2,
+            new Color((byte)80, (byte)80, (byte)85, (byte)255));
+        // dark split running through centre
+        Raylib.DrawLineEx(
+            new Vector2(rx - 6, ry - 6),
+            new Vector2(rx + 8, ry + 10),
+            3f, new Color((byte)15, (byte)15, (byte)15, (byte)240));
+    }
+}
 
         // health bar
         if (Health < MaxHealth)
