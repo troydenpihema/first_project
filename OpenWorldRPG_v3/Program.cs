@@ -4669,7 +4669,7 @@ Raylib.DrawText(priceText, px, by + slotH - 22, 16, Color.Gold);
         {
             if (Raylib.IsKeyPressed(KeyboardKey.Enter))
                 {
-                    player = new Player(new Vector2(0, 650));
+                    player = new Player(new Vector2(-1917, -9720));
                     chestLogs = 0; chestFish = 0; chestBones = 0;
                     chestFur = 0; chestStingers = 0; chestBearPelts = 0;
                     chestDogFangs = 0;
