@@ -79,14 +79,14 @@ namespace OpenWorldRPG
         static bool armorMenuOpen = false;
 
         // Armor slots — null = empty
-        static string armorHelmet = null;
-        static string armorBody   = null;
-        static string armorLegs   = null;
-        static string armorBoots  = null;
-        static string armorGloves = null;
-        static string armorCape   = null;
-        static string armorWeapon = null;
-        static string armorShield = null;
+        public static string armorHelmet = null;
+        public static string armorBody   = null;
+        public static string armorLegs   = null;
+        public static string armorBoots  = null;
+        public static string armorGloves = null;
+        public static string armorCape   = null;
+        public static string armorWeapon = null;
+        public static string armorShield = null;
 
         // shared
         static bool strengthMinigameActive = false;
@@ -764,7 +764,7 @@ static void DrawArmorUI()
         col++;
     }
 
-    Raylib.DrawText("Click item to equip  |  Click slot to unequip  |  E = Close",
+    Raylib.DrawText("Click item to equip  |  Click slot to unequip  |  G = Close",
         panelX + 60, panelY + panelH - 28, 16, Color.LightGray);
 }
 
@@ -13191,6 +13191,9 @@ private void DrawMountainGoat(int x, int y)
         public int DrunkLevel = 0;
         public float DrunkTimer = 0f;
         public float DrunkSpeedMultiplier => DrunkLevel == 0 ? 1f : Math.Max(0.3f, 1f - (DrunkLevel * 0.15f));
+        public Color BootsColor => Program.armorBoots != null
+        ? new Color((byte)120, (byte)80, (byte)30, (byte)255)  // leather brown default
+        : new Color((byte)0, (byte)0, (byte)0, (byte)0);       // transparent = no boots
         public Rectangle Bounds =>
             new Rectangle(Position.X, Position.Y, 40, 60);
 
@@ -13198,6 +13201,63 @@ private void DrawMountainGoat(int x, int y)
         {
             Position = position;
         }
+
+        public void DrawPickaxeSwing(int x, int y)
+{
+    // chopAnimAngle goes 0 -> 360, we want pickaxe to start pointing up
+    // then swing down through 180 degrees
+    float swingAngle = chopAnimAngle * MathF.PI / 260f;
+
+    // pivot point where hand holds the pickaxe
+    Vector2 pivot = new Vector2(x + 26, y + 42);
+
+    // handle direction — starts pointing up (angle 0 = up)
+    float handleLength = 20f;
+    float headOffset   = 6f;
+
+    // calculate handle end point from pivot using angle
+    Vector2 handleEnd = new Vector2(
+        pivot.X + MathF.Sin(swingAngle) * handleLength,
+        pivot.Y - MathF.Cos(swingAngle) * handleLength
+    );
+
+   
+    // pickaxe head perpendicular to handle at the end
+    float perpAngle = swingAngle + MathF.PI / 12f;
+    Vector2 headLeft = new Vector2(
+        handleEnd.X - MathF.Cos(perpAngle) * headOffset,
+        handleEnd.Y - MathF.Sin(perpAngle) * headOffset
+    );
+    Vector2 headRight = new Vector2(
+        handleEnd.X + MathF.Cos(perpAngle) * headOffset,
+        handleEnd.Y + MathF.Sin(perpAngle) * headOffset
+    );
+
+    // draw handle
+    Raylib.DrawLineEx(pivot, handleEnd, 5,
+        new Color((byte)120, (byte)80, (byte)30, (byte)255));
+
+    // draw pickaxe head bar
+    Raylib.DrawLineEx(headLeft, headRight, 4,
+        new Color((byte)160, (byte)160, (byte)170, (byte)255));
+
+    // left spike (curves down)
+    Vector2 leftSpike = new Vector2(
+        headLeft.X - MathF.Sin(swingAngle) * 10f,
+        headLeft.Y + MathF.Cos(swingAngle) * 10f
+    );
+    Raylib.DrawLineEx(headLeft, leftSpike, 3,
+        new Color((byte)160, (byte)160, (byte)170, (byte)255)); 
+
+    // right spike
+    Vector2 rightSpike = new Vector2(
+        headRight.X - MathF.Sin(swingAngle) * 10f,
+        headRight.Y + MathF.Cos(swingAngle) * 10f
+    );
+    Raylib.DrawLineEx(headRight, rightSpike, 3,
+        new Color((byte)140, (byte)140, (byte)150, (byte)255));
+    
+}
         public void TakeDamage(int damage)
 {
     if (damageCooldown > 0) return;
@@ -13527,9 +13587,26 @@ void DrawFacingDown(int x, int y)
 {
     // head
     Raylib.DrawCircle(x + 20, y + 12, 12, SkinColor);
+
     // eyes
     Raylib.DrawCircle(x + 15, y + 11, 2, Color.Black);
     Raylib.DrawCircle(x + 25, y + 11, 2, Color.Black);
+
+        if (Program.armorHelmet != null)
+{
+    Color hc = new Color((byte)120, (byte)80, (byte)30, (byte)255);
+    if (Program.armorHelmet.Contains("Iron"))  hc = new Color((byte)120, (byte)120, (byte)130, (byte)255);
+    if (Program.armorHelmet.Contains("Steel")) hc = new Color((byte)160, (byte)165, (byte)175, (byte)255);
+
+    // dome over top of head
+    Raylib.DrawRectangle(x + 10, y + 2, 20, 10, hc);
+    // visor brim
+    Raylib.DrawRectangle(x + 8, y + 11, 24, 4, hc);
+    // cheek guards
+    Raylib.DrawRectangle(x + 8,  y + 10, 5, 8, hc);
+    Raylib.DrawRectangle(x + 27, y + 10, 5, 8, hc);
+}
+
     // mouth
     Raylib.DrawRectangle(x + 15, y + 17, 10, 2, new Color((byte)150,(byte)80,(byte)80,(byte)255));
     // body/shirt
@@ -13557,6 +13634,17 @@ void DrawFacingDown(int x, int y)
         Raylib.DrawRectangle(x + 10, y + 54, 8, 12, PantsColor);
         Raylib.DrawRectangle(x + 22, y + 54, 8, 12, PantsColor);
     }
+    if (Program.armorBoots != null)
+{
+    Color bc = new Color((byte)100, (byte)65, (byte)25, (byte)255);
+    if (Program.armorBoots.Contains("Iron")) bc = new Color((byte)120, (byte)120, (byte)130, (byte)255);
+    if (Program.armorBoots.Contains("Steel")) bc = new Color((byte)160, (byte)165, (byte)175, (byte)255);
+
+    // left boot
+    Raylib.DrawRectangle(x + 9, y + 63, 10, 7, bc);
+    // right boot
+    Raylib.DrawRectangle(x + 21, y + 63, 10, 7, bc);
+}
 }
 
 void DrawFacingUp(int x, int y)
@@ -13631,6 +13719,34 @@ void DrawFacingLeft(int x, int y)
         Raylib.DrawRectangle(x + 8,  y + 54, 8, 12, PantsColor);
         Raylib.DrawRectangle(x + 16, y + 54, 8, 12, PantsColor);
     }
+    if (Program.armorBoots != null)
+{
+    Color bc = new Color((byte)100, (byte)65, (byte)25, (byte)255);
+    if (Program.armorBoots.Contains("Iron"))  bc = new Color((byte)120, (byte)120, (byte)130, (byte)255);
+    if (Program.armorBoots.Contains("Steel")) bc = new Color((byte)160, (byte)165, (byte)175, (byte)255);
+
+    if (isMoving)
+    {
+        if (walkFrame)
+        {
+            // left leg forward — boot at bottom of forward leg
+            Raylib.DrawRectangle(x + 6,  y + 56 + 8,  10, 6, bc); // forward foot
+            Raylib.DrawRectangle(x + 14, y + 56 - 8 + 8, 10, 6, bc); // back foot (raised)
+        }
+        else
+        {
+            // legs swapped
+            Raylib.DrawRectangle(x + 6,  y + 56 - 8 + 8, 10, 6, bc); // back foot (raised)
+            Raylib.DrawRectangle(x + 14, y + 56 + 8,     10, 6, bc); // forward foot
+        }
+    }
+    else
+    {
+        // standing still — boots sit flat at bottom of each leg
+        Raylib.DrawRectangle(x + 6,  y + 62, 10, 6, bc);
+        Raylib.DrawRectangle(x + 14, y + 62, 10, 6, bc);
+    }
+}
 }
 
 void DrawFacingRight(int x, int y)
@@ -13679,169 +13795,179 @@ void DrawHeldItem(int x, int y, string tool)
     switch (Facing)
     {
         case FacingDirection.Right:
+        int armSwingRight = isMoving ? (walkFrame ? 3 : -3) : 0; 
             switch (tool)
             {
                 case "Axe":
-                    Raylib.DrawLineEx(new Vector2(x + 25, y + 40), new Vector2(x + 45, y + 40), 5,
+                    Raylib.DrawLineEx(new Vector2(x + 25, y + 40 + armSwingRight), new Vector2(x + 45, y + 40 + armSwingRight), 5,
                         new Color((byte)120,(byte)80,(byte)30,(byte)255));
-                    Raylib.DrawLineEx(new Vector2(x + 41 , y + 40), new Vector2(x + 41, y + 48), 6,
+                    Raylib.DrawLineEx(new Vector2(x + 41 , y + 40 + armSwingRight), new Vector2(x + 41, y + 48 + armSwingRight), 6,
                         new Color((byte)160,(byte)160,(byte)170,(byte)255));
                     break;
                 case "Pickaxe":
-                    Raylib.DrawLineEx(new Vector2(x + 25, y + 40), new Vector2(x + 45, y + 40), 5,
+                if (isMining)
+                    DrawPickaxeSwing(x, y);
+                    else
+                    {
+                    Raylib.DrawLineEx(new Vector2(x + 25, y + 40 + armSwingRight), new Vector2(x + 45, y + 40 + armSwingRight), 5,
                         new Color((byte)120,(byte)80,(byte)30,(byte)255));
-                    Raylib.DrawLineEx(new Vector2(x + 45, y + 34), new Vector2(x + 45, y + 44), 3,
+                    Raylib.DrawLineEx(new Vector2(x + 45, y + 34 + armSwingRight), new Vector2(x + 45, y + 44 + armSwingRight), 3,
                         new Color((byte)160,(byte)160,(byte)170,(byte)255));
                     Raylib.DrawTriangle(
-                        new Vector2(x + 46, y + 44),
-                        new Vector2(x + 43, y + 44),
-                        new Vector2(x + 37, y + 52),
+                        new Vector2(x + 46, y + 44 + armSwingRight),
+                        new Vector2(x + 43, y + 44 + armSwingRight),
+                        new Vector2(x + 37, y + 52 + armSwingRight),
                         new Color((byte)160,(byte)160,(byte)170,(byte)255));
                     Raylib.DrawTriangle(
-                        new Vector2(x + 43, y + 34),
-                        new Vector2(x + 46, y + 34),
-                        new Vector2(x + 40, y + 30),
+                        new Vector2(x + 43, y + 34 + armSwingRight),
+                        new Vector2(x + 46, y + 34 + armSwingRight),
+                        new Vector2(x + 40, y + 30 + armSwingRight),
                         new Color((byte)160,(byte)160,(byte)170,(byte)255));
+                    }
                     break;
                 case "Stick":
-                    Raylib.DrawLineEx(new Vector2(x + 25, y + 40), new Vector2(x + 45, y + 40), 5,
+                    Raylib.DrawLineEx(new Vector2(x + 25, y + 40 + armSwingRight), new Vector2(x + 45, y + 40 + armSwingRight), 5,
                         new Color((byte)120,(byte)80,(byte)30,(byte)255));
-                  //  Raylib.DrawLineEx(new Vector2(x + 44, y + 20), new Vector2(x + 46, y + 17), 4,
-                   //     new Color((byte)100,(byte)60,(byte)20,(byte)255));
                     break;
                 case "Sword":
-                    Raylib.DrawLineEx(new Vector2(x + 25, y + 40), new Vector2(x + 35, y + 40), 5,
+                    Raylib.DrawLineEx(new Vector2(x + 25, y + 40 + armSwingRight), new Vector2(x + 35, y + 40 + armSwingRight), 5,
                         new Color((byte)120,(byte)80,(byte)30,(byte)255));
-                    Raylib.DrawLineEx(new Vector2(x + 35, y + 40), new Vector2(x + 48, y + 40), 4,
+                    Raylib.DrawLineEx(new Vector2(x + 35, y + 40 + armSwingRight), new Vector2(x + 48, y + 40 + armSwingRight), 4,
                         new Color((byte)180,(byte)190,(byte)200,(byte)255));
                     Raylib.DrawTriangle(
-                    new Vector2(x + 48, y + 42),  // bottom left first
-                    new Vector2(x + 53, y + 40),  // right point
-                    new Vector2(x + 48, y + 38),  // top left last
+                    new Vector2(x + 48, y + 42 + armSwingRight),  
+                    new Vector2(x + 53, y + 40 + armSwingRight),  
+                    new Vector2(x + 48, y + 38 + armSwingRight),  
                     new Color((byte)200,(byte)210,(byte)220,(byte)255));
-                    Raylib.DrawLineEx(new Vector2(x + 34, y + 36 ), new Vector2(x + 34, y + 44), 5,
+                    Raylib.DrawLineEx(new Vector2(x + 34, y + 36 + armSwingRight), new Vector2(x + 34, y + 44 + armSwingRight), 5,
                         new Color((byte)180,(byte)140,(byte)40,(byte)255));
                     break;
                 case "Rod":
-                    Raylib.DrawLineEx(new Vector2(x + 26, y + 40), new Vector2(x + 46, y + 26), 4,
+                    Raylib.DrawLineEx(new Vector2(x + 26, y + 40 + armSwingRight), new Vector2(x + 46, y + 26 + armSwingRight), 4,
                         new Color((byte)120,(byte)80,(byte)30,(byte)255));
-                    Raylib.DrawLineEx(new Vector2(x + 46, y + 26), new Vector2(x + 62, y + 40), 2,
+                    Raylib.DrawLineEx(new Vector2(x + 46, y + 26 + armSwingRight), new Vector2(x + 62, y + 40 + armSwingRight), 2,
                         new Color((byte)200,(byte)200,(byte)200,(byte)255));
-                    Raylib.DrawCircle(x + 62, y + 40, 3,
+                    Raylib.DrawCircle(x + 62, y + 40 + armSwingRight, 3,
                         new Color((byte)100,(byte)180,(byte)220,(byte)255));
                     break;
                 case "Torch":
-                    Raylib.DrawLineEx(new Vector2(x + 36, y + 30), new Vector2(x + 50, y + 18), 5,
+                    Raylib.DrawLineEx(new Vector2(x + 36, y + 30 + armSwingRight), new Vector2(x + 50, y + 18 + armSwingRight), 5,
                         new Color((byte)120,(byte)80,(byte)30,(byte)255));
-                    Raylib.DrawCircle(x + 50, y + 16, 5,
+                    Raylib.DrawCircle(x + 50, y + 16 + armSwingRight, 5,
                         new Color((byte)255,(byte)180,(byte)0,(byte)255));
-                    Raylib.DrawCircle(x + 50, y + 16, 9,
+                    Raylib.DrawCircle(x + 50, y + 16 + armSwingRight, 9,
                         new Color((byte)255,(byte)100,(byte)0,(byte)60));
                     break;
             }
             break;
 
         case FacingDirection.Left:
+            int armSwingLeft = isMoving ? (walkFrame ? 3 : -3) : 0;
             switch (tool)
             {
                 case "Axe":
-                    Raylib.DrawLineEx(new Vector2(x + 15, y + 40), new Vector2(x - 5, y + 40), 5,
+                    Raylib.DrawLineEx(new Vector2(x + 15, y + 40 + armSwingLeft), new Vector2(x - 5, y + 40 + armSwingLeft), 5,
                         new Color((byte)120,(byte)80,(byte)30,(byte)255));
-                    Raylib.DrawLineEx(new Vector2(x - 1 , y + 40), new Vector2(x - 1, y + 48), 6,
+                    Raylib.DrawLineEx(new Vector2(x - 1 , y + 40 + armSwingLeft), new Vector2(x - 1, y + 48 + armSwingLeft), 6,
                         new Color((byte)160,(byte)160,(byte)170,(byte)255));
                     break;
                 case "Pickaxe":
-                    Raylib.DrawLineEx(new Vector2(x + 15, y + 40), new Vector2(x - 5, y + 40), 5,
+                    Raylib.DrawLineEx(new Vector2(x + 15, y + 40 + armSwingLeft), new Vector2(x - 5, y + 40 + armSwingLeft), 5,
                         new Color((byte)120,(byte)80,(byte)30,(byte)255));
-                    Raylib.DrawLineEx(new Vector2(x - 5, y + 34), new Vector2(x - 5, y + 44), 3,
+                    Raylib.DrawLineEx(new Vector2(x - 5, y + 34 + armSwingLeft), new Vector2(x - 5, y + 44 + armSwingLeft), 3,
                         new Color((byte)160,(byte)160,(byte)170,(byte)255));
                     Raylib.DrawTriangle(
-                        new Vector2(x - 3, y + 44),
-                        new Vector2(x - 6, y + 44),
-                        new Vector2(x + 3, y + 52),
+                        new Vector2(x - 3, y + 44 + armSwingLeft),
+                        new Vector2(x - 6, y + 44 + armSwingLeft),
+                        new Vector2(x + 3, y + 52 + armSwingLeft),
                         new Color((byte)160,(byte)160,(byte)170,(byte)255));
                     Raylib.DrawTriangle(
-                        new Vector2(x - 3, y + 34),
-                        new Vector2(x, y + 30),
-                        new Vector2(x - 6, y + 34),  
+                        new Vector2(x - 3, y + 34 + armSwingLeft),
+                        new Vector2(x, y + 30 + armSwingLeft),
+                        new Vector2(x - 6, y + 34 + armSwingLeft),  
                         new Color((byte)160,(byte)160,(byte)170,(byte)255));
                     break;
                 case "Stick":
-                    Raylib.DrawLineEx(new Vector2(x + 15, y + 40), new Vector2(x - 5, y + 40), 5,
+                    Raylib.DrawLineEx(new Vector2(x + 15, y + 40 + armSwingLeft), new Vector2(x - 5, y + 40 + armSwingLeft), 5,
                         new Color((byte)120,(byte)80,(byte)30,(byte)255));
                     break;
                 case "Sword":
-                    Raylib.DrawLineEx(new Vector2(x + 15, y + 40), new Vector2(x + 5, y + 40), 5,
+                    Raylib.DrawLineEx(new Vector2(x + 15, y + 40 + armSwingLeft), new Vector2(x + 5, y + 40 + armSwingLeft), 5,
                         new Color((byte)120,(byte)80,(byte)30,(byte)255));
-                    Raylib.DrawLineEx(new Vector2(x + 5, y + 40), new Vector2(x - 8, y + 40), 4,
+                    Raylib.DrawLineEx(new Vector2(x + 5, y + 40 + armSwingLeft), new Vector2(x - 8, y + 40 + armSwingLeft), 4,
                         new Color((byte)180,(byte)190,(byte)200,(byte)255));
                     Raylib.DrawTriangle(
-                    new Vector2(x - 12, y + 40),  
-                    new Vector2(x - 8, y + 42),  
-                    new Vector2(x - 8, y + 38),  
+                    new Vector2(x - 12, y + 40 + armSwingLeft),  
+                    new Vector2(x - 8, y + 42 + armSwingLeft),  
+                    new Vector2(x - 8, y + 38 + armSwingLeft),  
                     new Color((byte)200,(byte)210,(byte)220,(byte)255));
-                    Raylib.DrawLineEx(new Vector2(x + 6, y + 36 ), new Vector2(x + 6, y + 44), 5,
+                    Raylib.DrawLineEx(new Vector2(x + 6, y + 36 + armSwingLeft ), new Vector2(x + 6, y + 44 + armSwingLeft), 5,
                         new Color((byte)180,(byte)140,(byte)40,(byte)255));
                     break;
                 case "Rod":
-                    Raylib.DrawLineEx(new Vector2(x + 14, y + 40), new Vector2(x - 6, y + 26), 4,
+                    Raylib.DrawLineEx(new Vector2(x + 14, y + 40 + armSwingLeft), new Vector2(x - 6, y + 26 + armSwingLeft), 4,
                         new Color((byte)120,(byte)80,(byte)30,(byte)255));
-                    Raylib.DrawLineEx(new Vector2(x - 6, y + 26), new Vector2(x - 22, y + 40), 2,
+                    Raylib.DrawLineEx(new Vector2(x - 6, y + 26 + armSwingLeft), new Vector2(x - 22, y + 40 + armSwingLeft), 2,
                         new Color((byte)200,(byte)200,(byte)200,(byte)255));
-                    Raylib.DrawCircle(x - 22, y + 40, 3,
+                    Raylib.DrawCircle(x - 22, y + 40 + armSwingLeft, 3,
                         new Color((byte)100,(byte)180,(byte)220,(byte)255));
                     break;
                 case "Torch":
-                    Raylib.DrawLineEx(new Vector2(x + 4, y + 30), new Vector2(x - 10, y + 18), 5,
+                    Raylib.DrawLineEx(new Vector2(x + 4, y + 30 + armSwingLeft), new Vector2(x - 10, y + 18 + armSwingLeft), 5,
                         new Color((byte)120,(byte)80,(byte)30,(byte)255));
-                    Raylib.DrawCircle(x - 10, y + 16, 5,
+                    Raylib.DrawCircle(x - 10, y + 16 + armSwingLeft, 5,
                         new Color((byte)255,(byte)180,(byte)0,(byte)255));
-                    Raylib.DrawCircle(x - 10, y + 16, 9,
+                    Raylib.DrawCircle(x - 10, y + 16 + armSwingLeft, 9,
                         new Color((byte)255,(byte)100,(byte)0,(byte)60));
                     break;
             }
             break;
 
         case FacingDirection.Down:
+        int armSwingDown = isMoving ? (walkFrame ? -3 : 3) : 0; 
             switch (tool)
             {
                 case "Axe":
-                    Raylib.DrawLineEx(new Vector2(x + 30, y + 28), new Vector2(x + 44, y + 40), 5,
+                    Raylib.DrawLineEx(new Vector2(x + 35, y + 38 + armSwingDown), new Vector2(x + 35, y + 14 + armSwingDown), 5,
                         new Color((byte)120,(byte)80,(byte)30,(byte)255));
-                    Raylib.DrawLineEx(new Vector2(x - 1 , y + 40), new Vector2(x - 1, y + 48), 6,
+                    Raylib.DrawLineEx(new Vector2(x + 35 , y + 15 + armSwingDown), new Vector2(x + 35, y + 21 + armSwingDown), 3,
                         new Color((byte)160,(byte)160,(byte)170,(byte)255));
                     break;
                 case "Pickaxe":
-                    Raylib.DrawLineEx(new Vector2(x + 30, y + 28), new Vector2(x + 44, y + 48), 5,
+                    Raylib.DrawLineEx(new Vector2(x + 35, y + 38 + armSwingDown), new Vector2(x + 35, y + 14 + armSwingDown), 5,
                         new Color((byte)120,(byte)80,(byte)30,(byte)255));
-                    Raylib.DrawLineEx(new Vector2(x + 36, y + 38), new Vector2(x + 54, y + 32), 3,
+                    Raylib.DrawLineEx(new Vector2(x + 35, y + 14 + armSwingDown), new Vector2(x + 35, y + 18 + armSwingDown), 5,
                         new Color((byte)160,(byte)160,(byte)170,(byte)255));
+                    Raylib.DrawTriangle(
+                        new Vector2(x + 37, y + 18 + armSwingDown),
+                        new Vector2(x + 33, y + 18 + armSwingDown),
+                        new Vector2(x + 35, y + 28 + armSwingDown),
+                        new Color((byte)160,(byte)160,(byte)170,(byte)255));
+                    
                     break;
                 case "Stick":
-                    Raylib.DrawLineEx(new Vector2(x + 35, y + 38), new Vector2(x + 35, y + 14), 5,
+                    Raylib.DrawLineEx(new Vector2(x + 35, y + 38 + armSwingDown), new Vector2(x + 35, y + 14 + armSwingDown), 5,
                         new Color((byte)120,(byte)80,(byte)30,(byte)255));
-                  //  Raylib.DrawLineEx(new Vector2(x + 35, y + 14), new Vector2(x + 35, y + 10), 4,
-                   //     new Color((byte)100,(byte)60,(byte)20,(byte)255));
                     break;
                 case "Sword":
-                    Raylib.DrawLineEx(new Vector2(x + 30, y + 32), new Vector2(x + 46, y + 16), 5,
+                    Raylib.DrawLineEx(new Vector2(x + 35, y + 38 + armSwingDown), new Vector2(x + 35, y + 33 + armSwingDown), 5,
                         new Color((byte)120,(byte)80,(byte)30,(byte)255));
-                    Raylib.DrawLineEx(new Vector2(x + 38, y + 22), new Vector2(x + 52, y + 8), 4,
+                    Raylib.DrawLineEx(new Vector2(x + 35, y + 33 + armSwingDown), new Vector2(x + 35, y + 18 + armSwingDown), 3,
                         new Color((byte)180,(byte)190,(byte)200,(byte)255));
                     Raylib.DrawTriangle(
-                        new Vector2(x + 50, y + 6),
-                        new Vector2(x + 56, y + 2),
-                        new Vector2(x + 54, y + 12),
+                        new Vector2(x + 34, y + 18 + armSwingDown),
+                        new Vector2(x + 36, y + 18 + armSwingDown),
+                        new Vector2(x + 35, y + 10 + armSwingDown),
                         new Color((byte)200,(byte)210,(byte)220,(byte)255));
-                    Raylib.DrawLineEx(new Vector2(x + 34, y + 26), new Vector2(x + 44, y + 18), 7,
+                    Raylib.DrawLineEx(new Vector2(x + 32, y + 33 + armSwingDown), new Vector2(x + 38, y + 33 + armSwingDown), 4,
                         new Color((byte)180,(byte)140,(byte)40,(byte)255));
                     break;
                 case "Rod":
-                    Raylib.DrawLineEx(new Vector2(x + 30, y + 26), new Vector2(x + 46, y + 12), 4,
+                    Raylib.DrawLineEx(new Vector2(x + 35, y + 38 + armSwingDown), new Vector2(x + 35, y + 14 + armSwingDown), 5,
                         new Color((byte)120,(byte)80,(byte)30,(byte)255));
-                    Raylib.DrawLineEx(new Vector2(x + 46, y + 12), new Vector2(x + 58, y + 24), 2,
+                    Raylib.DrawLineEx(new Vector2(x + 35 , y + 15 + armSwingDown), new Vector2(x + 35, y + 40 + armSwingDown), 2,
                         new Color((byte)200,(byte)200,(byte)200,(byte)255));
-                    Raylib.DrawCircle(x + 58, y + 24, 3,
+                    Raylib.DrawCircle(x + 35, y + 40 + armSwingDown, 3,
                         new Color((byte)100,(byte)180,(byte)220,(byte)255));
                     break;
                 case "Torch":
@@ -13856,46 +13982,45 @@ void DrawHeldItem(int x, int y, string tool)
             break;
 
         case FacingDirection.Up:
+        int armSwingUp = isMoving ? (walkFrame ? 3 : -3) : 0; // + armSwingUp
             switch (tool)
             {
                 case "Axe":
-                    Raylib.DrawLineEx(new Vector2(x + 30, y + 28), new Vector2(x + 16, y + 48), 5,
+                    Raylib.DrawLineEx(new Vector2(x + 5, y + 26 + armSwingUp), new Vector2(x + 5, y + 15 + armSwingUp), 4,
                         new Color((byte)120,(byte)80,(byte)30,(byte)255));
-                    Raylib.DrawTriangle(
-                        new Vector2(x + 16, y + 42),
-                        new Vector2(x + 6,  y + 38),
-                        new Vector2(x + 10, y + 52),
+                    Raylib.DrawLineEx(new Vector2(x + 5, y + 15 + armSwingUp), new Vector2(x + 5, y + 18 + armSwingUp), 4,
                         new Color((byte)160,(byte)160,(byte)170,(byte)255));
                     break;
                 case "Pickaxe":
-                    Raylib.DrawLineEx(new Vector2(x + 30, y + 28), new Vector2(x + 16, y + 48), 5,
+                    Raylib.DrawLineEx(new Vector2(x + 5, y + 26 + armSwingUp), new Vector2(x + 5, y + 15 + armSwingUp), 4,
                         new Color((byte)120,(byte)80,(byte)30,(byte)255));
-                    Raylib.DrawLineEx(new Vector2(x + 22, y + 38), new Vector2(x + 4, y + 32), 3,
+                    Raylib.DrawLineEx(new Vector2(x + 5, y + 15 + armSwingUp), new Vector2(x + 5, y + 12 + armSwingUp), 4,
+                        new Color((byte)160,(byte)160,(byte)170,(byte)255));
+                    Raylib.DrawTriangle(
+                        new Vector2(x + 7, y + 15 + armSwingUp),
+                        new Vector2(x + 3, y + 15 + armSwingUp),
+                        new Vector2(x + 5, y + 22 + armSwingUp),
                         new Color((byte)160,(byte)160,(byte)170,(byte)255));
                     break;
                 case "Stick":
-                    Raylib.DrawLineEx(new Vector2(x + 30, y + 26), new Vector2(x + 14, y + 50), 5,
+                    Raylib.DrawLineEx(new Vector2(x + 5, y + 26 + armSwingUp), new Vector2(x + 5, y + 14 + armSwingUp), 4,
                         new Color((byte)120,(byte)80,(byte)30,(byte)255));
                     break;
                 case "Sword":
-                    Raylib.DrawLineEx(new Vector2(x + 10, y + 34), new Vector2(x - 6, y + 18), 5,
-                        new Color((byte)120,(byte)80,(byte)30,(byte)255));
-                    Raylib.DrawLineEx(new Vector2(x + 2, y + 24), new Vector2(x - 14, y + 8), 4,
+                    Raylib.DrawLineEx(new Vector2(x + 5, y + 26 + armSwingUp), new Vector2(x + 5, y + 14 + armSwingUp), 4,
                         new Color((byte)180,(byte)190,(byte)200,(byte)255));
                     Raylib.DrawTriangle(
-                        new Vector2(x - 12, y + 6),
-                        new Vector2(x - 18, y + 2),
-                        new Vector2(x - 16, y + 12),
+                        new Vector2(x + 3, y + 14 + armSwingUp),
+                        new Vector2(x + 7, y + 14 + armSwingUp),
+                        new Vector2(x + 5, y + 10 + armSwingUp),
                         new Color((byte)200,(byte)210,(byte)220,(byte)255));
-                    Raylib.DrawLineEx(new Vector2(x + 6, y + 28), new Vector2(x - 6, y + 20), 7,
-                        new Color((byte)180,(byte)140,(byte)40,(byte)255));
                     break;
                 case "Rod":
-                    Raylib.DrawLineEx(new Vector2(x + 10, y + 28), new Vector2(x - 6, y + 14), 4,
+                    Raylib.DrawLineEx(new Vector2(x + 5, y + 26 + armSwingUp), new Vector2(x + 5, y + 14 + armSwingUp), 4,
                         new Color((byte)120,(byte)80,(byte)30,(byte)255));
-                    Raylib.DrawLineEx(new Vector2(x - 6, y + 14), new Vector2(x - 20, y + 28), 2,
+                    Raylib.DrawLineEx(new Vector2(x + 7, y + 14 + armSwingUp), new Vector2(x + 7, y + 26 + armSwingUp), 1,
                         new Color((byte)200,(byte)200,(byte)200,(byte)255));
-                    Raylib.DrawCircle(x - 20, y + 28, 3,
+                    Raylib.DrawCircle(x + 5, y + 48 + armSwingUp, 3,
                         new Color((byte)100,(byte)180,(byte)220,(byte)255));
                     break;
                 case "Torch":
