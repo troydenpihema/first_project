@@ -13,7 +13,8 @@ namespace OpenWorldRPG
         MainMenu,
         World,
         Building,
-        Minigame
+        Minigame,
+        Dungeon
     }
 
               public enum SlotSymbol
@@ -37,18 +38,23 @@ public static class SlotData
         (SlotSymbol.Seven, 3)
     };
 
-    // Multiplier applied to the bet when you land 3-in-a-row of a symbol
     public static readonly Dictionary<SlotSymbol, int> ThreeMatchMultiplier = new()
-    {
-        { SlotSymbol.Cherry, 2 },
-        { SlotSymbol.Lemon, 3 },
-        { SlotSymbol.Bell, 5 },
-        { SlotSymbol.Star, 10 },
-        { SlotSymbol.Seven, 25 } // jackpot
-    };
+{
+    { SlotSymbol.Cherry, 2  },   // common — get double your bet
+    { SlotSymbol.Lemon,  4  },   // slightly better
+    { SlotSymbol.Bell,   10 },   // mid-tier
+    { SlotSymbol.Star,   20 },   // rare — good payout
+    { SlotSymbol.Seven,  50 },   // jackpot
+};
 
-    // Multiplier for 2-in-a-row (any symbol, smaller payout)
-    public const float TwoMatchMultiplier = 1.0f;
+public static readonly Dictionary<SlotSymbol, float> TwoMatchMultiplier = new()
+{
+    { SlotSymbol.Cherry, 0f   },  // two cherries — nothing, too common
+    { SlotSymbol.Lemon,  0.5f },  // get half your bet back
+    { SlotSymbol.Bell,   1f   },  // break even
+    { SlotSymbol.Star,   2f   },  // small win
+    { SlotSymbol.Seven,  5f   },  // two sevens — nice payout
+};
 
     public static SlotSymbol GetRandomSymbol()
     {
@@ -116,11 +122,23 @@ public static class SlotData
         static int toolbarSelectedSlot = 0;
         static string[] toolbarSlots = new string[8]; // null = empty
         static bool torchActive = false;
+        // Dungeon
+        static Dungeon activeDungeon = new Dungeon();
+        static bool dungeonQuitConfirm = false;
+        static List<(Vector2 pos, string type, string name)> dungeonEntrances = new();
         static List<NPC> dbarTableNPCs = new();
         public static PokieMachine activePokieMachine = new PokieMachine();
-        enum MinigameType { None, Pokie, Pool }
+        public static DartsGame activeDartsGame = new DartsGame();
+        enum MinigameType { None, Pokie, Pool, Darts, Bowling, Claw, Pinball, AirHockey, PianoTiles, Flappy, MiniGolf}
         static MinigameType activeMinigameType = MinigameType.None;
         static PoolGame activePoolGame = new PoolGame();
+        static BowlingGame activeBowlingGame = new BowlingGame();
+        static ClawMachine activeClawMachine = new ClawMachine();
+        static PinballGame activePinballGame = new PinballGame();
+        static AirHockeyGame activeAirHockeyGame = new AirHockeyGame();
+        static PianoTilesGame activePianoTilesGame = new PianoTilesGame();
+        static FlappyBirdGame activeFlappyGame = new FlappyBirdGame();
+        static MiniGolfGame activeMiniGolfGame = new MiniGolfGame();
         static NPC dbarPokieNPC = null;
         // Dealer UI state
         enum DealerType { None, Bike, Barn, Car }
@@ -150,9 +168,20 @@ public static class SlotData
         static bool stickPickedUp = false;
         static Vector2 swordPosition = new Vector2(-1170, -7740);
         static bool swordPickedUp = false;
+        static bool bowPickedUp = false;
+        static bool crossbowPickedUp = false;
+        static Vector2 bowSpawnPos = new Vector2(800, -400);
+        static Vector2 crossbowSpawnPos = new Vector2(1000, -400);
+
+        // Weapons menu
+        static string equipped1H = null;     // one-handed weapon
+        static string equipped2H = null;     // two-handed weapon
+        static string equippedAmmo = null;
 
         // Armor Menu
         static bool armorMenuOpen = false;
+        static bool gearTestMode = false;   // false = OWNED, true = TEST catalog
+
 
         // Armor slots — null = empty
         public static string armorHelmet = null;
@@ -188,10 +217,17 @@ public static class SlotData
         static bool skillsOpen = false;
         static bool hoverWoodcutting = false;
         static bool hoverMining = false;
+        static bool hoverGambling = false;
+        static bool hoverRiding   = false;
+        static bool hoverCycling  = false;
         static bool hoverFishing = false;
         static bool hoverStrength = false;
         static bool hoverAthletics = false;
         static bool hoverDriving = false;
+        static bool hoverSwimming = false;
+        static bool hoverDiving = false;
+        static bool hoverSports = false;
+        static bool hoverRanged = false;
         static bool questsOpen = false;
         static List<GasStation> gasStations = new();
         static List<Quest> quests = new();
@@ -200,6 +236,7 @@ public static class SlotData
         static bool hoverCombat = false;
         static bool shopOpen = false;
         static bool shopUIOpen = false;
+        static bool shopBuyMode = false;   
         static bool barMenuOpen = false;
         static int barSelectedDrink = -1;
         static int shopSelectedItem = -1;
@@ -218,9 +255,11 @@ public static class SlotData
         static int minimapX = 20;
         static int minimapY = 20;
         static float minimapScale = 0.02f;
+        static float worldMapZoom = 1f;
         static bool isRaining = false;
         static float rainTimer = 0f;
-        static float rainInterval = 30f;
+        static float rainInterval = 500f;
+        static float rainDuration = 30f;
         //Sound
         static Music musicMainMenu;
         static Music musicForest;
@@ -344,6 +383,7 @@ public static class SlotData
         static Building currentBuilding = null;
         static float shakeDuration = 0f;
         static float shakeMagnitude = 6f;
+    
         // ── SWIMMING ──
         static bool swimmingActive = false;
         static string swimmingPoolType = ""; // "lane" or "diving"
@@ -359,19 +399,65 @@ public static class SlotData
         static float divingFallTimer = 0f;
         static string divingResult = "";
         static float divingResultTimer = 0f;
+        static float swimSpeed = 0f;          // current momentum
+        static bool swimLeftNext = true;      // which stroke key is expected
+        static float swimStrokeWindow = 0f;   // timing window feedback
+        static int swimPerfectStrokes = 0;
+
+        static int divingStage = 0;           // 0 = power, 1 = rotation timing, 2 = entry, 3 = result
+        static float divingPower = 0f;
+        static bool divingPowerUp = true;
+        static float divingRotation = 0f;
+        static float divingRotDir = 1f;
+        static float divingEntry = 0f;
+        static bool divingEntryUp = true;
 
         // ── TENNIS ──
+        // match state
         static bool tennisActive = false;
-        static Vector2 tennisBallPos = new Vector2(400, 300);
-        static Vector2 tennisBallVel = new Vector2(200, 150);
-        static float tennisPlayerPaddleY = 270f;
-        static float tennisAIPaddleY = 270f;
+        static bool tennisDifficultySelect = false;
         static int tennisPlayerScore = 0;
         static int tennisAIScore = 0;
+        static int tennisPointsToWin = 7;
+
+        // players (top-down positions on court)
+        static Vector2 tennisPlayerPos;
+        static Vector2 tennisAIPos;
+        static float tennisPlayerSpeed = 240f;
+        static float tennisAIMaxSpeed = 240f;
+        static float tennisAILead = 0.12f;
+
+        // ball — has a current position and a target it's travelling toward (bounce point)
+        static Vector2 tennisBallPos;
+        static Vector2 tennisBallStart;
+        static Vector2 tennisBallTarget;
+        static float tennisBallT = 0f;          // 0..1 progress along the shot
+        static float tennisBallDuration = 0f;   // seconds for the shot to land
+        static bool tennisBallInFlight = false;
+        static bool tennisBallToPlayer = true;  // who the ball is heading toward
+        static bool tennisBallBounced = false;  // has it hit the ground yet this shot
+
+        // serve
+        static int tennisServePhase = 0;        // 0 none, 1 ready, 2 tossed
+        static bool tennisPlayerServing = true;
+        static float tennisServeToss = 0f;      // power bar while serving
+        static bool tennisServeTossUp = true;
+        static float tennisServeTimer = 0f;     // AI serve delay
+
+        // swing
         static float tennisSwingCooldown = 0f;
-        static bool tennisServing = true;
-        static float tennisMessageTimer = 0f;
+        static float tennisSwingTimer = 0f;     // active swing window
+        static bool tennisSwinging = false;
+
         static string tennisMessage = "";
+        static float tennisMessageTimer = 0f;
+        static string tennisLastResult = "";
+        // court bounds in interior screen space
+        const float CourtLeft = 120f;
+        const float CourtRight = 1160f;
+        const float CourtTop = 120f;
+        const float CourtBottom = 600f;
+        const float CourtMidX = (CourtLeft + CourtRight) / 2f;   // the net
 
         // ── BASKETBALL ──
         static bool basketballActive = false;
@@ -386,6 +472,25 @@ public static class SlotData
         static string bbMessage = "";
         static float bbMessageTimer = 0f;
         static bool bbPowerLocked = false;
+        // DropZone
+        static bool dropZoneFoodMenuOpen = false;
+        static bool prizeCounterOpen = false;
+
+        static void BuyDropZoneItem(string name, int cost, int heal)
+        {
+            if (player.Money >= cost)
+            {
+                player.Money -= cost;
+                player.Health = Math.Min(player.MaxHealth, player.Health + heal);
+                shopMessage = $"Bought {name}! +{heal} HP";
+                shopMessageTimer = 2f;
+            }
+            else
+            {
+                shopMessage = $"Not enough money for {name} (${cost})";
+                shopMessageTimer = 2f;
+            }
+        }
 
         // ── MCDONALD'S ──
         static bool mcdonaldsMenuOpen = false;
@@ -498,6 +603,980 @@ static void UpdateMusicFade(float dt)
         isFadingOut = false;
     }
 }
+static void AcquireGear(string item, bool announce = true)
+{
+    player.AddGear(item);
+
+    string slot = GetItemSlot(item);
+    if (slot == null) { if (announce) ShowNotification($"Got {item}!"); return; }
+
+    // figure out if the target slot is empty
+    bool slotEmpty = slot switch
+    {
+        "HELMET" => armorHelmet == null,
+        "BODY"   => armorBody   == null,
+        "LEGS"   => armorLegs   == null,
+        "BOOTS"  => armorBoots  == null,
+        "GLOVES" => armorGloves == null,
+        "CAPE"   => armorCape   == null,
+        "WEAPON" => armorWeapon == null,
+        "SHIELD" => armorShield == null,
+        _ => false
+    };
+
+    if (slotEmpty)
+    {
+        // respect two-handed rules on auto-equip
+        if (slot == "SHIELD" && IsTwoHandedWeapon(armorWeapon))
+        {
+            if (announce) ShowNotification($"Got {item} (stored — 2H weapon equipped)");
+            return;
+        }
+        if (slot == "WEAPON" && IsTwoHandedWeapon(item) && armorShield != null)
+        {
+            if (announce) ShowNotification($"Got {item} (stored — unequip shield to use)");
+            return;
+        }
+        TryEquipItem(item);
+    }
+    else if (announce)
+    {
+        ShowNotification($"Got {item}! (stored in gear)");
+    }
+}
+static bool IsGearSellable(string item)
+{
+    // basic/common gear can be sold; rare or starter gear can't
+    return item switch
+    {
+        "Leather Cap" or "Leather Vest" or "Leather Pants" or "Leather Boots" or "Leather Gloves"
+            or "Iron Helmet" or "Iron Chestplate" or "Iron Leggings" or "Iron Boots" or "Iron Gauntlets"
+            or "Wooden Shield" or "Iron Shield" or "Wool Cape" or "Sword"
+            => true,
+        // not sellable: steel tier, magic cape, two-handers, bows/crossbows
+        _ => false
+    };
+}
+
+static int GetGearSellPrice(string item)
+{
+    return item switch
+    {
+        "Leather Cap" or "Leather Vest" or "Leather Pants" or "Leather Boots" or "Leather Gloves" => 15,
+        "Iron Helmet" or "Iron Chestplate" or "Iron Leggings" or "Iron Boots" or "Iron Gauntlets" => 40,
+        "Wooden Shield" => 20,
+        "Iron Shield" => 45,
+        "Wool Cape" => 25,
+        "Sword" => 50,
+        _ => 0
+    };
+}
+static bool IsOneHandedWeapon(string w) =>
+    w == "Sword" || w == "Stick";
+
+static bool IsRangedWeapon(string w) =>
+    w == "Bow" || w == "Crossbow";
+
+// weapons the player owns, split by hand
+static List<string> OwnedOneHanded()
+{
+    var list = new List<string>();
+    foreach (var g in player.OwnedGear)
+        if (IsOneHandedWeapon(g)) list.Add(g);
+    // sword/stick may also be toolbar tools the player has
+    if (player.HasAxe && !list.Contains("Sword")) { } // adjust if you track sword ownership differently
+    return list;
+}
+
+static List<string> OwnedTwoHanded()
+{
+    var list = new List<string>();
+    foreach (var g in player.OwnedGear)
+        if (IsTwoHandedWeapon(g)) list.Add(g);
+    return list;
+}
+static void Cycle1HSlot()
+{
+    var owned = OwnedOneHanded();
+    if (owned.Count == 0) { equipped1H = null; return; }
+
+    int idx = equipped1H == null ? -1 : owned.IndexOf(equipped1H);
+    idx++;
+    if (idx >= owned.Count) { equipped1H = null; }   // cycle past last = unequip
+    else equipped1H = owned[idx];
+
+    // equipping a 1H clears the 2H (can't hold both)
+    if (equipped1H != null)
+    {
+        equipped2H = null;
+        armorWeapon = equipped1H;   // sync to gear menu slot
+    }
+    else if (equipped2H == null)
+    {
+        armorWeapon = null;
+    }
+}
+
+static void Cycle2HSlot()
+{
+    var owned = OwnedTwoHanded();
+    if (owned.Count == 0) { equipped2H = null; return; }
+
+    int idx = equipped2H == null ? -1 : owned.IndexOf(equipped2H);
+    idx++;
+    if (idx >= owned.Count) { equipped2H = null; }
+    else equipped2H = owned[idx];
+
+    if (equipped2H != null)
+    {
+        equipped1H = null;          // clear 1H
+        armorShield = null;         // 2H frees the shield
+        armorWeapon = equipped2H;   // sync to gear menu
+    }
+    else if (equipped1H == null)
+    {
+        armorWeapon = null;
+    }
+}
+
+static void CycleAmmoSlot()
+{
+    // only cycle to ammo you actually have
+    var opts = new List<string>();
+    if (player.Arrows > 0) opts.Add("Arrows");
+    if (player.Bolts > 0)  opts.Add("Bolts");
+    if (opts.Count == 0) { equippedAmmo = null; return; }
+
+    int idx = equippedAmmo == null ? -1 : opts.IndexOf(equippedAmmo);
+    idx++;
+    equippedAmmo = idx >= opts.Count ? null : opts[idx];
+}
+static void RedeemPrize(string name, int cost)
+{
+    if (player.Tickets >= cost)
+    {
+        player.Tickets -= cost;
+        player.PlushPrizes++;          // reuse your existing prize counter
+        shopMessage = $"Redeemed {name}!";
+        shopMessageTimer = 2.5f;
+    }
+    else
+    {
+        shopMessage = $"Need {cost} tickets for {name}";
+        shopMessageTimer = 2.5f;
+    }
+}
+static void AddMiniGolf(float x, float y)
+{
+    var golf = new Building(
+        new Rectangle(x, y, 180, 140),
+        new Color(40, 110, 50, 255),          // green exterior
+        new Color(30, 70, 40, 255),            // interior bg
+        new Vector2(x + 90, y + 280),
+        "MiniGolf",
+        new NPC(new Vector2(640, 640), "Golf Pro", "9 holes of putt-putt fun! Beat par for a cash prize."),
+        entryPos: new Vector2(640, 640)
+    );
+
+    golf.InteriorObjects.Clear();
+    golf.InteriorObjects.Add(new Rectangle(540, 300, 200, 90));   // the course kiosk / start tee
+
+    buildings.Add(golf);
+}
+static void StartTennisPoint(bool playerServes)
+{
+    tennisPlayerServing = playerServes;
+    tennisServePhase = 1;
+    tennisServeToss = 0f;
+    tennisServeTossUp = true;
+    tennisServeTimer = 0f;
+    tennisBallInFlight = false;
+    tennisBallBounced = false;
+    tennisSwinging = false;
+
+    // position players at their baselines
+    tennisPlayerPos = new Vector2(CourtLeft + 60, (CourtTop + CourtBottom) / 2f);
+    tennisAIPos     = new Vector2(CourtRight - 60, (CourtTop + CourtBottom) / 2f);
+
+    // ball starts at the server's racket
+    tennisBallPos = playerServes
+        ? new Vector2(tennisPlayerPos.X + 20, tennisPlayerPos.Y)
+        : new Vector2(tennisAIPos.X - 20, tennisAIPos.Y);
+}
+
+static void HitBall(Vector2 from, Vector2 target, float power, bool towardPlayer)
+{
+    tennisBallStart = from;
+    tennisBallTarget = target;
+    tennisBallPos = from;
+    tennisBallT = 0f;
+    tennisBallDuration = Math.Clamp(Vector2.Distance(from, target) / (power), 0.45f, 1.4f);
+    tennisBallInFlight = true;
+    tennisBallBounced = false;
+    tennisBallToPlayer = towardPlayer;
+}
+
+static bool InCourt(Vector2 p, bool playerHalf)
+{
+    if (p.Y < CourtTop || p.Y > CourtBottom) return false;
+    if (playerHalf) return p.X >= CourtLeft && p.X <= CourtMidX;
+    return p.X >= CourtMidX && p.X <= CourtRight;
+}
+
+static void TennisPoint(bool playerWon)
+{
+    if (playerWon)
+    {
+        tennisPlayerScore++;
+        player.AddSportsXP(8);
+        tennisLastResult = "You win the point!";
+    }
+    else
+    {
+        tennisAIScore++;
+        tennisLastResult = "AI wins the point.";
+    }
+
+    if (tennisPlayerScore >= tennisPointsToWin)
+    {
+        tennisMessage = "GAME! You win the match! +40 Sports XP";
+        tennisMessageTimer = 4f;
+        player.AddSportsXP(40);
+        tennisActive = false;
+        return;
+    }
+    if (tennisAIScore >= tennisPointsToWin)
+    {
+        tennisMessage = "Match over — AI wins.";
+        tennisMessageTimer = 4f;
+        tennisActive = false;
+        return;
+    }
+
+    tennisMessage = $"{tennisLastResult}  {tennisPlayerScore} - {tennisAIScore}";
+    tennisMessageTimer = 2f;
+    // loser serves next
+    StartTennisPoint(!playerWon ? true : false);
+}
+
+static void UpdateTennisPlay(float dt)
+{
+    const float reach = 70f;   // how close you must be to swing at the ball
+
+    // ---- PLAYER MOVEMENT (free roam own half) ----
+    Vector2 mv = Vector2.Zero;
+    if (Raylib.IsKeyDown(KeyboardKey.W) || Raylib.IsKeyDown(KeyboardKey.Up))    mv.Y -= 1;
+    if (Raylib.IsKeyDown(KeyboardKey.S) || Raylib.IsKeyDown(KeyboardKey.Down))  mv.Y += 1;
+    if (Raylib.IsKeyDown(KeyboardKey.A) || Raylib.IsKeyDown(KeyboardKey.Left))  mv.X -= 1;
+    if (Raylib.IsKeyDown(KeyboardKey.D) || Raylib.IsKeyDown(KeyboardKey.Right)) mv.X += 1;
+    if (mv != Vector2.Zero) mv = Vector2.Normalize(mv);
+    tennisPlayerPos += mv * tennisPlayerSpeed * dt;
+    tennisPlayerPos.X = Math.Clamp(tennisPlayerPos.X, CourtLeft, CourtMidX - 10);
+    tennisPlayerPos.Y = Math.Clamp(tennisPlayerPos.Y, CourtTop, CourtBottom);
+
+    // trigger a swing
+    if (tennisServePhase == 0 && tennisBallInFlight && Raylib.IsKeyPressed(KeyboardKey.Space) && tennisSwingCooldown <= 0)
+    {
+        tennisSwinging = true;
+        tennisSwingTimer = 0.25f;     // quarter-second window to connect
+        tennisSwingCooldown = 0.35f;
+    }
+
+    // swing window
+    if (tennisSwinging)
+    {
+        tennisSwingTimer -= dt;
+        if (tennisSwingTimer <= 0) tennisSwinging = false;
+    }
+
+    // ---- SERVE ----
+    if (tennisServePhase != 0)
+    {
+        if (tennisPlayerServing)
+        {
+            // hold SPACE to build toss power, release to serve
+            if (Raylib.IsKeyDown(KeyboardKey.Space))
+            {
+                tennisServePhase = 2;
+                tennisServeToss += (tennisServeTossUp ? 1f : -1f) * 1.3f * dt;
+                if (tennisServeToss >= 1f) { tennisServeToss = 1f; tennisServeTossUp = false; }
+                if (tennisServeToss <= 0f) { tennisServeToss = 0f; tennisServeTossUp = true; }
+                tennisBallPos = new Vector2(tennisPlayerPos.X + 20, tennisPlayerPos.Y);
+            }
+            else if (tennisServePhase == 2)
+            {
+                // released — serve toward AI service box
+                float power = 700f + tennisServeToss * 500f;
+                Vector2 target = new Vector2(
+                    CourtMidX + Raylib.GetRandomValue(60, (int)(CourtRight - CourtMidX - 40)),
+                    Raylib.GetRandomValue((int)CourtTop + 40, (int)CourtBottom - 40));
+                HitBall(tennisBallPos, target, power, false);
+                tennisServePhase = 0;
+            }
+        }
+        else
+        {
+            // AI serve after a short delay
+            tennisServeTimer += dt;
+            tennisBallPos = new Vector2(tennisAIPos.X - 20, tennisAIPos.Y);
+            if (tennisServeTimer > 1.0f)
+            {
+                Vector2 target = new Vector2(
+                    Raylib.GetRandomValue((int)CourtLeft + 40, (int)CourtMidX - 40),
+                    Raylib.GetRandomValue((int)CourtTop + 40, (int)CourtBottom - 40));
+                HitBall(tennisBallPos, target, 850f, true);
+                tennisServePhase = 0;
+            }
+        }
+        return;
+    }
+
+    // ---- BALL IN FLIGHT ----
+    if (tennisBallInFlight)
+    {
+        tennisBallT += dt / tennisBallDuration;
+        tennisBallPos = Vector2.Lerp(tennisBallStart, tennisBallTarget, Math.Min(tennisBallT, 1f));
+
+        // ---- AI MOVEMENT: chase the ball when it's coming to its side ----
+        if (!tennisBallToPlayer)
+        {
+            Vector2 aiTarget = tennisBallTarget;
+            Vector2 dir = aiTarget - tennisAIPos;
+            if (dir.Length() > 4f)
+                tennisAIPos += Vector2.Normalize(dir) * Math.Min(dir.Length(), tennisAIMaxSpeed * dt);
+            tennisAIPos.X = Math.Clamp(tennisAIPos.X, CourtMidX + 10, CourtRight);
+            tennisAIPos.Y = Math.Clamp(tennisAIPos.Y, CourtTop, CourtBottom);
+        }
+
+        // ball lands
+        if (tennisBallT >= 1f)
+        {
+            bool landedInPlayerHalf = tennisBallToPlayer;
+            bool landedIn = InCourt(tennisBallTarget, landedInPlayerHalf);
+
+            if (!landedIn)
+            {
+                // shot went out — point to the receiver of this shot's hitter
+                // if ball was heading to player and landed out, the hitter (AI) loses the point
+                TennisPoint(tennisBallToPlayer ? true : false);
+                return;
+            }
+
+            // ball bounced in — now the receiver must return it
+            if (tennisBallToPlayer)
+            {
+                // PLAYER must swing in time and be near the ball
+                bool near = Vector2.Distance(tennisPlayerPos, tennisBallPos) < reach;
+                if (tennisSwinging && near)
+                {
+                    // return toward AI side, aim based on player vertical position
+                    float power = 750f + Raylib.GetRandomValue(0, 200);
+                    Vector2 target = new Vector2(
+                        CourtMidX + Raylib.GetRandomValue(40, (int)(CourtRight - CourtMidX)),
+                        Math.Clamp(tennisPlayerPos.Y + Raylib.GetRandomValue(-120, 120), CourtTop, CourtBottom));
+                    HitBall(tennisBallPos, target, power, false);
+                    player.AddSportsXP(3);
+                }
+                else
+                {
+                    TennisPoint(false); // missed the return
+                }
+            }
+            else
+            {
+                // AI returns automatically if it reached the ball
+                bool aiNear = Vector2.Distance(tennisAIPos, tennisBallPos) < reach + 10f;
+                if (aiNear)
+                {
+                    float power = 720f;
+                    Vector2 target = new Vector2(
+                        Raylib.GetRandomValue((int)CourtLeft + 30, (int)CourtMidX - 20),
+                        Math.Clamp(tennisAIPos.Y + Raylib.GetRandomValue(-140, 140), CourtTop, CourtBottom));
+                    HitBall(tennisBallPos, target, power, true);
+                }
+                else
+                {
+                    TennisPoint(true); // AI couldn't reach
+                }
+            }
+        }
+    }
+}
+static void DrawInventoryUI()
+{
+    if (player.InventoryOpen)
+    {
+        int invX = ScreenWidth - 380;
+        int invY = 100;
+        int slotSize = 80;
+        int padding = 10;
+        int cols = 4;
+
+        List<(string name, int count)> items = new();
+        if (player.Logs > 0) items.Add(("Logs", player.Logs));
+        if (player.BirchLogs > 0) items.Add(("Birch Logs", player.BirchLogs));
+        if (player.OakLogs > 0) items.Add(("Oak Logs", player.OakLogs));
+        if (player.PineLogs > 0) items.Add(("Pine Logs", player.PineLogs));
+        if (player.ArcticLogs > 0) items.Add(("Arctic Logs", player.ArcticLogs));
+        if (player.DeadWood > 0) items.Add(("Dead Wood", player.DeadWood));
+        if (player.Fish > 0) items.Add(("Fish", player.Fish));
+        if (player.Bones > 0) items.Add(("Bones", player.Bones));
+        if (player.Fur > 0) items.Add(("Fur", player.Fur));
+        if (player.Stingers > 0) items.Add(("Stingers", player.Stingers));
+        if (player.BearPelts > 0) items.Add(("Pelts", player.BearPelts));
+        if (player.DogFangs > 0) items.Add(("Bones", player.DogFangs));
+        if (player.Money > 0) items.Add(("Money", player.Money));
+        if (player.HasAxe) items.Add(("Axe", 1));
+        if (player.HasBow) items.Add(("Bow", 1));
+        if (player.HasCrossbow) items.Add(("Crossbow", 1));
+        if (player.Arrows > 0) items.Add(("Arrows", player.Arrows));
+        if (player.Bolts > 0) items.Add(("Bolts", player.Bolts));
+
+        Raylib.DrawRectangle(invX - 20, invY - 20, cols * (slotSize + padding) + 30, 5 * (slotSize + padding) + 60, new Color((byte)0,(byte)0,(byte)0,(byte)220));
+        Raylib.DrawText("INVENTORY", invX, invY - 10, 24, Color.Gold);
+
+        for (int i = 0; i < 20; i++)
+        {
+            int col = i % cols;
+            int row = i / cols;
+            int x = invX + col * (slotSize + padding);
+            int y = invY + 20 + row * (slotSize + padding);
+
+            Raylib.DrawRectangle(x, y, slotSize, slotSize, new Color((byte)40,(byte)40,(byte)40,(byte)255));
+            Raylib.DrawRectangleLines(x, y, slotSize, slotSize, new Color((byte)100,(byte)100,(byte)100,(byte)255));
+
+            if (i >= items.Count) continue;
+
+            DrawInventoryIcon(items[i].name, x, y, slotSize);
+
+            Raylib.DrawText($"{items[i].count}", x + 6, y + 6, 16, Color.White);
+            Raylib.DrawText(items[i].name, x + 4, y + slotSize - 20, 13, Color.LightGray);
+        }
+        // paste the rest of the inventory block here
+    }
+}
+static void UpdateDungeon(float dt)
+{
+    var d = activeDungeon;
+    if (!d.IsOpen) return;
+    if (d.MessageTimer > 0) d.MessageTimer -= dt;
+
+    // Pause menu
+    if (Raylib.IsKeyPressed(KeyboardKey.Escape))
+    {
+        if (pauseMenuOpen)
+        {
+            pauseMenuOpen = false;
+            Raylib.PlaySound(soundPauseClose);
+        }
+        else
+        {
+            pauseMenuOpen = true;
+            Raylib.PlaySound(soundPauseOpen);
+            Raylib.PauseMusicStream(currentMusic);
+        }
+    }
+    // Q — quit confirm popup
+    if (Raylib.IsKeyPressed(KeyboardKey.Q))
+        dungeonQuitConfirm = !dungeonQuitConfirm;
+
+    // block all input below if popup is open
+    if (dungeonQuitConfirm)
+    {
+        if (Raylib.IsKeyPressed(KeyboardKey.Y))
+        {
+            dungeonQuitConfirm = false;
+            activeDungeon.Close();
+            player.Position = activeDungeon.WorldReturnPos;
+            currentScene = SceneState.World;
+            return;
+        }
+        if (Raylib.IsKeyPressed(KeyboardKey.N) || Raylib.IsKeyPressed(KeyboardKey.Escape))
+            dungeonQuitConfirm = false;
+        return;
+    }
+
+    // Armor/gear menu
+    if (Raylib.IsKeyPressed(KeyboardKey.G))
+        armorMenuOpen = !armorMenuOpen;
+
+    // Toolbar slot selection
+    for (int k = 0; k < 8; k++)
+        if (Raylib.IsKeyPressed(KeyboardKey.One + k))
+            toolbarSelectedSlot = k;
+
+    float scroll = Raylib.GetMouseWheelMove();
+    if (scroll != 0 && !pauseMenuOpen && !armorMenuOpen)
+    {
+        toolbarSelectedSlot = (int)Math.Clamp(toolbarSelectedSlot - scroll, 0, 7);
+    }
+
+    if (pauseMenuOpen || armorMenuOpen || player.InventoryOpen || dungeonQuitConfirm) return;
+
+    if (d.Complete)
+    {
+        if (Raylib.IsKeyPressed(KeyboardKey.E))
+        {
+            d.Close();
+            player.Position = d.WorldReturnPos;
+            currentScene = SceneState.World;
+        }
+        return;
+    }
+
+    var room = d.Rooms[d.CurrentRoom];
+
+    Vector2 move = Vector2.Zero;
+if (Raylib.IsKeyDown(KeyboardKey.W) || Raylib.IsKeyDown(KeyboardKey.Up))    move.Y -= 1;
+if (Raylib.IsKeyDown(KeyboardKey.S) || Raylib.IsKeyDown(KeyboardKey.Down))  move.Y += 1;
+if (Raylib.IsKeyDown(KeyboardKey.A) || Raylib.IsKeyDown(KeyboardKey.Left))  move.X -= 1;
+if (Raylib.IsKeyDown(KeyboardKey.D) || Raylib.IsKeyDown(KeyboardKey.Right)) move.X += 1;
+
+if (move != Vector2.Zero)
+{
+    move = Vector2.Normalize(move);
+
+    if (MathF.Abs(move.X) >= MathF.Abs(move.Y))
+        player.Facing = move.X < 0 ? Player.FacingDirection.Left : Player.FacingDirection.Right;
+    else
+        player.Facing = move.Y < 0 ? Player.FacingDirection.Up : Player.FacingDirection.Down;
+}
+
+float dungeonSpeed = player.BaseSpeed * 0.8f;
+Vector2 newPos = d.PlayerPos + move * dungeonSpeed * dt;
+
+// clamp to room walls
+newPos.X = Math.Clamp(newPos.X, Dungeon.InnerX + 22, Dungeon.InnerX + Dungeon.InnerW - 22);
+newPos.Y = Math.Clamp(newPos.Y, Dungeon.InnerY + 22, Dungeon.InnerY + Dungeon.InnerH - 22);
+
+// try full movement — if blocked, try sliding on each axis separately
+if (!d.CollidesWithEnemy(newPos, 20f))
+{
+    d.PlayerPos = newPos;
+}
+else
+{
+    // try sliding on X axis only
+    Vector2 slideX = new Vector2(newPos.X, d.PlayerPos.Y);
+    slideX.X = Math.Clamp(slideX.X, Dungeon.InnerX + 22, Dungeon.InnerX + Dungeon.InnerW - 22);
+    if (!d.CollidesWithEnemy(slideX, 20f))
+        d.PlayerPos = slideX;
+    else
+    {
+        // try sliding on Y axis only
+        Vector2 slideY = new Vector2(d.PlayerPos.X, newPos.Y);
+        slideY.Y = Math.Clamp(slideY.Y, Dungeon.InnerY + 22, Dungeon.InnerY + Dungeon.InnerH - 22);
+        if (!d.CollidesWithEnemy(slideY, 20f))
+            d.PlayerPos = slideY;
+        // if both blocked, stay in place
+    }
+}
+
+player.Position = d.PlayerPos;
+
+    // Update enemies + combat
+   foreach (var enemy in room.Enemies)
+{
+    if (enemy.Dead) continue;
+    
+    // always update movement regardless of attack state
+    enemy.Update(dt, d.PlayerPos);
+
+    // push enemies apart
+    foreach (var other in room.Enemies)
+    {
+        if (other == enemy || other.Dead) continue;
+        float sepDist = Vector2.Distance(enemy.Position, other.Position);
+        float minDist = 46f;
+        if (sepDist < minDist && sepDist > 0.001f)
+        {
+            Vector2 push = Vector2.Normalize(enemy.Position - other.Position);
+            float overlap = (minDist - sepDist) / 2f;
+            enemy.Position += push * overlap;
+            other.Position -= push * overlap;
+
+            enemy.Position.X = Math.Clamp(enemy.Position.X, Dungeon.InnerX + 24, Dungeon.InnerX + Dungeon.InnerW - 24);
+            enemy.Position.Y = Math.Clamp(enemy.Position.Y, Dungeon.InnerY + 24, Dungeon.InnerY + Dungeon.InnerH - 24);
+            other.Position.X = Math.Clamp(other.Position.X, Dungeon.InnerX + 24, Dungeon.InnerX + Dungeon.InnerW - 24);
+            other.Position.Y = Math.Clamp(other.Position.Y, Dungeon.InnerY + 24, Dungeon.InnerY + Dungeon.InnerH - 24);
+        }
+    }
+
+    float dist = Vector2.Distance(d.PlayerPos, enemy.Position);
+
+    if (dist < 42f && enemy.AttackCooldown <= 0)
+    {
+        int def = GetTotalDefense();
+        int dmg = Math.Max(1, enemy.Damage - def);
+        player.Health -= dmg;
+        enemy.AttackCooldown = 1.2f;
+        floatingTexts.Add(new FloatingText {
+            Position = new Vector2(d.PlayerPos.X, d.PlayerPos.Y - 30),
+            Text = $"-{dmg}", Timer = 1f, TextColor = Color.Red
+        });
+    }
+
+    // player attacks enemy
+    if (dist < 65f && (Raylib.IsKeyPressed(KeyboardKey.Space) || Raylib.IsMouseButtonPressed(MouseButton.Left)))
+{
+    string equipped = GetActiveWeapon();
+    bool hasWeapon  = equipped == "Sword" || equipped == "Stick";
+    if (!hasWeapon)
+    {
+        d.Message = "Equip a weapon to fight!";
+        d.MessageTimer = 1.5f;
+    }
+    else
+    {
+        int weaponBonus = equipped == "Sword" ? 5 : 0;
+        int slotBonus   = GetWeaponDamage(armorWeapon);
+        int atk         = 1 + (player.CombatLevel / 10) + weaponBonus + slotBonus;
+        enemy.Health   -= atk;
+
+        // knock enemy away from player
+        if (Vector2.Distance(d.PlayerPos, enemy.Position) > 0.01f)
+        {
+            Vector2 knockDir = Vector2.Normalize(enemy.Position - d.PlayerPos);
+            enemy.Knockback = knockDir * 600f;
+        }
+
+        floatingTexts.Add(new FloatingText {
+            Position = new Vector2(enemy.Position.X, enemy.Position.Y - 30),
+            Text = $"-{atk}", Timer = 1f,
+            TextColor = equipped == "Sword" ? Color.Orange : Color.Red
+        });
+
+        if (enemy.Health <= 0)
+        {
+            enemy.Dead = true;
+            player.AddCombatXP(enemy.XPReward);
+            player.Money += enemy.MoneyDrop;
+
+            room.Loot.Add(new DungeonLoot(
+                new Vector2(enemy.Position.X + Raylib.GetRandomValue(-15, 15),
+                            enemy.Position.Y + Raylib.GetRandomValue(-15, 15)),
+                enemy.LootType));
+
+            d.Message = $"{enemy.Type} defeated!  +{enemy.XPReward} XP  +${enemy.MoneyDrop}";
+            d.MessageTimer = 1.8f;
+        }
+    }
+}
+}
+
+    // Collect loot
+    foreach (var loot in room.Loot)
+    {
+        if (loot.Collected) continue;
+        if (Vector2.Distance(d.PlayerPos, loot.Position) < 30f)
+        {
+            loot.Collected = true;
+            switch (loot.ItemType)
+            {
+                case "Bone":      player.Bones++;      break;
+                case "Fur":       player.Fur++;        break;
+                case "Stinger":   player.Stingers++;   break;
+                case "Bear Pelt": player.BearPelts++;  break;
+            }
+            d.Message = $"+1 {loot.ItemType}";
+            d.MessageTimer = 1f;
+        }
+    }
+
+    // Boss chest
+    if (room.IsBoss && room.AllEnemiesDead && !room.ChestOpened)
+    {
+        Vector2 chestPos = new Vector2(Dungeon.InnerX + Dungeon.InnerW - 80, Dungeon.InnerY + Dungeon.InnerH / 2f);
+        if (Vector2.Distance(d.PlayerPos, chestPos) < 65f && Raylib.IsKeyPressed(KeyboardKey.E))
+        {
+            room.ChestOpened = true;
+            int reward = 80 + d.CurrentRoom * 25;
+            player.Money += reward;
+            player.AddCombatXP(250);
+            d.Message = $"Dungeon Complete!  +${reward}  +250 Combat XP!";
+            d.MessageTimer = 4f;
+            d.Complete = true;
+        }
+    }
+
+    // Advance to next room through right door
+    if (room.AllEnemiesDead && !d.IsLastRoom)
+    {
+        if (d.PlayerPos.X > Dungeon.InnerX + Dungeon.InnerW - 28)
+        {
+            d.CurrentRoom++;
+            d.PlayerPos = new Vector2(Dungeon.InnerX + 70, Dungeon.InnerY + Dungeon.InnerH / 2f);
+            player.Position = d.PlayerPos;
+            d.Message = d.Rooms[d.CurrentRoom].IsBoss
+                ? "BOSS ROOM!  Defeat the boss!"
+                : $"Room {d.CurrentRoom + 1} of {d.TotalRooms} — Fight!";
+            d.MessageTimer = 2f;
+        }
+    }
+
+    // Player death — boot out
+    if (player.Health <= 0)
+    {
+        player.Health = Math.Max(1, player.MaxHealth / 3);
+        player.Money  = Math.Max(0, player.Money - 30);
+        d.Close();
+        player.Position = d.WorldReturnPos;
+        currentScene = SceneState.World;
+        ShowNotification("Defeated! Lost $30 and fled the dungeon.");
+    }
+
+    // floating texts
+    for (int i = floatingTexts.Count - 1; i >= 0; i--)
+    {
+        var ft = floatingTexts[i];
+        ft.Timer -= dt;
+        ft.Position.Y -= 40f * dt;
+        floatingTexts[i] = ft;
+        if (ft.Timer <= 0) floatingTexts.RemoveAt(i);
+    }
+}
+static void DrawDungeon()
+{
+    var d    = activeDungeon;
+    var room = d.Rooms[d.CurrentRoom];
+
+    // Background color per dungeon type
+    Color bgColor = d.Type switch {
+        "Forest"  => new Color((byte)12,(byte)28,(byte)12,(byte)255),
+        "Snow"    => new Color((byte)18,(byte)22,(byte)38,(byte)255),
+        "Desert"  => new Color((byte)38,(byte)22,(byte)8, (byte)255),
+        "Volcano" => new Color((byte)28,(byte)8, (byte)4, (byte)255),
+        _         => new Color((byte)12,(byte)12,(byte)18,(byte)255)
+    };
+    Color wallColor = d.Type switch {
+        "Forest"  => new Color((byte)30,(byte)65,(byte)30,(byte)255),
+        "Snow"    => new Color((byte)55,(byte)65,(byte)95,(byte)255),
+        "Desert"  => new Color((byte)105,(byte)78,(byte)42,(byte)255),
+        "Volcano" => new Color((byte)85,(byte)28,(byte)10,(byte)255),
+        _         => new Color((byte)50,(byte)45,(byte)58,(byte)255)
+    };
+    Color floorA = d.Type switch {
+        "Forest"  => new Color((byte)22,(byte)48,(byte)22,(byte)255),
+        "Snow"    => new Color((byte)38,(byte)48,(byte)68,(byte)255),
+        "Desert"  => new Color((byte)75,(byte)58,(byte)28,(byte)255),
+        "Volcano" => new Color((byte)45,(byte)18,(byte)6, (byte)255),
+        _         => new Color((byte)32,(byte)28,(byte)38,(byte)255)
+    };
+    Color floorB = new Color(
+        (byte)Math.Min(255, floorA.R + 10),
+        (byte)Math.Min(255, floorA.G + 10),
+        (byte)Math.Min(255, floorA.B + 10), (byte)255);
+
+    Raylib.ClearBackground(bgColor);
+
+    // ── FLOOR TILES ──────────────────────────────────────────────────────────
+    for (int tx = Dungeon.InnerX; tx < Dungeon.InnerX + Dungeon.InnerW; tx += 55)
+        for (int ty = Dungeon.InnerY; ty < Dungeon.InnerY + Dungeon.InnerH; ty += 55)
+            Raylib.DrawRectangle(tx, ty, 55, 55,
+                ((tx / 55 + ty / 55) % 2 == 0) ? floorA : floorB);
+
+    // ── WALLS ────────────────────────────────────────────────────────────────
+    Raylib.DrawRectangle(Dungeon.RoomX, Dungeon.RoomY, Dungeon.RoomW, Dungeon.WallThick, wallColor);
+    Raylib.DrawRectangle(Dungeon.RoomX, Dungeon.RoomY + Dungeon.RoomH - Dungeon.WallThick, Dungeon.RoomW, Dungeon.WallThick, wallColor);
+    Raylib.DrawRectangle(Dungeon.RoomX, Dungeon.RoomY, Dungeon.WallThick, Dungeon.RoomH, wallColor);
+    Raylib.DrawRectangle(Dungeon.RoomX + Dungeon.RoomW - Dungeon.WallThick, Dungeon.RoomY, Dungeon.WallThick, Dungeon.RoomH, wallColor);
+
+    // ── WALL TORCHES ─────────────────────────────────────────────────────────
+    int[] torchXs = { Dungeon.RoomX + 70, Dungeon.RoomX + Dungeon.RoomW / 2 - 6, Dungeon.RoomX + Dungeon.RoomW - 90 };
+    foreach (int tx2 in torchXs)
+    {
+        Raylib.DrawRectangle(tx2, Dungeon.RoomY + 2, 12, 18, new Color((byte)80,(byte)50,(byte)20,(byte)255));
+        Raylib.DrawCircle(tx2 + 6, Dungeon.RoomY + 2, 9,  new Color((byte)255,(byte)180,(byte)0,(byte)255));
+        Raylib.DrawCircle(tx2 + 6, Dungeon.RoomY + 2, 14, new Color((byte)255,(byte)100,(byte)0,(byte)50));
+    }
+
+    // ── DOORS ────────────────────────────────────────────────────────────────
+    bool doorOpen = room.AllEnemiesDead && !d.IsLastRoom;
+    int doorY = Dungeon.InnerY + Dungeon.InnerH / 2 - 45;
+
+    // Right door (advance)
+    Color doorCol = doorOpen
+        ? new Color((byte)0,(byte)180,(byte)60,(byte)255)
+        : new Color((byte)140,(byte)30,(byte)30,(byte)255);
+    Raylib.DrawRectangle(Dungeon.RoomX + Dungeon.RoomW - Dungeon.WallThick, doorY, Dungeon.WallThick, 90, doorCol);
+    Raylib.DrawText(doorOpen ? ">>" : "X",
+        Dungeon.RoomX + Dungeon.RoomW - Dungeon.WallThick + (doorOpen ? 2 : 6),
+        doorY + 36, doorOpen ? 14 : 16, Color.White);
+
+    // Left exit door (room 0 only)
+    if (d.CurrentRoom == 0)
+    {
+        Raylib.DrawRectangle(Dungeon.RoomX, doorY, Dungeon.WallThick, 90, new Color((byte)0,(byte)140,(byte)220,(byte)255));
+        Raylib.DrawText("<<", Dungeon.RoomX + 2, doorY + 36, 14, Color.White);
+    }
+
+    // ── BOSS CHEST ───────────────────────────────────────────────────────────
+    if (room.IsBoss && room.AllEnemiesDead)
+    {
+        int cX = Dungeon.InnerX + Dungeon.InnerW - 100;
+        int cY = Dungeon.InnerY + Dungeon.InnerH / 2 - 30;
+        if (!room.ChestOpened)
+        {
+            Raylib.DrawRectangle(cX, cY, 65, 52, new Color((byte)140,(byte)100,(byte)30,(byte)255));
+            Raylib.DrawRectangle(cX, cY, 65, 20, new Color((byte)180,(byte)140,(byte)50,(byte)255));
+            Raylib.DrawRectangle(cX + 24, cY + 5, 18, 12, new Color((byte)200,(byte)160,(byte)40,(byte)255));
+            if (Vector2.Distance(d.PlayerPos, new Vector2(cX + 32, cY + 26)) < 70f)
+            {
+                int hw = Raylib.MeasureText("E = Open Chest", 18);
+                Raylib.DrawText("E = Open Chest", cX + 32 - hw / 2, cY - 30, 18, Color.Gold);
+            }
+        }
+        else
+        {
+            Raylib.DrawRectangle(cX, cY + 20, 65, 32, new Color((byte)140,(byte)100,(byte)30,(byte)255));
+            Raylib.DrawRectangle(cX, cY,      65, 22, new Color((byte)180,(byte)140,(byte)50,(byte)255));
+        }
+    }
+
+    // ── LOOT DROPS ───────────────────────────────────────────────────────────
+    foreach (var loot in room.Loot)
+    {
+        if (loot.Collected) continue;
+        Raylib.DrawCircle((int)loot.Position.X, (int)loot.Position.Y, 10, Color.Gold);
+        Raylib.DrawCircleLines((int)loot.Position.X, (int)loot.Position.Y, 10, Color.Yellow);
+        int lw = Raylib.MeasureText(loot.ItemType, 11);
+        Raylib.DrawText(loot.ItemType, (int)loot.Position.X - lw / 2, (int)loot.Position.Y + 14, 11, Color.Gold);
+    }
+
+    // ── ENEMIES ──────────────────────────────────────────────────────────────
+    foreach (var enemy in room.Enemies)
+        enemy.Draw();
+
+    // ── FLOATING TEXTS ───────────────────────────────────────────────────────
+    foreach (var ft in floatingTexts)
+    {
+        byte alpha = (byte)(255 * Math.Max(0, ft.Timer / 1.2f));
+        Raylib.DrawText(ft.Text, (int)ft.Position.X, (int)ft.Position.Y, 22,
+            new Color(ft.TextColor.R, ft.TextColor.G, ft.TextColor.B, alpha));
+    }
+
+    // ── PLAYER — full directional sprite via player.Draw() ───────────────────
+    // player.Position is already synced to d.PlayerPos in UpdateDungeon
+    // We draw without BeginMode2D so it renders at screen coords directly
+    player.Hidden = false;
+    player.Draw();
+
+    // ── HUD ──────────────────────────────────────────────────────────────────
+
+    // Dungeon name + room label
+    int dnW = Raylib.MeasureText(d.Name, 30);
+    Raylib.DrawText(d.Name, 640 - dnW / 2, 20, 30, Color.Gold);
+    string roomLabel = room.IsBoss ? "★  BOSS ROOM  ★" : $"Room  {d.CurrentRoom + 1}  /  {d.TotalRooms}";
+    int rlW = Raylib.MeasureText(roomLabel, 20);
+    Raylib.DrawText(roomLabel, 640 - rlW / 2, 56, 20, room.IsBoss ? Color.Red : Color.LightGray);
+
+    // Enemies remaining
+    int alive = room.Enemies.Count(e => !e.Dead);
+    Raylib.DrawText(alive > 0 ? $"Enemies: {alive}" : "Room cleared!",
+        20, 20, 20, alive > 0 ? Color.Red : Color.Green);
+
+    // Wallet
+    Raylib.DrawText($"${player.Money}", ScreenWidth - 20 - Raylib.MeasureText($"${player.Money}", 20), 20, 20, Color.Gold);
+
+    // Player HP bar
+    int hbW = 220, hbX = 640 - hbW / 2;
+    Raylib.DrawRectangle(hbX, ScreenHeight - 100, hbW, 20, new Color((byte)40,(byte)40,(byte)40,(byte)220));
+    float hpPct = (float)player.Health / player.MaxHealth;
+    Color hpCol = hpPct > 0.5f ? Color.Green : hpPct > 0.25f ? Color.Orange : Color.Red;
+    Raylib.DrawRectangle(hbX, ScreenHeight - 100, (int)(hbW * hpPct), 20, hpCol);
+    Raylib.DrawRectangleLines(hbX, ScreenHeight - 100, hbW, 20, Color.White);
+    Raylib.DrawText($"HP  {player.Health} / {player.MaxHealth}", hbX + hbW / 2 - 50, ScreenHeight - 98, 16, Color.White);
+
+    // Toolbar
+    DrawToolbar();
+    DrawCombatColumn();
+
+    // Message banner
+    if (d.MessageTimer > 0)
+    {
+        int mw = Raylib.MeasureText(d.Message, 24);
+        Raylib.DrawRectangle(640 - mw / 2 - 12, ScreenHeight - 160, mw + 24, 34,
+            new Color((byte)0,(byte)0,(byte)0,(byte)190));
+        Raylib.DrawText(d.Message, 640 - mw / 2, ScreenHeight - 155, 24, Color.Yellow);
+    }
+
+    // Door advance hint
+    if (room.AllEnemiesDead && !d.IsLastRoom)
+    {
+        int hw = Raylib.MeasureText("Move right to advance!", 18);
+        Raylib.DrawText("Move right to advance!",
+            Dungeon.RoomX + Dungeon.RoomW - hw - 30,
+            Dungeon.RoomY + Dungeon.RoomH + 5, 18, Color.Green);
+    }
+
+    // Controls prompt
+    string prompt = d.Complete
+        ? "E = Exit Dungeon"
+        : d.CurrentRoom == 0
+            ? "WASD / Arrow Keys = Move  |  SPACE or Click = Attack  |  G = Gear  |  ESC = Exit"
+            : "WASD / Arrow Keys = Move  |  SPACE or Click = Attack  |  G = Gear  |  ESC = Pause";
+    int pw = Raylib.MeasureText(prompt, 14);
+    Raylib.DrawText(prompt, 640 - pw / 2, ScreenHeight - 28, 14, Color.Gray);
+    // Quit confirmation popup
+if (dungeonQuitConfirm)
+{
+    // Darken screen
+    Raylib.DrawRectangle(0, 0, ScreenWidth, ScreenHeight, new Color((byte)0,(byte)0,(byte)0,(byte)160));
+
+    // Popup box
+    int popW = 420, popH = 200;
+    int popX = ScreenWidth / 2 - popW / 2;
+    int popY = ScreenHeight / 2 - popH / 2;
+    Raylib.DrawRectangle(popX, popY, popW, popH, new Color((byte)20,(byte)20,(byte)30,(byte)255));
+    Raylib.DrawRectangleLines(popX, popY, popW, popH, Color.Red);
+
+    // Title
+    string title = "Quit Dungeon?";
+    int tw = Raylib.MeasureText(title, 28);
+    Raylib.DrawText(title, ScreenWidth / 2 - tw / 2, popY + 20, 28, Color.Red);
+
+    // Warning text
+    string warn = "All progress in this run will be lost.";
+    int ww = Raylib.MeasureText(warn, 18);
+    Raylib.DrawText(warn, ScreenWidth / 2 - ww / 2, popY + 62, 18, Color.LightGray);
+
+    // Yes button
+    Vector2 mouse = Raylib.GetMousePosition();
+    Rectangle yesBtn = new Rectangle(ScreenWidth / 2 - 160, popY + 120, 140, 44);
+    Rectangle noBtn  = new Rectangle(ScreenWidth / 2 + 20,  popY + 120, 140, 44);
+    bool hYes = Raylib.CheckCollisionPointRec(mouse, yesBtn);
+    bool hNo  = Raylib.CheckCollisionPointRec(mouse, noBtn);
+
+    Raylib.DrawRectangleRec(yesBtn, hYes ? new Color((byte)160,(byte)30,(byte)30,(byte)255) : new Color((byte)80,(byte)20,(byte)20,(byte)255));
+    Raylib.DrawRectangleLinesEx(yesBtn, 2, hYes ? Color.Red : Color.DarkGray);
+    int yw = Raylib.MeasureText("Yes (Y)", 20);
+    Raylib.DrawText("Yes (Y)", (int)(yesBtn.X + yesBtn.Width / 2 - yw / 2), (int)(yesBtn.Y + 12), 20, Color.White);
+
+    Raylib.DrawRectangleRec(noBtn, hNo ? new Color((byte)30,(byte)100,(byte)30,(byte)255) : new Color((byte)20,(byte)60,(byte)20,(byte)255));
+    Raylib.DrawRectangleLinesEx(noBtn, 2, hNo ? Color.Green : Color.DarkGray);
+    int nw2 = Raylib.MeasureText("No (N)", 20);
+    Raylib.DrawText("No (N)", (int)(noBtn.X + noBtn.Width / 2 - nw2 / 2), (int)(noBtn.Y + 12), 20, Color.White);
+
+    // Mouse clicks
+    if (Raylib.IsMouseButtonPressed(MouseButton.Left))
+    {
+        if (hYes)
+        {
+            dungeonQuitConfirm = false;
+            activeDungeon.Close();
+            player.Position = activeDungeon.WorldReturnPos;
+            currentScene = SceneState.World;
+        }
+        else if (hNo)
+            dungeonQuitConfirm = false;
+    }
+}
+
+    // Pause and gear menus drawn on top of everything
+    DrawArmorUI();
+    DrawPauseMenu();
+    DrawInventoryUI();
+}
 static bool IsTwoHandedWeapon(string weapon)
 {
     if (weapon == null) return false;
@@ -564,6 +1643,55 @@ static int GetWeaponDamage(string weapon)
         "Battle Staff" => 8,
         _             => 0
     };
+}
+static void DrawCombatColumn()
+{
+    int box = 52;
+    int gap = 6;
+    int colX = 20;                              // left edge, same as toolbar start
+    int colBaseY = ScreenHeight - 80 - box - 40; // just above the toolbar
+    Vector2 mouse = Raylib.GetMousePosition();
+
+    // three slots stacked upward: ammo (top), 2H (mid), 1H (bottom, closest to toolbar)
+    (string label, string value, Action onClick)[] cells =
+    {
+        ("AMMO", equippedAmmo, CycleAmmoSlot),
+        ("2H",   equipped2H,   Cycle2HSlot),
+        ("1H",   equipped1H,   Cycle1HSlot),
+    };
+
+    for (int i = 0; i < cells.Length; i++)
+    {
+        int y = colBaseY - i * (box + gap);
+        var (label, value, onClick) = cells[i];
+
+        bool hover = Raylib.CheckCollisionPointRec(mouse, new Rectangle(colX, y, box, box));
+
+        Raylib.DrawRectangle(colX, y, box, box, new Color((byte)25,(byte)25,(byte)32,(byte)230));
+        Raylib.DrawRectangleLines(colX, y, box, box, value != null ? Color.Gold : (hover ? Color.White : new Color((byte)90,(byte)90,(byte)110,(byte)255)));
+        Raylib.DrawText(label, colX + 3, y + 2, 11, new Color((byte)150,(byte)150,(byte)170,(byte)255));
+
+        if (value != null)
+        {
+            if (label == "AMMO")
+            {
+                DrawInventoryIcon(value, colX + 6, y + 12, 36);
+                int amt = value == "Arrows" ? player.Arrows : player.Bolts;
+                Raylib.DrawText($"{amt}", colX + box - 22, y + box - 16, 14, Color.White);
+            }
+            else
+            {
+                DrawArmorIcon(value, colX + 10, y + 14, 28);
+            }
+        }
+        else
+        {
+            Raylib.DrawText("-", colX + box / 2 - 3, y + box / 2 - 6, 16, Color.DarkGray);
+        }
+
+        if (hover && Raylib.IsMouseButtonPressed(MouseButton.Left))
+            onClick();
+    }
 }
 static bool AddToToolbar(string item)
 {
@@ -730,13 +1858,14 @@ static void DrawArmorUI()
     int panelX = ScreenWidth / 2 - panelW / 2;
     int panelY = ScreenHeight / 2 - panelH / 2;
 
-    Raylib.DrawRectangle(panelX, panelY, panelW, panelH,
-        new Color((byte)18,(byte)18,(byte)24,(byte)245));
+    Raylib.DrawRectangle(panelX, panelY, panelW, panelH, new Color((byte)18,(byte)18,(byte)24,(byte)245));
     Raylib.DrawRectangleLines(panelX, panelY, panelW, panelH, Color.Gold);
     Raylib.DrawText("EQUIPMENT", panelX + 270, panelY + 12, 28, Color.Gold);
     Raylib.DrawText($"Defence: {GetTotalDefense()}", panelX + 20, panelY + 14, 20, Color.LightGray);
 
-    // slot layout: label, ref getter/setter, x, y
+    Vector2 mouse = Raylib.GetMousePosition();
+
+    // ── EQUIPPED SLOTS (unchanged) ──
     (string label, string value, int sx, int sy)[] slots =
     {
         ("HELMET",  armorHelmet, panelX + 280, panelY + 60),
@@ -749,24 +1878,16 @@ static void DrawArmorUI()
         ("SHIELD",  armorShield, panelX + 500, panelY + 200),
     };
 
-    Vector2 mouse = Raylib.GetMousePosition();
-
     foreach (var (label, value, sx, sy) in slots)
     {
         bool isShieldSlot  = label == "SHIELD";
         bool shieldBlocked = isShieldSlot && IsTwoHandedWeapon(armorWeapon);
 
-        Color borderColor = shieldBlocked ? Color.DarkGray
-                          : value != null  ? Color.Gold
-                          : Color.Gray;
-        Color textColor   = shieldBlocked ? Color.DarkGray : Color.White;
+        Color borderColor = shieldBlocked ? Color.DarkGray : value != null ? Color.Gold : Color.Gray;
 
-        Raylib.DrawRectangle(sx, sy, 140, 60,
-            new Color((byte)35,(byte)35,(byte)45,(byte)255));
+        Raylib.DrawRectangle(sx, sy, 140, 60, new Color((byte)35,(byte)35,(byte)45,(byte)255));
         Raylib.DrawRectangleLines(sx, sy, 140, 60, borderColor);
-
-        Raylib.DrawText(label, sx + 6, sy + 6, 14,
-            new Color((byte)120,(byte)120,(byte)140,(byte)255));
+        Raylib.DrawText(label, sx + 6, sy + 6, 14, new Color((byte)120,(byte)120,(byte)140,(byte)255));
 
         if (shieldBlocked)
         {
@@ -774,13 +1895,9 @@ static void DrawArmorUI()
         }
         else if (value != null)
         {
-            // draw icon
             DrawArmorIcon(value, sx + 6, sy + 22, 28);
             Raylib.DrawText(value, sx + 38, sy + 32, 13, Color.Gold);
-
-            // unequip on click
-            if (Raylib.CheckCollisionPointRec(mouse, new Rectangle(sx, sy, 140, 60))
-                && Raylib.IsMouseButtonPressed(MouseButton.Left))
+            if (Raylib.CheckCollisionPointRec(mouse, new Rectangle(sx, sy, 140, 60)) && Raylib.IsMouseButtonPressed(MouseButton.Left))
             {
                 UnequipArmorSlot(label);
                 ShowNotification($"Unequipped {value}");
@@ -792,16 +1909,29 @@ static void DrawArmorUI()
         }
     }
 
-    // mannequin silhouette in centre
-    int mx = panelX + 280 + 70; // centre of helmet slot
-    DrawMannequin(mx, panelY + 380);
+    DrawMannequin(panelX + 280 + 70, panelY + 380);
 
-    // item list to equip from (items the player owns)
-    Raylib.DrawText("AVAILABLE ITEMS", panelX + 20, panelY + 440, 20, Color.Gold);
-    Raylib.DrawRectangle(panelX + 10, panelY + 465, panelW - 20, 2,
-        new Color((byte)80,(byte)80,(byte)80,(byte)255));
+    // ── TABS: OWNED vs TEST ──
+    Rectangle ownedTab = new Rectangle(panelX + 20, panelY + 432, 150, 32);
+    Rectangle testTab  = new Rectangle(panelX + 180, panelY + 432, 150, 32);
+    bool hoverOwned = Raylib.CheckCollisionPointRec(mouse, ownedTab);
+    bool hoverTest  = Raylib.CheckCollisionPointRec(mouse, testTab);
 
-    string[] allItems = {
+    Raylib.DrawRectangleRec(ownedTab, !gearTestMode ? new Color((byte)70,(byte)55,(byte)20,(byte)255) : new Color((byte)40,(byte)40,(byte)40,(byte)255));
+    Raylib.DrawRectangleLinesEx(ownedTab, 2, !gearTestMode ? Color.Gold : (hoverOwned ? Color.Gold : Color.White));
+    Raylib.DrawText("MY GEAR", panelX + 50, panelY + 440, 18, !gearTestMode ? Color.Gold : Color.White);
+
+    Raylib.DrawRectangleRec(testTab, gearTestMode ? new Color((byte)70,(byte)55,(byte)20,(byte)255) : new Color((byte)40,(byte)40,(byte)40,(byte)255));
+    Raylib.DrawRectangleLinesEx(testTab, 2, gearTestMode ? Color.Gold : (hoverTest ? Color.Gold : Color.White));
+    Raylib.DrawText("TEST (ALL)", panelX + 205, panelY + 440, 18, gearTestMode ? Color.Gold : Color.White);
+
+    if (hoverOwned && Raylib.IsMouseButtonPressed(MouseButton.Left)) gearTestMode = false;
+    if (hoverTest  && Raylib.IsMouseButtonPressed(MouseButton.Left)) gearTestMode = true;
+
+    Raylib.DrawRectangle(panelX + 10, panelY + 470, panelW - 20, 2, new Color((byte)80,(byte)80,(byte)80,(byte)255));
+
+    // ── ITEM LIST ──
+    string[] testCatalog = {
         "Leather Cap","Iron Helmet","Steel Helmet",
         "Leather Vest","Iron Chestplate","Steel Chestplate",
         "Leather Pants","Iron Leggings","Steel Leggings",
@@ -809,43 +1939,57 @@ static void DrawArmorUI()
         "Leather Gloves","Iron Gauntlets","Steel Gauntlets",
         "Wool Cape","Magic Cape",
         "Wooden Shield","Iron Shield","Steel Shield",
-        "Sword","Great Sword","War Axe","Battle Staff"
+        "Sword","Great Sword","War Axe","Battle Staff",
+        "Bow","Crossbow"
     };
 
-    // for demo, show first 6 in a row — in a full game tie to player inventory
-    int itemX = panelX + 14;
-    int itemY = panelY + 475;
-    int itemSlot = 60;
-    int itemPad  = 8;
-    int col = 0;
+    List<string> shown = gearTestMode
+        ? testCatalog.ToList()
+        : player.OwnedGear;
 
-    foreach (string item in allItems)
+    if (!gearTestMode && shown.Count == 0)
     {
-        if (col >= 10) break; // one row of 10 for now
-        int ix = itemX + col * (itemSlot + itemPad);
+        Raylib.DrawText("No gear yet — craft, loot, or buy some!", panelX + 20, panelY + 485, 18, Color.Gray);
+    }
+    else
+    {
+        int itemSlot = 60, itemPad = 8;
+        int perRow = 10;
+        for (int i = 0; i < shown.Count && i < perRow * 2; i++)   // up to 2 rows of 10
+        {
+            int col = i % perRow;
+            int row = i / perRow;
+            int ix = panelX + 14 + col * (itemSlot + itemPad);
+            int iy = panelY + 478 + row * (itemSlot + 6);
 
-        bool hover = Raylib.CheckCollisionPointRec(mouse,
-            new Rectangle(ix, itemY, itemSlot, itemSlot));
+            string item = shown[i];
+            bool hover = Raylib.CheckCollisionPointRec(mouse, new Rectangle(ix, iy, itemSlot, itemSlot));
+            bool equipped = item == armorHelmet || item == armorBody || item == armorLegs
+                         || item == armorBoots || item == armorGloves || item == armorCape
+                         || item == armorWeapon || item == armorShield;
 
-        Raylib.DrawRectangle(ix, itemY, itemSlot, itemSlot,
-            new Color((byte)40,(byte)40,(byte)50,(byte)255));
-        Raylib.DrawRectangleLines(ix, itemY, itemSlot, itemSlot,
-            hover ? Color.Gold : new Color((byte)80,(byte)80,(byte)100,(byte)255));
+            Raylib.DrawRectangle(ix, iy, itemSlot, itemSlot, new Color((byte)40,(byte)40,(byte)50,(byte)255));
+            Raylib.DrawRectangleLines(ix, iy, itemSlot, itemSlot,
+                equipped ? Color.Green : (hover ? Color.Gold : new Color((byte)80,(byte)80,(byte)100,(byte)255)));
 
-        DrawArmorIcon(item, ix + 4, itemY + 6, 24);
+            DrawArmorIcon(item, ix + 4, iy + 6, 24);
+            int nameW = Raylib.MeasureText(item.Length > 8 ? item.Substring(0,8) : item, 11);
+            Raylib.DrawText(item.Length > 8 ? item.Substring(0,8) : item, ix + itemSlot/2 - nameW/2, iy + itemSlot - 16, 11, Color.LightGray);
 
-        int nameW = Raylib.MeasureText(item.Length > 8 ? item.Substring(0,8) : item, 11);
-        Raylib.DrawText(item.Length > 8 ? item.Substring(0,8) : item,
-            ix + itemSlot/2 - nameW/2, itemY + itemSlot - 16, 11, Color.LightGray);
-
-        if (hover && Raylib.IsMouseButtonPressed(MouseButton.Left))
-            TryEquipItem(item);
-
-        col++;
+            if (hover && Raylib.IsMouseButtonPressed(MouseButton.Left))
+            {
+                if (gearTestMode)
+                    TryEquipItem(item);              // test mode equips anything
+                else
+                    TryEquipItem(item);              // owned mode — already owned, equip freely
+            }
+        }
     }
 
-    Raylib.DrawText("Click item to equip  |  Click slot to unequip  |  G = Close",
-        panelX + 60, panelY + panelH - 28, 16, Color.LightGray);
+    string hint = gearTestMode
+        ? "TEST MODE — equip anything  |  Click slot to unequip  |  G = Close"
+        : "Click item to equip  |  Click slot to unequip  |  G = Close";
+    Raylib.DrawText(hint, panelX + 30, panelY + panelH - 26, 15, Color.LightGray);
 }
 
 static void TryEquipItem(string item)
@@ -879,6 +2023,12 @@ static void TryEquipItem(string item)
         case "WEAPON": armorWeapon = item; break;
         case "SHIELD": armorShield = item; break;
     }
+    // sync the combat column with the gear-menu weapon slot
+if (slot == "WEAPON")
+{
+    if (IsTwoHandedWeapon(item)) { equipped2H = item; equipped1H = null; }
+    else                          { equipped1H = item; equipped2H = null; }
+}
     ShowNotification($"Equipped {item}!");
 }
 
@@ -892,7 +2042,7 @@ static void UnequipArmorSlot(string slot)
         case "BOOTS":  armorBoots  = null; break;
         case "GLOVES": armorGloves = null; break;
         case "CAPE":   armorCape   = null; break;
-        case "WEAPON": armorWeapon = null; break;
+        case "WEAPON": armorWeapon = null; equipped1H = null; equipped2H = null; break;
         case "SHIELD": armorShield = null; break;
     }
 }
@@ -1041,7 +2191,12 @@ static void DrawMannequin(int cx, int cy)
             shieldCol);
     }
 }
-
+static string GetActiveWeapon()
+{
+    if (equipped2H != null) return equipped2H;
+    if (equipped1H != null) return equipped1H;
+    return GetEquippedTool();   // fall back to toolbar sword/stick
+}
 public static string GetEquippedTool() => toolbarSlots[toolbarSelectedSlot];
 
         static void AddDealerBuilding(float x, float y, string name, DealerType type)
@@ -1543,6 +2698,45 @@ static void AddDBar(float x, float y)
     buildings.Add(dbar);
 }
 
+static void AddDropZone(float x, float y)
+{
+    var dropzone = new Building(
+        new Rectangle(x, y, 200, 140),
+        new Color(40, 20, 70, 255),           // purple exterior
+        new Color(25, 20, 45, 255),           // dark purple interior
+        new Vector2(x + 100, y + 280),
+        "DropZone",
+        new NPC(new Vector2(600, 600), "Arcade Attendant", "Welcome to DropZone! Games, prizes and snacks await."),
+        entryPos: new Vector2(620, 830)
+    );
+
+    dropzone.InteriorObjects.Clear();
+    // Bowling lanes (left side)
+    dropzone.InteriorObjects.Add(new Rectangle(210, 240, 80, 130));  // bowling lane 1
+    dropzone.InteriorObjects.Add(new Rectangle(210, 390, 80, 130));  // bowling lane 2
+    // Divider
+    dropzone.InteriorObjects.Add(new Rectangle(440, 150, 8, 400));   // divider
+    // Claw machines (middle)
+    dropzone.InteriorObjects.Add(new Rectangle(570, 200, 60, 100));  // claw 1
+    dropzone.InteriorObjects.Add(new Rectangle(670, 200, 60, 100));  // claw 2
+    // Arcade cabinets (right)
+    dropzone.InteriorObjects.Add(new Rectangle(874, 200, 52, 100));  // arcade 1
+    dropzone.InteriorObjects.Add(new Rectangle(974, 200, 52, 100));  // arcade 2
+    // Food counter
+    dropzone.InteriorObjects.Add(new Rectangle(520, 510, 160, 70));  // snack bar
+    // Pinball
+    dropzone.InteriorObjects.Add(new Rectangle(1060, 200, 70, 110));  // pinball
+    //Air hockey
+    dropzone.InteriorObjects.Add(new Rectangle(1060, 360, 70, 110));  // air hockey
+    //Piano tiles
+    dropzone.InteriorObjects.Add(new Rectangle(1060, 520, 70, 110));  // piano tiles
+
+    dropzone.InteriorObjects.Add(new Rectangle(900, 520, 70, 110));   // flappy bird machine
+    dropzone.InteriorObjects.Add(new Rectangle(760, 510, 130, 70));   // prize counter
+
+    buildings.Add(dropzone);
+}
+
 static void AddSupermarket(float x, float y)
 {
     var supermarket = new Building(
@@ -1798,7 +2992,7 @@ static void AddMyHouse(float x, float y)
         new Color(180, 140, 100, 255),
         new Vector2(x + 80, y + 240),
         "MY HOUSE",
-        new NPC(new Vector2(450, 180), "Mum", "Press E to interact with your chest and wardrobe | Press Z to sleep in your bed"),
+        new NPC(new Vector2(450, 180), "Mum", "Press space to interact with your chest and wardrobe and to sleep in your bed"),
         entryPos: new Vector2(700, 880)  // centre of entry mat
     );
 
@@ -2824,7 +4018,32 @@ static void DrawBiomeTextures()
         lines.Add(player.HasAxe ? "1" : "0");
 
         for (int i = 0; i < 8; i++)
-    lines.Add(toolbarSlots[i] ?? "empty");
+        lines.Add(toolbarSlots[i] ?? "empty");
+
+        lines.Add(player.GamblingLevel.ToString());
+        lines.Add(player.GamblingXP.ToString());
+        lines.Add(player.RidingLevel.ToString());
+        lines.Add(player.RidingXP.ToString());
+        lines.Add(player.CyclingLevel.ToString());
+        lines.Add(player.CyclingXP.ToString());
+        lines.Add(player.MiningLevel.ToString());
+        lines.Add(player.MiningXP.ToString());
+        lines.Add(player.Tickets.ToString());
+        lines.Add(player.SwimmingLevel.ToString());
+        lines.Add(player.SwimmingXP.ToString());
+        lines.Add(player.DivingLevel.ToString());
+        lines.Add(player.DivingXP.ToString());
+        lines.Add(player.SportsLevel.ToString());
+        lines.Add(player.SportsXP.ToString()); 
+        lines.Add(player.RangedLevel.ToString());
+        lines.Add(player.Arrows.ToString());
+        lines.Add(player.Bolts.ToString());
+        lines.Add(player.HasBow ? "1" : "0");
+        lines.Add(player.HasCrossbow ? "1" : "0");
+        lines.Add(player.OwnedGear.Count.ToString());
+        foreach (var g in player.OwnedGear)
+            lines.Add(g);
+     
 
     System.IO.File.WriteAllLines(savePath, lines);
     ShowNotification("Game Saved!");
@@ -2890,11 +4109,42 @@ static void DrawBiomeTextures()
     if (lines.Length > 54) timeOfDay = float.Parse(lines[54]);
     if (lines.Length > 55) dayOfWeek = int.Parse(lines[55]);
     if (lines.Length > 56) axePickedUp        = lines[56] == "1";
-if (lines.Length > 57) pickaxePickedUp    = lines[57] == "1";
-if (lines.Length > 58) fishingRodPickedUp = lines[58] == "1";
-if (lines.Length > 59) fishingNetPickedUp = lines[59] == "1";
-if (lines.Length > 60) torchPickedUp      = lines[60] == "1";
-if (lines.Length > 61) player.HasAxe      = lines[61] == "1";
+    if (lines.Length > 57) pickaxePickedUp    = lines[57] == "1";
+    if (lines.Length > 58) fishingRodPickedUp = lines[58] == "1";
+    if (lines.Length > 59) fishingNetPickedUp = lines[59] == "1";
+    if (lines.Length > 60) torchPickedUp      = lines[60] == "1";
+    if (lines.Length > 61) player.HasAxe      = lines[61] == "1";
+    if (lines.Length > 70) player.GamblingLevel = int.Parse(lines[70]);
+    if (lines.Length > 71) player.GamblingXP    = int.Parse(lines[71]);
+    if (lines.Length > 72) player.RidingLevel  = int.Parse(lines[72]);
+    if (lines.Length > 73) player.RidingXP     = int.Parse(lines[73]);
+    if (lines.Length > 74) player.CyclingLevel = int.Parse(lines[74]);
+    if (lines.Length > 75) player.CyclingXP    = int.Parse(lines[75]);
+    if (lines.Length > 74) player.MiningLevel = int.Parse(lines[76]);
+    if (lines.Length > 75) player.MiningXP    = int.Parse(lines[77]);
+    if (lines.Length > 76) player.Tickets = int.Parse(lines[78]);
+    if (lines.Length > 79) player.SwimmingLevel = int.Parse(lines[79]);
+    if (lines.Length > 80) player.SwimmingXP    = int.Parse(lines[80]);
+    if (lines.Length > 81) player.DivingLevel   = int.Parse(lines[81]);
+    if (lines.Length > 82) player.DivingXP      = int.Parse(lines[82]);
+    if (lines.Length > 83) player.SportsLevel = int.Parse(lines[83]);
+    if (lines.Length > 84) player.SportsXP    = int.Parse(lines[84]);  
+    if (lines.Length > 85) player.RangedLevel = int.Parse(lines[85]);
+    if (lines.Length > 86) player.RangedXP    = int.Parse(lines[86]);
+    if (lines.Length > 87) player.Arrows      = int.Parse(lines[87]);
+    if (lines.Length > 88) player.Bolts       = int.Parse(lines[88]);
+    if (lines.Length > 89) player.HasBow      = lines[89] == "1";
+    if (lines.Length > 90) player.HasCrossbow = lines[90] == "1"; 
+    if (lines.Length > 91)
+    {
+        int gearCount = int.Parse(lines[91]);
+        player.OwnedGear.Clear();
+        for (int g = 0; g < gearCount; g++)
+        {
+            int idx = 92 + g;
+            if (lines.Length > idx) player.OwnedGear.Add(lines[idx]);
+        }
+    }    
 
 // load toolbar slots
 for (int i = 0; i < 8; i++)
@@ -3051,7 +4301,7 @@ static void DrawSupermarketInventoryUI()
                     levelUpMessage = $"{skill} LEVEL UP! {level}";
                     levelUpTimer = 2.5f;
                     }
-        static void DrawShopUI()
+ static void DrawShopUI()
 {
     if (!shopUIOpen) return;
 
@@ -3061,129 +4311,180 @@ static void DrawSupermarketInventoryUI()
     int padding = 8;
     int cols = 5;
 
+    Vector2 mouse = Raylib.GetMousePosition();
+
     // background
     Raylib.DrawRectangle(panelX, panelY, 840, 560, new Color((byte)20,(byte)20,(byte)30,(byte)240));
     Raylib.DrawRectangleLines(panelX, panelY, 840, 560, Color.Gold);
-    Raylib.DrawText("SHOP", panelX + 20, panelY + 15, 28, Color.Gold);
-    Raylib.DrawText("YOUR INVENTORY", panelX + 450, panelY + 15, 28, Color.Gold);
 
-    // divider
-    Raylib.DrawRectangle(panelX + 415, panelY + 10, 4, 540, new Color((byte)80,(byte)80,(byte)80,(byte)255));
+    // ── MODE TABS ──────────────────────────────────────────────────────
+    Rectangle sellTab = new Rectangle(panelX + 20, panelY + 12, 160, 40);
+    Rectangle buyTab  = new Rectangle(panelX + 190, panelY + 12, 160, 40);
+    bool hoverSellTab = Raylib.CheckCollisionPointRec(mouse, sellTab);
+    bool hoverBuyTab  = Raylib.CheckCollisionPointRec(mouse, buyTab);
 
-    // shop stock left side - prices
-    string[] shopItems = { "Logs", "Birch Logs", "Oak Logs", "Pine Logs", "Arctic Logs", "Dead Wood", "Fish", "Bones", "Fur", "Stingers", "Pelts" };
-    int[] shopPrices = { 5, 8, 12, 18, 25, 3, 10, 8, 15, 12, 25 };
+    Raylib.DrawRectangleRec(sellTab, !shopBuyMode ? new Color((byte)70,(byte)55,(byte)20,(byte)255) : new Color((byte)40,(byte)40,(byte)40,(byte)255));
+    Raylib.DrawRectangleLinesEx(sellTab, 2, !shopBuyMode ? Color.Gold : (hoverSellTab ? Color.Gold : Color.White));
+    Raylib.DrawText("SELL", panelX + 70, panelY + 22, 22, !shopBuyMode ? Color.Gold : Color.White);
 
-    Raylib.DrawText("Click item to sell", panelX + 20, panelY + 48, 16, Color.LightGray);
+    Raylib.DrawRectangleRec(buyTab, shopBuyMode ? new Color((byte)70,(byte)55,(byte)20,(byte)255) : new Color((byte)40,(byte)40,(byte)40,(byte)255));
+    Raylib.DrawRectangleLinesEx(buyTab, 2, shopBuyMode ? Color.Gold : (hoverBuyTab ? Color.Gold : Color.White));
+    Raylib.DrawText("BUY", panelX + 245, panelY + 22, 22, shopBuyMode ? Color.Gold : Color.White);
 
-    Vector2 mouse = Raylib.GetMousePosition();
+    if (hoverSellTab && Raylib.IsMouseButtonPressed(MouseButton.Left)) { shopBuyMode = false; shopSelectedItem = -1; shopSelectedItemName = ""; }
+    if (hoverBuyTab  && Raylib.IsMouseButtonPressed(MouseButton.Left)) { shopBuyMode = true;  shopSelectedItem = -1; shopSelectedItemName = ""; }
 
-    // inventory slots right side
-    int[] invCounts = {
-        player.Logs, player.BirchLogs, player.OakLogs, player.PineLogs,
-        player.ArcticLogs, player.DeadWood, player.Fish, player.Bones,
-        player.Fur, player.Stingers, player.BearPelts, player.DogFangs
-    };
+    Raylib.DrawText($"Wallet: ${player.Money}", panelX + 650, panelY + 22, 22, Color.Gold);
 
-    // draw shop price list on left
-    for (int i = 0; i < shopItems.Length; i++)
+    // ════════════════════════════════════════════════════════════════════
+    if (!shopBuyMode)
     {
-        int col = i % cols;
-        int row = i / cols;
-        int sx = panelX + 20 + col * (slotSize + padding);
-        int sy = panelY + 75 + row * (slotSize + padding);
+        // ── SELL MODE — your inventory, click to sell ──
+        string[] sellItems = { "Logs", "Birch Logs", "Oak Logs", "Pine Logs", "Arctic Logs", "Dead Wood", "Fish", "Bones", "Fur", "Stingers", "Pelts" };
+        int[] sellPrices = { 5, 8, 12, 18, 25, 3, 10, 8, 15, 12, 25 };
+        int[] invCounts = {
+            player.Logs, player.BirchLogs, player.OakLogs, player.PineLogs,
+            player.ArcticLogs, player.DeadWood, player.Fish, player.Bones,
+            player.Fur, player.Stingers, player.BearPelts
+        };
 
-        bool selected = shopSelectedItemName == shopItems[i];
-        Raylib.DrawRectangle(sx, sy, slotSize, slotSize, new Color((byte)40,(byte)40,(byte)40,(byte)255));
-        Raylib.DrawRectangleLines(sx, sy, slotSize, slotSize, selected ? Color.Gold : new Color((byte)100,(byte)100,(byte)100,(byte)255));
+        Raylib.DrawText("YOUR ITEMS — click to sell", panelX + 20, panelY + 62, 18, Color.LightGray);
 
-        DrawInventoryIcon(shopItems[i] == "Pelts" ? "Pelts" : shopItems[i], sx, sy, slotSize);
-        Raylib.DrawText($"${shopPrices[i]}", sx + 6, sy + 6, 16, Color.Gold);
-        Raylib.DrawText(shopItems[i].Length > 7 ? shopItems[i].Substring(0, 7) : shopItems[i], sx + 4, sy + slotSize - 18, 13, Color.LightGray);
-    }
-
-    // draw player inventory on right
-    Raylib.DrawText("Click to select", panelX + 450, panelY + 48, 16, Color.LightGray);
-    for (int i = 0; i < shopItems.Length; i++)
-    {
-        int col = i % cols;
-        int row = i / cols;
-        int sx = panelX + 435 + col * (slotSize + padding);
-        int sy = panelY + 75 + row * (slotSize + padding);
-
-        bool selected = shopSelectedItemName == shopItems[i];
-        Raylib.DrawRectangle(sx, sy, slotSize, slotSize, new Color((byte)40,(byte)40,(byte)40,(byte)255));
-        Raylib.DrawRectangleLines(sx, sy, slotSize, slotSize, selected ? Color.Gold : new Color((byte)100,(byte)100,(byte)100,(byte)255));
-
-        if (invCounts[i] > 0)
+        for (int i = 0; i < sellItems.Length; i++)
         {
-            DrawInventoryIcon(shopItems[i] == "Pelts" ? "Pelts" : shopItems[i], sx, sy, slotSize);
-            Raylib.DrawText($"{invCounts[i]}", sx + 6, sy + 6, 16, Color.White);
-            Raylib.DrawText(shopItems[i].Length > 7 ? shopItems[i].Substring(0, 7) : shopItems[i], sx + 4, sy + slotSize - 18, 13, Color.LightGray);
+            int col = i % cols;
+            int row = i / cols;
+            int sx = panelX + 20 + col * (slotSize + padding);
+            int sy = panelY + 90 + row * (slotSize + padding);
+
+            bool selected = shopSelectedItemName == sellItems[i];
+            Raylib.DrawRectangle(sx, sy, slotSize, slotSize, new Color((byte)40,(byte)40,(byte)40,(byte)255));
+            Raylib.DrawRectangleLines(sx, sy, slotSize, slotSize, selected ? Color.Gold : new Color((byte)100,(byte)100,(byte)100,(byte)255));
+
+            if (invCounts[i] > 0)
+            {
+                DrawInventoryIcon(sellItems[i], sx, sy, slotSize);
+                Raylib.DrawText($"{invCounts[i]}", sx + 6, sy + 6, 16, Color.White);
+                Raylib.DrawText($"${sellPrices[i]}", sx + 6, sy + slotSize - 18, 14, Color.Gold);
+
+                if (Raylib.CheckCollisionPointRec(mouse, new Rectangle(sx, sy, slotSize, slotSize)))
+                {
+                    Raylib.DrawRectangleLines(sx, sy, slotSize, slotSize, Color.Gold);
+                    if (Raylib.IsMouseButtonPressed(MouseButton.Left))
+                    {
+                        shopSelectedItem = i;
+                        shopSelectedItemName = sellItems[i];
+                    }
+                }
+            }
+        }
+
+        // sell options panel
+        if (shopSelectedItem >= 0 && shopSelectedItem < sellItems.Length)
+        {
+            int sellPanelY = panelY + 430;
+            Raylib.DrawRectangle(panelX + 20, sellPanelY, 800, 100, new Color((byte)30,(byte)30,(byte)40,(byte)255));
+            Raylib.DrawRectangleLines(panelX + 20, sellPanelY, 800, 100, Color.Gold);
+
+            int price = sellPrices[shopSelectedItem];
+            int count = invCounts[shopSelectedItem];
+            Raylib.DrawText($"Selling: {shopSelectedItemName} @ ${price} each", panelX + 30, sellPanelY + 10, 20, Color.White);
+
+            Rectangle sell1Btn = new Rectangle(panelX + 30, sellPanelY + 45, 160, 44);
+            Rectangle sell5Btn = new Rectangle(panelX + 210, sellPanelY + 45, 160, 44);
+            Rectangle sellAllBtn = new Rectangle(panelX + 390, sellPanelY + 45, 160, 44);
+            bool h1 = Raylib.CheckCollisionPointRec(mouse, sell1Btn);
+            bool h5 = Raylib.CheckCollisionPointRec(mouse, sell5Btn);
+            bool hA = Raylib.CheckCollisionPointRec(mouse, sellAllBtn);
+
+            Raylib.DrawRectangleRec(sell1Btn, new Color((byte)40,(byte)40,(byte)40,(byte)255));
+            Raylib.DrawRectangleLinesEx(sell1Btn, 2, h1 ? Color.Gold : Color.White);
+            Raylib.DrawText($"Sell 1 (${price})", panelX + 40, sellPanelY + 57, 18, h1 ? Color.Gold : Color.White);
+
+            Raylib.DrawRectangleRec(sell5Btn, new Color((byte)40,(byte)40,(byte)40,(byte)255));
+            Raylib.DrawRectangleLinesEx(sell5Btn, 2, h5 ? Color.Gold : Color.White);
+            Raylib.DrawText($"Sell 5 (${price * Math.Min(5, count)})", panelX + 220, sellPanelY + 57, 18, h5 ? Color.Gold : Color.White);
+
+            Raylib.DrawRectangleRec(sellAllBtn, new Color((byte)40,(byte)40,(byte)40,(byte)255));
+            Raylib.DrawRectangleLinesEx(sellAllBtn, 2, hA ? Color.Gold : Color.White);
+            Raylib.DrawText($"Sell All (${price * count})", panelX + 400, sellPanelY + 57, 18, hA ? Color.Gold : Color.White);
+
+            if (h1 && Raylib.IsMouseButtonPressed(MouseButton.Left) && count >= 1)
+            {
+                SellItem(shopSelectedItemName, 1, price);
+                if (GetItemCount(shopSelectedItemName) <= 0) { shopSelectedItem = -1; shopSelectedItemName = ""; }
+            }
+            if (h5 && Raylib.IsMouseButtonPressed(MouseButton.Left) && count >= 1)
+            {
+                SellItem(shopSelectedItemName, Math.Min(5, count), price);
+                if (GetItemCount(shopSelectedItemName) <= 0) { shopSelectedItem = -1; shopSelectedItemName = ""; }
+            }
+            if (hA && Raylib.IsMouseButtonPressed(MouseButton.Left) && count >= 1)
+            {
+                SellItem(shopSelectedItemName, count, price);
+                shopSelectedItem = -1;
+                shopSelectedItemName = "";
+            }
+        }
+    }
+    else
+    {
+        // ── BUY MODE — shop stock, click to buy ──
+        string[] buyItems   = { "Arrows", "Bolts", "Apple", "Bread", "Bandage", "Torch" };
+        int[]    buyPrices  = { 10,       12,      4,       6,       15,        8 };
+        int[]    buyQty     = { 20,       20,      1,       1,       1,         1 };
+        string[] buyDesc    = { "x20",    "x20",   "+10 HP","+20 HP","+40 HP",  "Light" };
+
+        Raylib.DrawText("SHOP STOCK — click to buy", panelX + 20, panelY + 62, 18, Color.LightGray);
+
+        for (int i = 0; i < buyItems.Length; i++)
+        {
+            int col = i % cols;
+            int row = i / cols;
+            int sx = panelX + 20 + col * (slotSize + padding);
+            int sy = panelY + 90 + row * (slotSize + padding);
+
+            Raylib.DrawRectangle(sx, sy, slotSize, slotSize, new Color((byte)40,(byte)40,(byte)40,(byte)255));
+            Raylib.DrawRectangleLines(sx, sy, slotSize, slotSize, new Color((byte)100,(byte)100,(byte)100,(byte)255));
+
+            DrawInventoryIcon(buyItems[i], sx, sy, slotSize);
+            Raylib.DrawText($"${buyPrices[i]}", sx + 6, sy + 6, 16, Color.Gold);
+            Raylib.DrawText(buyDesc[i], sx + 4, sy + slotSize - 18, 12, Color.LightGray);
 
             if (Raylib.CheckCollisionPointRec(mouse, new Rectangle(sx, sy, slotSize, slotSize)))
             {
                 Raylib.DrawRectangleLines(sx, sy, slotSize, slotSize, Color.Gold);
                 if (Raylib.IsMouseButtonPressed(MouseButton.Left))
-                {
-                    shopSelectedItem = i;
-                    shopSelectedItemName = shopItems[i];
-                }
+                    BuyShopItem(buyItems[i], buyPrices[i], buyQty[i]);
             }
         }
+
+        Raylib.DrawText($"Arrows: {player.Arrows}   Bolts: {player.Bolts}", panelX + 20, panelY + 320, 18, Color.LightGray);
     }
 
-    // sell options panel at bottom if item selected
-    if (shopSelectedItem >= 0)
+    Raylib.DrawText("Q = Close Shop", panelX + 350, panelY + 528, 20, Color.LightGray);
+}
+
+static void BuyShopItem(string item, int price, int qty)
+{
+    if (player.Money < price)
     {
-        int sellPanelY = panelY + 430;
-        Raylib.DrawRectangle(panelX + 20, sellPanelY, 800, 100, new Color((byte)30,(byte)30,(byte)40,(byte)255));
-        Raylib.DrawRectangleLines(panelX + 20, sellPanelY, 800, 100, Color.Gold);
-
-        int price = shopPrices[shopSelectedItem];
-        int count = invCounts[shopSelectedItem];
-        Raylib.DrawText($"Selling: {shopSelectedItemName} @ ${price} each", panelX + 30, sellPanelY + 10, 20, Color.White);
-
-        // sell 1 button
-        Rectangle sell1Btn = new Rectangle(panelX + 30, sellPanelY + 45, 160, 44);
-        bool hover1 = Raylib.CheckCollisionPointRec(mouse, sell1Btn);
-        Raylib.DrawRectangleRec(sell1Btn, new Color((byte)40,(byte)40,(byte)40,(byte)255));
-        Raylib.DrawRectangleLinesEx(sell1Btn, 2, hover1 ? Color.Gold : Color.White);
-        Raylib.DrawText($"Sell 1 (${price})", panelX + 40, sellPanelY + 57, 18, hover1 ? Color.Gold : Color.White);
-
-        // sell 5 button
-        Rectangle sell5Btn = new Rectangle(panelX + 210, sellPanelY + 45, 160, 44);
-        bool hover5 = Raylib.CheckCollisionPointRec(mouse, sell5Btn);
-        Raylib.DrawRectangleRec(sell5Btn, new Color((byte)40,(byte)40,(byte)40,(byte)255));
-        Raylib.DrawRectangleLinesEx(sell5Btn, 2, hover5 ? Color.Gold : Color.White);
-        Raylib.DrawText($"Sell 5 (${price * Math.Min(5, count)})", panelX + 220, sellPanelY + 57, 18, hover5 ? Color.Gold : Color.White);
-
-        // sell all button
-        Rectangle sellAllBtn = new Rectangle(panelX + 390, sellPanelY + 45, 160, 44);
-        bool hoverAll = Raylib.CheckCollisionPointRec(mouse, sellAllBtn);
-        Raylib.DrawRectangleRec(sellAllBtn, new Color((byte)40,(byte)40,(byte)40,(byte)255));
-        Raylib.DrawRectangleLinesEx(sellAllBtn, 2, hoverAll ? Color.Gold : Color.White);
-        Raylib.DrawText($"Sell All (${price * count})", panelX + 400, sellPanelY + 57, 18, hoverAll ? Color.Gold : Color.White);
-
-        if (hover1 && Raylib.IsMouseButtonPressed(MouseButton.Left) && count >= 1)
-        {
-            SellItem(shopSelectedItemName, 1, price);
-            if (GetItemCount(shopSelectedItemName) <= 0) { shopSelectedItem = -1; shopSelectedItemName = ""; }
-        }
-        if (hover5 && Raylib.IsMouseButtonPressed(MouseButton.Left) && count >= 1)
-        {
-            SellItem(shopSelectedItemName, Math.Min(5, count), price);
-            if (GetItemCount(shopSelectedItemName) <= 0) { shopSelectedItem = -1; shopSelectedItemName = ""; }
-        }
-        if (hoverAll && Raylib.IsMouseButtonPressed(MouseButton.Left) && count >= 1)
-        {
-            SellItem(shopSelectedItemName, count, price);
-            shopSelectedItem = -1;
-            shopSelectedItemName = "";
-        }
+        shopMessage = $"Need ${price} for {item}";
+        shopMessageTimer = 1.5f;
+        return;
     }
-
-    Raylib.DrawText("Q = Close Shop", panelX + 350, panelY + 520, 20, Color.LightGray);
+    player.Money -= price;
+    switch (item)
+    {
+        case "Arrows":  player.Arrows += qty; break;
+        case "Bolts":   player.Bolts += qty; break;
+        case "Apple":   player.Health = Math.Min(player.MaxHealth, player.Health + 10); break;
+        case "Bread":   player.Health = Math.Min(player.MaxHealth, player.Health + 20); break;
+        case "Bandage": player.Health = Math.Min(player.MaxHealth, player.Health + 40); break;
+        case "Torch":   player.HasAxe = player.HasAxe; break; // placeholder — adjust to your torch flag
+    }
+    shopMessage = $"Bought {item}!";
+    shopMessageTimer = 1.5f;
 }
 
 static void SellItem(string itemName, int amount, int price)
@@ -3228,6 +4529,35 @@ static int GetItemCount(string itemName)
         "Dog Fangs" => player.DogFangs,
         _ => 0
     };
+}
+
+static void ScoreDive(Player player)
+{
+    // power: higher is better. rotation & entry: closer to centre (0.5) is better
+    float powerScore = divingPower;                          // 0..1
+    float rotScore = 1f - Math.Abs(divingRotation - 0.5f) * 2f;  // 1 at centre
+    float entryScore = 1f - Math.Abs(divingEntry - 0.5f) * 2f;   // 1 at centre
+
+    float combined = (powerScore * 0.3f + rotScore * 0.35f + entryScore * 0.35f);
+    divingScore = (int)Math.Round(combined * 10f);   // 0..10
+
+    string grade =
+        divingScore >= 9 ? "PERFECT DIVE!" :
+        divingScore >= 7 ? "Great dive!" :
+        divingScore >= 4 ? "Decent dive." :
+        divingScore >= 1 ? "Bit of a splash..." :
+                           "Belly flop!";
+
+    int xp = 8 + divingScore * 4;
+    player.AddDivingXP(xp);
+
+    int cash = divingScore >= 7 ? divingScore : 0;
+    if (cash > 0) player.Money += cash;
+
+    divingResult = cash > 0
+        ? $"{grade}  Score {divingScore}/10  +{xp} Diving XP  +${cash}"
+        : $"{grade}  Score {divingScore}/10  +{xp} Diving XP";
+    divingResultTimer = 3f;
 }
 
 static void DrawMcDonaldsMenu()
@@ -3913,6 +5243,10 @@ static void UpdateMinigameScreen(float dt)
     if (activeMinigameType == MinigameType.Pokie)
     {
         activePokieMachine.Update(dt, player);
+        activePokieMachine.BetOptions = activePokieMachine.GetAvailableBets(player);
+        // clamp current bet to highest unlocked option
+        if (activePokieMachine.BetAmount > activePokieMachine.BetOptions[^1])
+            activePokieMachine.BetAmount = activePokieMachine.BetOptions[^1];
 
         if (!activePokieMachine.IsSpinning)
         {
@@ -3940,6 +5274,15 @@ static void UpdateMinigameScreen(float dt)
             currentScene = SceneState.Building;
         }
     }
+    else if (activeMinigameType == MinigameType.Darts)
+{
+    activeDartsGame.Update(dt, player);
+    if (Raylib.IsKeyPressed(KeyboardKey.Escape))
+    {
+        activeDartsGame.Close();
+        currentScene = SceneState.Building; // or whatever you use to return
+    }
+}
     else if (activeMinigameType == MinigameType.Pool)
     {
         activePoolGame.Update(dt, player);
@@ -3951,6 +5294,77 @@ static void UpdateMinigameScreen(float dt)
             currentScene = SceneState.Building;
         }
     }
+    
+    else if (activeMinigameType == MinigameType.Bowling)
+    {
+        activeBowlingGame.Update(dt, player);
+        if (Raylib.IsKeyPressed(KeyboardKey.Escape))
+        {
+            activeBowlingGame.Close();
+            activeMinigameType = MinigameType.None;
+            currentScene = SceneState.Building;
+        }
+    }
+    else if (activeMinigameType == MinigameType.Claw)
+    {
+        activeClawMachine.Update(dt, player);
+        if (Raylib.IsKeyPressed(KeyboardKey.Escape))
+        {
+            activeClawMachine.Close();
+            activeMinigameType = MinigameType.None;
+            currentScene = SceneState.Building;
+        }
+    }
+    else if (activeMinigameType == MinigameType.Pinball)
+{
+    activePinballGame.Update(dt, player);
+    if (Raylib.IsKeyPressed(KeyboardKey.Escape))
+    {
+        activePinballGame.Close();
+        activeMinigameType = MinigameType.None;
+        currentScene = SceneState.Building;
+    }
+}
+else if (activeMinigameType == MinigameType.AirHockey)
+{
+    activeAirHockeyGame.Update(dt, player);
+    if (Raylib.IsKeyPressed(KeyboardKey.Escape))
+    {
+        activeAirHockeyGame.Close();
+        activeMinigameType = MinigameType.None;
+        currentScene = SceneState.Building;
+    }
+}
+else if (activeMinigameType == MinigameType.PianoTiles)
+{
+    activePianoTilesGame.Update(dt, player);
+    if (Raylib.IsKeyPressed(KeyboardKey.Escape))
+    {
+        activePianoTilesGame.Close();
+        activeMinigameType = MinigameType.None;
+        currentScene = SceneState.Building;
+    }
+}
+else if (activeMinigameType == MinigameType.Flappy)
+{
+    activeFlappyGame.Update(dt, player);
+    if (Raylib.IsKeyPressed(KeyboardKey.Escape))
+    {
+        activeFlappyGame.Close();
+        activeMinigameType = MinigameType.None;
+        currentScene = SceneState.Building;
+    }
+}
+else if (activeMinigameType == MinigameType.MiniGolf)
+{
+    activeMiniGolfGame.Update(dt, player);
+    if (Raylib.IsKeyPressed(KeyboardKey.Escape))
+    {
+        activeMiniGolfGame.Close();
+        activeMinigameType = MinigameType.None;
+        currentScene = SceneState.Building;
+    }
+}
 }
 
 static void DrawMinigameScreen()
@@ -4005,6 +5419,22 @@ static void DrawMinigameScreen()
     {
         activePoolGame.Draw(player);
     }
+    else if (activeMinigameType == MinigameType.Darts)
+    activeDartsGame.Draw(player);
+    else if (activeMinigameType == MinigameType.Bowling)
+        activeBowlingGame.Draw(player);
+    else if (activeMinigameType == MinigameType.Claw)
+        activeClawMachine.Draw(player);
+    else if (activeMinigameType == MinigameType.Pinball)
+    activePinballGame.Draw(player);
+    else if (activeMinigameType == MinigameType.AirHockey)
+        activeAirHockeyGame.Draw(player);
+    else if (activeMinigameType == MinigameType.PianoTiles)
+        activePianoTilesGame.Draw(player);
+    else if (activeMinigameType == MinigameType.Flappy)
+        activeFlappyGame.Draw(player);
+    else if (activeMinigameType == MinigameType.MiniGolf)
+    activeMiniGolfGame.Draw(player);
 }
 
 static void DrawSlotSymbolIcon(SlotSymbol symbol, int x, int y, int size)
@@ -4140,22 +5570,32 @@ static void DrawStarShape(int cx, int cy, int radius, Color color)
 
 
         static string GetCurrentBiome()
-            {
-                float x = player.Position.X;
-                float y = player.Position.Y;
+{
+    float x = player.Position.X;
+    float y = player.Position.Y;
 
-                if (x >= -3000 && x <= 4000 && y >= -1500 && y <= 2500)
-                    return "SAFE ZONE";
-                else if (y < -400 || y > 1000)
-                    return "FOREST";
-                else if (x > 4000)
-                    return "DESERT";
-                else if (x < -3000)
-                    return "SNOW ZONE";
-                else
-                    return "GRASSLANDS";
-            }
-
+    if (x >= -3000 && x <= 4000 && y >= -1500 && y <= 2500)
+        return "SAFE ZONE";
+    if (x >= -3000 && x <= 0 && y >= -10000 && y <= -6000)
+        return "FARM";
+    if (x < -30000 && y > -12000 && y < 12000)
+        return "SNOW ZONE";
+    if (x >= -30000 && x < -10000 && y > -12000 && y < 12000)
+        return "MOUNTAINS";
+    if (x >= 8000 && x < 22000 && y > -12000 && y < 12000)
+        return "DESERT";
+    if (x >= 22000 && x < 28000)
+        return "BEACH";
+    if (x >= 28000)
+        return "OCEAN";
+    if (x < -30000 && y <= -12000)
+        return "MOUNTAINS";
+    if (x >= 22000 && y <= -12000)
+        return "VOLCANO";
+    if (y < -12000 || y > 12000)
+        return "FOREST";
+    return "GRASSLANDS";
+}
         static Color GetNightOverlay()
             {
                 float night = MathF.Sin(timeOfDay * MathF.PI);
@@ -4279,20 +5719,42 @@ static void DrawStarShape(int cx, int cy, int radius, Color color)
             Raylib.DrawCircle(cx, cy + 23, 4,
                 new Color((byte)180,(byte)140,(byte)40,(byte)255));
             break;
-    }
+
+        case "Bow":
+            Raylib.DrawLineEx(new Vector2(x + size/2, y + 12), new Vector2(x + size/2, y + size - 12), 3, new Color((byte)140,(byte)90,(byte)40,(byte)255));
+            Raylib.DrawLineEx(new Vector2(x + size/2, y + 12), new Vector2(x + size/2, y + size - 12), 1, Color.LightGray);
+            break;
+
+        case "Crossbow":
+            Raylib.DrawLineEx(new Vector2(x + 14, y + size/2), new Vector2(x + size - 14, y + size/2), 4, new Color((byte)90,(byte)60,(byte)30,(byte)255));
+            Raylib.DrawLineEx(new Vector2(x + size/2, y + 16), new Vector2(x + size/2, y + size - 16), 4, new Color((byte)90,(byte)60,(byte)30,(byte)255));
+            break;
+
+        case "Arrows":
+            Raylib.DrawLineEx(new Vector2(x + 16, y + size - 16), new Vector2(x + size - 16, y + 16), 2, new Color((byte)160,(byte)120,(byte)70,(byte)255));
+            Raylib.DrawTriangle(new Vector2(x+size-16,y+16), new Vector2(x+size-24,y+18), new Vector2(x+size-18,y+24), Color.Gray);
+            break;
+
+        case "Bolts":
+            Raylib.DrawLineEx(new Vector2(x + 16, y + size - 16), new Vector2(x + size - 16, y + 16), 3, new Color((byte)120,(byte)90,(byte)50,(byte)255));
+            break;
+            }
 }
-            static void UpdateWeather(float dt)
+ static void UpdateWeather(float dt)
 {
     rainTimer += dt;
 
-    if (rainTimer >= rainInterval)
+    float interval = isRaining ? rainDuration : rainInterval;
+
+    if (rainTimer >= interval)
     {
         rainTimer = 0f;
         isRaining = !isRaining;
-        rainInterval = Raylib.GetRandomValue(20, 60);
 
         if (isRaining)
         {
+            // just started raining — pick how long this rain lasts
+            rainDuration = Raylib.GetRandomValue(15, 45);   // seconds of rain
             raindrops.Clear();
             for (int i = 0; i < 200; i++)
             {
@@ -4302,14 +5764,15 @@ static void DrawStarShape(int cx, int cy, int radius, Color color)
                 ));
             }
             musicBeforeRain = currentMusic;
-            SwitchMusic(musicRain); // ← starts rain track
+            SwitchMusic(musicRain);
         }
         else
         {
-             lastZoneMusic = default;
+            // just stopped raining — pick how long until the next rain
+            rainInterval = Raylib.GetRandomValue(150, 1000);  // seconds of dry weather
+            lastZoneMusic = default;
             CheckZoneMusic();
         }
-
     }
 
     if (isRaining)
@@ -4415,6 +5878,14 @@ static void DrawStarShape(int cx, int cy, int radius, Color color)
         Rectangle athleticsBtn = new Rectangle(ScreenWidth - 160, ScreenHeight - 330, 140, 40);
         Rectangle drivingBtn   = new Rectangle(ScreenWidth - 160, ScreenHeight - 280, 140, 40);
         Rectangle miningBtn   = new Rectangle(ScreenWidth - 160, ScreenHeight - 430, 140, 40);
+        Rectangle gamblingBtn = new Rectangle(ScreenWidth - 160, ScreenHeight - 480, 140, 40);
+        Rectangle ridingBtn  = new Rectangle(ScreenWidth - 160, ScreenHeight - 530, 140, 40);
+        Rectangle cyclingBtn = new Rectangle(ScreenWidth - 160, ScreenHeight - 580, 140, 40);
+        Rectangle swimmingBtn = new Rectangle(ScreenWidth - 160, ScreenHeight - 630, 140, 40);
+        Rectangle divingBtn = new Rectangle(ScreenWidth - 320, ScreenHeight - 180, 140, 40);
+        Rectangle sportsBtn = new Rectangle(ScreenWidth - 320, ScreenHeight - 130, 140, 40);
+        Rectangle rangedBtn = new Rectangle(ScreenWidth - 320, ScreenHeight - 230, 140, 40);
+
 
         hoverStrength  = Raylib.CheckCollisionPointRec(mouse, strengthBtn);
         hoverAthletics = Raylib.CheckCollisionPointRec(mouse, athleticsBtn);
@@ -4423,6 +5894,14 @@ static void DrawStarShape(int cx, int cy, int radius, Color color)
         hoverWoodcutting = Raylib.CheckCollisionPointRec(mouse, wcBtn);
         hoverFishing = Raylib.CheckCollisionPointRec(mouse, fishBtn);
         hoverMining = Raylib.CheckCollisionPointRec(mouse, miningBtn);
+        hoverGambling = Raylib.CheckCollisionPointRec(mouse, gamblingBtn);
+        hoverRiding  = Raylib.CheckCollisionPointRec(mouse, ridingBtn);
+        hoverCycling = Raylib.CheckCollisionPointRec(mouse, cyclingBtn);
+        hoverSwimming = Raylib.CheckCollisionPointRec(mouse, swimmingBtn);
+        hoverDiving   = Raylib.CheckCollisionPointRec(mouse, divingBtn);
+        hoverSports = Raylib.CheckCollisionPointRec(mouse, sportsBtn);
+        hoverRanged = Raylib.CheckCollisionPointRec(mouse, rangedBtn);
+
     }
     else
     {
@@ -4433,6 +5912,13 @@ static void DrawStarShape(int cx, int cy, int radius, Color color)
         hoverAthletics = false;
         hoverDriving   = false;
         hoverMining   = false;
+        hoverGambling = false;
+        hoverRiding  = false;
+        hoverCycling = false;
+        hoverSwimming = false;
+        hoverDiving = false;
+        hoverSports = false;
+        hoverRanged = false;
             }
 }
     static void DrawSkillsUI()
@@ -4499,7 +5985,7 @@ static void DrawStarShape(int cx, int cy, int radius, Color color)
         Raylib.DrawRectangle(ScreenWidth - 160, ScreenHeight - 193, 140, 8, new Color((byte)40, (byte)40, (byte)40, (byte)255));
         Raylib.DrawRectangle(ScreenWidth - 160, ScreenHeight - 193, (int)(140 * combatProgress), 8, Color.Red);
     }
-
+    // Driving
    Rectangle drivingBtn = new Rectangle(ScreenWidth - 160, ScreenHeight - 280, 140, 40);
     Color drivingColor = hoverDriving ? Color.Gold : Color.White;
     Raylib.DrawRectangleRec(drivingBtn, new Color((byte)0,(byte)0,(byte)0,(byte)200));
@@ -4512,7 +5998,7 @@ static void DrawStarShape(int cx, int cy, int radius, Color color)
         Raylib.DrawRectangle(ScreenWidth - 160, ScreenHeight - 243, 140, 8, new Color((byte)40,(byte)40,(byte)40,(byte)255));
         Raylib.DrawRectangle(ScreenWidth - 160, ScreenHeight - 243, (int)(140 * drivingProgress), 8, new Color((byte)255,(byte)200,(byte)0,(byte)255));
     }
-
+    // Athletics
     Rectangle athleticsBtn = new Rectangle(ScreenWidth - 160, ScreenHeight - 330, 140, 40);
     Color athleticsColor = hoverAthletics ? Color.Gold : Color.White;
     Raylib.DrawRectangleRec(athleticsBtn, new Color((byte)0,(byte)0,(byte)0,(byte)200));
@@ -4525,7 +6011,7 @@ static void DrawStarShape(int cx, int cy, int radius, Color color)
         Raylib.DrawRectangle(ScreenWidth - 160, ScreenHeight - 293, 140, 8, new Color((byte)40,(byte)40,(byte)40,(byte)255));
         Raylib.DrawRectangle(ScreenWidth - 160, ScreenHeight - 293, (int)(140 * athleticsProgress), 8, new Color((byte)0,(byte)200,(byte)255,(byte)255));
     }
-
+    // Strength
     Rectangle strengthBtn = new Rectangle(ScreenWidth - 160, ScreenHeight - 380, 140, 40);
     Color strengthColor = hoverStrength ? Color.Gold : Color.White;
     Raylib.DrawRectangleRec(strengthBtn, new Color((byte)0,(byte)0,(byte)0,(byte)200));
@@ -4538,6 +6024,103 @@ static void DrawStarShape(int cx, int cy, int radius, Color color)
         Raylib.DrawRectangle(ScreenWidth - 160, ScreenHeight - 343, 140, 8, new Color((byte)40,(byte)40,(byte)40,(byte)255));
         Raylib.DrawRectangle(ScreenWidth - 160, ScreenHeight - 343, (int)(140 * strengthProgress), 8, new Color((byte)255,(byte)80,(byte)80,(byte)255));
     }
+    // Gambling
+    Rectangle gamblingBtn = new Rectangle(ScreenWidth - 160, ScreenHeight - 480, 140, 40);
+    Color gamblingColor = hoverGambling ? Color.Gold : Color.White;
+    Raylib.DrawRectangleRec(gamblingBtn, new Color((byte)0,(byte)0,(byte)0,(byte)200));
+    Raylib.DrawRectangleLinesEx(gamblingBtn, 2, gamblingColor);
+    Raylib.DrawText($"Gamble Lv {player.GamblingLevel}", ScreenWidth - 155, ScreenHeight - 468, 20, gamblingColor);
+    if (!hoverGambling)
+    {
+        int gamblingRequired = player.GamblingLevel * player.GamblingLevel * 50;
+        float gamblingProgress = (float)player.GamblingXP / gamblingRequired;
+        Raylib.DrawRectangle(ScreenWidth - 160, ScreenHeight - 443, 140, 8, new Color((byte)40,(byte)40,(byte)40,(byte)255));
+        Raylib.DrawRectangle(ScreenWidth - 160, ScreenHeight - 443, (int)(140 * gamblingProgress), 8, new Color((byte)220,(byte)160,(byte)20,(byte)255));
+    }
+        // Riding
+    Rectangle ridingBtn = new Rectangle(ScreenWidth - 160, ScreenHeight - 530, 140, 40);
+    Color ridingColor = hoverRiding ? Color.Gold : Color.White;
+    Raylib.DrawRectangleRec(ridingBtn, new Color((byte)0,(byte)0,(byte)0,(byte)200));
+    Raylib.DrawRectangleLinesEx(ridingBtn, 2, ridingColor);
+    Raylib.DrawText($"Riding Lv {player.RidingLevel}", ScreenWidth - 155, ScreenHeight - 518, 20, ridingColor);
+    if (!hoverRiding)
+    {
+        int ridingRequired = player.RidingLevel * player.RidingLevel * 50;
+        float ridingProgress = (float)player.RidingXP / ridingRequired;
+        Raylib.DrawRectangle(ScreenWidth - 160, ScreenHeight - 493, 140, 8, new Color((byte)40,(byte)40,(byte)40,(byte)255));
+        Raylib.DrawRectangle(ScreenWidth - 160, ScreenHeight - 493, (int)(140 * ridingProgress), 8, new Color((byte)160,(byte)100,(byte)40,(byte)255));
+    }
+
+    // Cycling
+    Rectangle cyclingBtn = new Rectangle(ScreenWidth - 160, ScreenHeight - 580, 140, 40);
+    Color cyclingColor = hoverCycling ? Color.Gold : Color.White;
+    Raylib.DrawRectangleRec(cyclingBtn, new Color((byte)0,(byte)0,(byte)0,(byte)200));
+    Raylib.DrawRectangleLinesEx(cyclingBtn, 2, cyclingColor);
+    Raylib.DrawText($"Cycling Lv {player.CyclingLevel}", ScreenWidth - 155, ScreenHeight - 568, 20, cyclingColor);
+    if (!hoverCycling)
+    {
+        int cyclingRequired = player.CyclingLevel * player.CyclingLevel * 50;
+        float cyclingProgress = (float)player.CyclingXP / cyclingRequired;
+        Raylib.DrawRectangle(ScreenWidth - 160, ScreenHeight - 543, 140, 8, new Color((byte)40,(byte)40,(byte)40,(byte)255));
+        Raylib.DrawRectangle(ScreenWidth - 160, ScreenHeight - 543, (int)(140 * cyclingProgress), 8, new Color((byte)100,(byte)200,(byte)80,(byte)255));
+    }
+    // Swimming
+Rectangle swimmingBtn = new Rectangle(ScreenWidth - 160, ScreenHeight - 630, 140, 40);
+Color swimmingColor = hoverSwimming ? Color.Gold : Color.White;
+Raylib.DrawRectangleRec(swimmingBtn, new Color((byte)0,(byte)0,(byte)0,(byte)200));
+Raylib.DrawRectangleLinesEx(swimmingBtn, 2, swimmingColor);
+Raylib.DrawText($"Swimming Lv {player.SwimmingLevel}", ScreenWidth - 155, ScreenHeight - 618, 18, swimmingColor);
+if (!hoverSwimming)
+{
+    int req = player.SwimmingLevel * player.SwimmingLevel * 50;
+    float prog = (float)player.SwimmingXP / req;
+    Raylib.DrawRectangle(ScreenWidth - 160, ScreenHeight - 593, 140, 8, new Color((byte)40,(byte)40,(byte)40,(byte)255));
+    Raylib.DrawRectangle(ScreenWidth - 160, ScreenHeight - 593, (int)(140 * prog), 8, new Color((byte)40,(byte)140,(byte)220,(byte)255));
+}
+
+// Diving
+Rectangle divingBtn = new Rectangle(ScreenWidth - 320, ScreenHeight - 180, 140, 40);
+Color divingColor = hoverDiving ? Color.Gold : Color.White;
+Raylib.DrawRectangleRec(divingBtn, new Color((byte)0,(byte)0,(byte)0,(byte)200));
+Raylib.DrawRectangleLinesEx(divingBtn, 2, divingColor);
+Raylib.DrawText($"Diving Lv {player.DivingLevel}", ScreenWidth - 315, ScreenHeight - 168, 18, divingColor);
+if (!hoverDiving)
+{
+    int req = player.DivingLevel * player.DivingLevel * 50;
+    float prog = (float)player.DivingXP / req;
+    Raylib.DrawRectangle(ScreenWidth - 320, ScreenHeight - 143, 140, 8, new Color((byte)40,(byte)40,(byte)40,(byte)255));
+    Raylib.DrawRectangle(ScreenWidth - 320, ScreenHeight - 143, (int)(140 * prog), 8, new Color((byte)80,(byte)180,(byte)255,(byte)255));
+}
+
+// Sports
+Rectangle sportsBtn = new Rectangle(ScreenWidth - 320, ScreenHeight - 130, 140, 40);
+Color sportsColor = hoverSports ? Color.Gold : Color.White;
+Raylib.DrawRectangleRec(sportsBtn, new Color((byte)0,(byte)0,(byte)0,(byte)200));
+Raylib.DrawRectangleLinesEx(sportsBtn, 2, sportsColor);
+Raylib.DrawText($"Sports Lv {player.SportsLevel}", ScreenWidth - 315, ScreenHeight - 118, 18, sportsColor);
+if (!hoverSports)
+{
+    int req = player.SportsLevel * player.SportsLevel * 50;
+    float prog = (float)player.SportsXP / req;
+    Raylib.DrawRectangle(ScreenWidth - 320, ScreenHeight - 93, 140, 8, new Color((byte)40,(byte)40,(byte)40,(byte)255));
+    Raylib.DrawRectangle(ScreenWidth - 320, ScreenHeight - 93, (int)(140 * prog), 8, new Color((byte)230,(byte)120,(byte)40,(byte)255));
+}
+
+// Ranged
+Rectangle rangedBtn = new Rectangle(ScreenWidth - 320, ScreenHeight - 230, 140, 40);
+Color rangedColor = hoverRanged ? Color.Gold : Color.White;
+Raylib.DrawRectangleRec(rangedBtn, new Color((byte)0,(byte)0,(byte)0,(byte)200));
+Raylib.DrawRectangleLinesEx(rangedBtn, 2, rangedColor);
+Raylib.DrawText($"Ranged Lv {player.RangedLevel}", ScreenWidth - 315, ScreenHeight - 218, 18, rangedColor);
+if (!hoverRanged)
+{
+    int req = player.RangedLevel * player.RangedLevel * 50;
+    float prog = (float)player.RangedXP / req;
+    Raylib.DrawRectangle(ScreenWidth - 320, ScreenHeight - 193, 140, 8, new Color((byte)40,(byte)40,(byte)40,(byte)255));
+    Raylib.DrawRectangle(ScreenWidth - 320, ScreenHeight - 193, (int)(140 * prog), 8, new Color((byte)150,(byte)100,(byte)200,(byte)255));
+}
+
+
     // XP tooltips
     if (hoverWoodcutting)
     {
@@ -4581,176 +6164,243 @@ static void DrawStarShape(int cx, int cy, int radius, Color color)
         Raylib.DrawRectangle(ScreenWidth - 320, ScreenHeight - 430, 150, 40, new Color((byte)0,(byte)0,(byte)0,(byte)210));
         Raylib.DrawText($"XP: {player.MiningXP}/{required}", ScreenWidth - 315, ScreenHeight - 418, 20, Color.LightGray);
     }
+    if (hoverGambling)
+    {
+        int required = player.GamblingLevel * player.GamblingLevel * 50;
+        Raylib.DrawRectangle(ScreenWidth - 320, ScreenHeight - 480, 150, 40, new Color((byte)0,(byte)0,(byte)0,(byte)210));
+        Raylib.DrawText($"XP: {player.GamblingXP}/{required}", ScreenWidth - 315, ScreenHeight - 468, 20, Color.LightGray);
+    }
+     if (hoverRiding)
+    {
+        int required = player.RidingLevel * player.RidingLevel * 50;
+        Raylib.DrawRectangle(ScreenWidth - 320, ScreenHeight - 530, 150, 40, new Color((byte)0,(byte)0,(byte)0,(byte)210));
+        Raylib.DrawText($"XP: {player.RidingXP}/{required}", ScreenWidth - 315, ScreenHeight - 518, 20, Color.LightGray);
+    }
+     if (hoverCycling)
+    {
+        int required = player.CyclingLevel * player.CyclingLevel * 50;
+        Raylib.DrawRectangle(ScreenWidth - 320, ScreenHeight - 580, 150, 40, new Color((byte)0,(byte)0,(byte)0,(byte)210));
+        Raylib.DrawText($"XP: {player.CyclingXP}/{required}", ScreenWidth - 315, ScreenHeight - 568, 20, Color.LightGray);
+    }
+    if (hoverSwimming)
+    {
+        int req = player.SwimmingLevel * player.SwimmingLevel * 50;
+        Raylib.DrawRectangle(ScreenWidth - 320, ScreenHeight - 630, 150, 40, new Color((byte)0,(byte)0,(byte)0,(byte)210));
+        Raylib.DrawText($"XP: {player.SwimmingXP}/{req}", ScreenWidth - 315, ScreenHeight - 618, 18, Color.LightGray);
+    }
+   if (hoverDiving)
+    {
+        int req = player.DivingLevel * player.DivingLevel * 50;
+        Raylib.DrawRectangle(ScreenWidth - 480, ScreenHeight - 180, 150, 40, new Color((byte)0,(byte)0,(byte)0,(byte)210));
+        Raylib.DrawText($"XP: {player.DivingXP}/{req}", ScreenWidth - 475, ScreenHeight - 168, 18, Color.LightGray);
+    }
+   if (hoverSports)
+    {
+        int req = player.SportsLevel * player.SportsLevel * 50;
+        Raylib.DrawRectangle(ScreenWidth - 480, ScreenHeight - 130, 150, 40, new Color((byte)0,(byte)0,(byte)0,(byte)210));
+        Raylib.DrawText($"XP: {player.SportsXP}/{req}", ScreenWidth - 475, ScreenHeight - 118, 18, Color.LightGray);
+    }
+    if (hoverRanged)
+    {
+        int req = player.RangedLevel * player.RangedLevel * 50;
+        Raylib.DrawRectangle(ScreenWidth - 480, ScreenHeight - 230, 150, 40, new Color((byte)0,(byte)0,(byte)0,(byte)210));
+        Raylib.DrawText($"XP: {player.RangedXP}/{req}", ScreenWidth - 475, ScreenHeight - 218, 18, Color.LightGray);
+    }
+
 }
  
     static void DrawMinimap()
 {
-    // background
     Raylib.DrawRectangle(minimapX, minimapY, minimapSize, minimapSize, new Color((byte)0,(byte)0,(byte)0,(byte)180));
-
     Raylib.BeginScissorMode(minimapX, minimapY, minimapSize, minimapSize);
 
     int cx = minimapX + minimapSize / 2;
     int cy = minimapY + minimapSize / 2;
 
-    // -- BIOMES --
-    // base grasslands colour
+    // 1. Base grasslands
     Raylib.DrawRectangle(minimapX, minimapY, minimapSize, minimapSize, new Color((byte)90,(byte)170,(byte)90,(byte)200));
 
-    // forest top
-    int forestTopY = cy + (int)((-300 - player.Position.Y) * minimapScale);
+    // 2. Forest top band (Y < -12000)
+    int forestTopY = cy + (int)((-12000 - player.Position.Y) * minimapScale);
     Raylib.DrawRectangle(minimapX, minimapY, minimapSize, Math.Clamp(forestTopY - minimapY, 0, minimapSize), new Color((byte)40,(byte)100,(byte)40,(byte)220));
 
-    // forest bottom
-    int forestBotY = cy + (int)((1000 - player.Position.Y) * minimapScale);
+    // 3. Forest bottom band (Y > 12000)
+    int forestBotY = cy + (int)((12000 - player.Position.Y) * minimapScale);
     Raylib.DrawRectangle(minimapX, forestBotY, minimapSize, Math.Clamp(minimapY + minimapSize - forestBotY, 0, minimapSize), new Color((byte)40,(byte)100,(byte)40,(byte)220));
 
-    // desert right
-    int desertX = cx + (int)((4000 - player.Position.X) * minimapScale);
-    Raylib.DrawRectangle(desertX, minimapY, Math.Clamp(minimapX + minimapSize - desertX, 0, minimapSize), minimapSize, new Color((byte)210,(byte)180,(byte)100,(byte)220));
+    // 4. Swamp (X -55000 to -30000, middle strip)
+    int swampL = cx + (int)((-55000 - player.Position.X) * minimapScale);
+    int swampR = cx + (int)((-30000 - player.Position.X) * minimapScale);
+    int swampT = cy + (int)((-12000 - player.Position.Y) * minimapScale);
+    int swampB = cy + (int)((12000  - player.Position.Y) * minimapScale);
+    int swX = Math.Clamp(swampL, minimapX, minimapX + minimapSize);
+    int swY = Math.Clamp(swampT, minimapY, minimapY + minimapSize);
+    Raylib.DrawRectangle(swX, swY,
+        Math.Clamp(swampR - swampL, 0, minimapSize - (swX - minimapX)),
+        Math.Clamp(swampB - swampT, 0, minimapSize - (swY - minimapY)),
+        new Color((byte)55,(byte)75,(byte)35,(byte)220));
 
-    // snow left
-    int snowLeftX = cx + (int)((-3000 - player.Position.X) * minimapScale);
-    Raylib.DrawRectangle(minimapX, minimapY, Math.Clamp(snowLeftX - minimapX, 0, minimapSize), minimapSize, new Color((byte)220,(byte)235,(byte)255,(byte)220));
+    // 5. Snow (X -30000 to -10000, middle strip)
+    int snowL = cx + (int)((-60000 - player.Position.X) * minimapScale);
+    int snowR = cx + (int)((-30000 - player.Position.X) * minimapScale);
+    int snowT = cy + (int)((-15000 - player.Position.Y) * minimapScale);
+    int snowB = cy + (int)((15000  - player.Position.Y) * minimapScale);
+    int snX = Math.Clamp(snowL, minimapX, minimapX + minimapSize);
+    int snY = Math.Clamp(snowT, minimapY, minimapY + minimapSize);
+    Raylib.DrawRectangle(snX, snY,
+        Math.Clamp(snowR - snowL, 0, minimapSize - (snX - minimapX)),
+        Math.Clamp(snowB - snowT, 0, minimapSize - (snY - minimapY)),
+        new Color((byte)220,(byte)235,(byte)255,(byte)220));
 
-    // Ocean/Beach right (X > 26000)
-    int beachX = cx + (int)((26000 - player.Position.X) * minimapScale);
-    int oceanX = cx + (int)((30000 - player.Position.X) * minimapScale);
-    Raylib.DrawRectangle(beachX, minimapY, Math.Clamp(oceanX - beachX, 0, minimapSize), minimapSize, new Color((byte)240,(byte)220,(byte)150,(byte)220)); // sand
-    Raylib.DrawRectangle(oceanX, minimapY, Math.Clamp(minimapX + minimapSize - oceanX, 0, minimapSize), minimapSize, new Color((byte)30,(byte)100,(byte)180,(byte)220)); // deep water
+    // 6. Desert (X 8000 to 22000, middle strip)
+    int desL = cx + (int)((8000  - player.Position.X) * minimapScale);
+    int desR = cx + (int)((22000 - player.Position.X) * minimapScale);
+    int desT = cy + (int)((-12000 - player.Position.Y) * minimapScale);
+    int desB = cy + (int)((12000  - player.Position.Y) * minimapScale);
+    int dX = Math.Clamp(desL, minimapX, minimapX + minimapSize);
+    int dY = Math.Clamp(desT, minimapY, minimapY + minimapSize);
+    Raylib.DrawRectangle(dX, dY,
+        Math.Clamp(desR - desL, 0, minimapSize - (dX - minimapX)),
+        Math.Clamp(desB - desT, 0, minimapSize - (dY - minimapY)),
+        new Color((byte)210,(byte)180,(byte)100,(byte)220));
 
-    // Swamp far left (X < -30000)
-    int swampRightX = cx + (int)((-30000 - player.Position.X) * minimapScale);
-    Raylib.DrawRectangle(minimapX, minimapY, Math.Clamp(swampRightX - minimapX, 0, minimapSize), minimapSize, new Color((byte)55,(byte)75,(byte)35,(byte)220));
+    // 7. Beach (X 22000 to 28000, full height)
+    int beachX = cx + (int)((22000 - player.Position.X) * minimapScale);
+    int oceanX = cx + (int)((28000 - player.Position.X) * minimapScale);
+    Raylib.DrawRectangle(Math.Clamp(beachX, minimapX, minimapX + minimapSize), minimapY,
+        Math.Clamp(oceanX - beachX, 0, minimapSize), minimapSize,
+        new Color((byte)240,(byte)220,(byte)150,(byte)220));
 
-    // Volcano — far right, top (X > 26000, Y < -2000)
-    int volcanoLeftX  = cx + (int)((26000 - player.Position.X) * minimapScale);
-    int volcanoBottomY = cy + (int)((-2000 - player.Position.Y) * minimapScale);
-    Raylib.DrawRectangle(
-        Math.Clamp(volcanoLeftX, minimapX, minimapX + minimapSize),
-        minimapY,
-        Math.Clamp(minimapX + minimapSize - volcanoLeftX, 0, minimapSize),
-        Math.Clamp(volcanoBottomY - minimapY, 0, minimapSize),
+    // 8. Ocean (X 28000+, full height)
+    Raylib.DrawRectangle(Math.Clamp(oceanX, minimapX, minimapX + minimapSize), minimapY,
+        Math.Clamp(minimapX + minimapSize - oceanX, 0, minimapSize), minimapSize,
+        new Color((byte)30,(byte)100,(byte)180,(byte)220));
+
+    // 9. Volcano (X 22000+, Y above -12000)
+    int volL = cx + (int)((22000 - player.Position.X) * minimapScale);
+    int volB = cy + (int)((-12000 - player.Position.Y) * minimapScale);
+    int vX = Math.Clamp(volL, minimapX, minimapX + minimapSize);
+    Raylib.DrawRectangle(vX, minimapY,
+        Math.Clamp(minimapX + minimapSize - vX, 0, minimapSize),
+        Math.Clamp(volB - minimapY, 0, minimapSize),
         new Color((byte)40,(byte)20,(byte)10,(byte)220));
 
-    // Mountains — far left, top (X < -26000, Y < -2000)
-    int mountainRightX  = cx + (int)((-26000 - player.Position.X) * minimapScale);
-    int mountainBottomY = cy + (int)((-2000 - player.Position.Y) * minimapScale);
-    Raylib.DrawRectangle(
-        minimapX,
-        minimapY,
-        Math.Clamp(mountainRightX - minimapX, 0, minimapSize),
-        Math.Clamp(mountainBottomY - minimapY, 0, minimapSize),
+    // 10. Mountains (X -30000 to -10000, Y -15000 to 23000)
+    int mtL = cx + (int)((-30000 - player.Position.X) * minimapScale);
+    int mtR = cx + (int)((-10000 - player.Position.X) * minimapScale);
+    int mtT = cy + (int)((-15000 - player.Position.Y) * minimapScale);
+    int mtB = cy + (int)((23000  - player.Position.Y) * minimapScale);
+    int mX  = Math.Clamp(mtL, minimapX, minimapX + minimapSize);
+    int mY  = Math.Clamp(mtT, minimapY, minimapY + minimapSize);
+    int mX2 = Math.Clamp(mtR, minimapX, minimapX + minimapSize);
+    int mY2 = Math.Clamp(mtB, minimapY, minimapY + minimapSize);
+    Raylib.DrawRectangle(mX, mY, mX2 - mX, mY2 - mY,
         new Color((byte)100,(byte)95,(byte)90,(byte)220));
 
-    // safe zone overlay
-    int szX = cx + (int)((-3000 - player.Position.X) * minimapScale);
-    int szY = cy + (int)((-1500 - player.Position.Y) * minimapScale);
-    int szX2 = cx + (int)((4000 - player.Position.X) * minimapScale);
-    int szY2 = cy + (int)((2500 - player.Position.Y) * minimapScale);
+    // 11. Safe zone
+    int szX  = cx + (int)((-3000 - player.Position.X) * minimapScale);
+    int szY  = cy + (int)((-1500 - player.Position.Y) * minimapScale);
+    int szX2 = cx + (int)((4000  - player.Position.X) * minimapScale);
+    int szY2 = cy + (int)((2500  - player.Position.Y) * minimapScale);
+    int csX  = Math.Clamp(szX,  minimapX, minimapX + minimapSize);
+    int csY  = Math.Clamp(szY,  minimapY, minimapY + minimapSize);
+    int csX2 = Math.Clamp(szX2, minimapX, minimapX + minimapSize);
+    int csY2 = Math.Clamp(szY2, minimapY, minimapY + minimapSize);
+    Raylib.DrawRectangle(csX, csY, csX2 - csX, csY2 - csY, new Color((byte)90,(byte)170,(byte)90,(byte)180));
 
-    // clamp to minimap bounds
-    int clampedSzX = Math.Clamp(szX, minimapX, minimapX + minimapSize);
-    int clampedSzY = Math.Clamp(szY, minimapY, minimapY + minimapSize);
-    int clampedSzX2 = Math.Clamp(szX2, minimapX, minimapX + minimapSize);
-    int clampedSzY2 = Math.Clamp(szY2, minimapY, minimapY + minimapSize);
+   // 12. Farm zone
+    int farmX1 = cx + (int)((-3000  - player.Position.X) * minimapScale);
+    int farmX2 = cx + (int)((0      - player.Position.X) * minimapScale);
+    int farmY1 = cy + (int)((-10000 - player.Position.Y) * minimapScale);
+    int farmY2 = cy + (int)((-6000  - player.Position.Y) * minimapScale);
+    int fX  = Math.Clamp(farmX1, minimapX, minimapX + minimapSize);
+    int fY  = Math.Clamp(farmY1, minimapY, minimapY + minimapSize);
+    int fX2 = Math.Clamp(farmX2, minimapX, minimapX + minimapSize);
+    int fY2 = Math.Clamp(farmY2, minimapY, minimapY + minimapSize);
+    Raylib.DrawRectangle(fX, fY, fX2 - fX, fY2 - fY,
+        new Color((byte)139,(byte)90,(byte)43,(byte)220));
 
-    Raylib.DrawRectangle(
-        clampedSzX,
-        clampedSzY,
-        clampedSzX2 - clampedSzX,
-        clampedSzY2 - clampedSzY,
-        new Color((byte)90,(byte)170,(byte)90,(byte)180)
-    );
-
-    // -- ROADS --
-    // main horizontal road
-    int roadY = cy + (int)((550 - player.Position.Y) * minimapScale);
+    // Roads
+    int roadY    = cy + (int)((550   - player.Position.Y) * minimapScale);
+    int highwayX = cx + (int)((200   - player.Position.X) * minimapScale);
     Raylib.DrawRectangle(minimapX, roadY, minimapSize, Math.Max(1, (int)(180 * minimapScale)), new Color((byte)80,(byte)80,(byte)80,(byte)255));
-
-    // north/south highway
-    int highwayX = cx + (int)((200 - player.Position.X) * minimapScale);
     Raylib.DrawRectangle(highwayX, minimapY, Math.Max(1, (int)(120 * minimapScale)), minimapSize, new Color((byte)80,(byte)80,(byte)80,(byte)255));
 
-    // outer ring road top
-    int ringTopY = cy + (int)((-38000 - player.Position.Y) * minimapScale);
-    Raylib.DrawRectangle(minimapX, ringTopY, minimapSize, Math.Max(1, (int)(180 * minimapScale)), new Color((byte)80,(byte)80,(byte)80,(byte)255));
-
-    // outer ring road bottom
-    int ringBotY = cy + (int)((38000 - player.Position.Y) * minimapScale);
-    Raylib.DrawRectangle(minimapX, ringBotY, minimapSize, Math.Max(1, (int)(180 * minimapScale)), new Color((byte)80,(byte)80,(byte)80,(byte)255));
-
-    // outer ring road left
-    int ringLeftX = cx + (int)((-40000 - player.Position.X) * minimapScale);
-    Raylib.DrawRectangle(ringLeftX, minimapY, Math.Max(1, (int)(180 * minimapScale)), minimapSize, new Color((byte)80,(byte)80,(byte)80,(byte)255));
-
-    // outer ring road right
-    int ringRightX = cx + (int)((39820 - player.Position.X) * minimapScale);
+    int ringTopY   = cy + (int)((-38000 - player.Position.Y) * minimapScale);
+    int ringBotY   = cy + (int)((38000  - player.Position.Y) * minimapScale);
+    int ringLeftX  = cx + (int)((-40000 - player.Position.X) * minimapScale);
+    int ringRightX = cx + (int)((39820  - player.Position.X) * minimapScale);
+    Raylib.DrawRectangle(minimapX, ringTopY,   minimapSize, Math.Max(1, (int)(180 * minimapScale)), new Color((byte)80,(byte)80,(byte)80,(byte)255));
+    Raylib.DrawRectangle(minimapX, ringBotY,   minimapSize, Math.Max(1, (int)(180 * minimapScale)), new Color((byte)80,(byte)80,(byte)80,(byte)255));
+    Raylib.DrawRectangle(ringLeftX,  minimapY, Math.Max(1, (int)(180 * minimapScale)), minimapSize, new Color((byte)80,(byte)80,(byte)80,(byte)255));
     Raylib.DrawRectangle(ringRightX, minimapY, Math.Max(1, (int)(180 * minimapScale)), minimapSize, new Color((byte)80,(byte)80,(byte)80,(byte)255));
 
-    // snow vertical connectors
+    // Snow vertical connectors
     int snow1X = cx + (int)((-20000 - player.Position.X) * minimapScale);
     int snow2X = cx + (int)((-10000 - player.Position.X) * minimapScale);
     Raylib.DrawRectangle(snow1X, minimapY, Math.Max(1, (int)(120 * minimapScale)), minimapSize, new Color((byte)80,(byte)80,(byte)80,(byte)255));
     Raylib.DrawRectangle(snow2X, minimapY, Math.Max(1, (int)(120 * minimapScale)), minimapSize, new Color((byte)80,(byte)80,(byte)80,(byte)255));
 
-    // desert vertical connectors
+    // Desert vertical connectors
     int des1X = cx + (int)((15000 - player.Position.X) * minimapScale);
     int des2X = cx + (int)((25000 - player.Position.X) * minimapScale);
     Raylib.DrawRectangle(des1X, minimapY, Math.Max(1, (int)(120 * minimapScale)), minimapSize, new Color((byte)80,(byte)80,(byte)80,(byte)255));
     Raylib.DrawRectangle(des2X, minimapY, Math.Max(1, (int)(120 * minimapScale)), minimapSize, new Color((byte)80,(byte)80,(byte)80,(byte)255));
 
-    // desert side road
-    int desertRoadY = cy + (int)((200 - player.Position.Y) * minimapScale);
+    // Desert side road
+    int desertRoadY = cy + (int)((200  - player.Position.Y) * minimapScale);
     int desertRoadX = cx + (int)((4000 - player.Position.X) * minimapScale);
     Raylib.DrawRectangle(desertRoadX, desertRoadY, Math.Clamp(minimapX + minimapSize - desertRoadX, 0, minimapSize), Math.Max(1, (int)(120 * minimapScale)), new Color((byte)80,(byte)80,(byte)80,(byte)255));
 
-    // snow side road
-    int snowRoadY = cy + (int)((200 - player.Position.Y) * minimapScale);
-    int snowRoadLeftX = cx + (int)((-3000 - player.Position.X) * minimapScale);
-    Raylib.DrawRectangle(minimapX, snowRoadY, Math.Clamp(snowRoadLeftX - minimapX, 0, minimapSize), Math.Max(1, (int)(120 * minimapScale)), new Color((byte)80,(byte)80,(byte)80,(byte)255));
+    // Snow side road
+    int snowRoadY    = cy + (int)((200   - player.Position.Y) * minimapScale);
+    int snowRoadEndX = cx + (int)((-3000 - player.Position.X) * minimapScale);
+    Raylib.DrawRectangle(minimapX, snowRoadY, Math.Clamp(snowRoadEndX - minimapX, 0, minimapSize), Math.Max(1, (int)(120 * minimapScale)), new Color((byte)80,(byte)80,(byte)80,(byte)255));
 
-
-
-    // -- BUILDINGS --
+    // Buildings
     foreach (Building building in buildings)
     {
         int bx = cx + (int)((building.Bounds.X - player.Position.X) * minimapScale);
         int by = cy + (int)((building.Bounds.Y - player.Position.Y) * minimapScale);
-
-        if (bx >= minimapX && bx <= minimapX + minimapSize &&
-            by >= minimapY && by <= minimapY + minimapSize)
+        if (bx >= minimapX && bx <= minimapX + minimapSize && by >= minimapY && by <= minimapY + minimapSize)
         {
             Raylib.DrawRectangle(bx - 3, by - 3, 10, 10, Color.Yellow);
-            // building name label
             Raylib.DrawText(building.BuildingName, bx + 8, by - 4, 10, Color.Yellow);
         }
     }
 
-    // -- BORDER --
     Raylib.DrawRectangleLines(minimapX, minimapY, minimapSize, minimapSize, Color.White);
-
-   // -- PLAYER DOT --
     Raylib.DrawCircle(cx, cy, 4, Color.White);
-
     Raylib.EndScissorMode();
 
-    // -- BORDER -- drawn after scissor so it's always clean
     Raylib.DrawRectangleLines(minimapX, minimapY, minimapSize, minimapSize, Color.White);
-
-    // -- PLAYER NAME and LEGEND -- drawn outside scissor so they don't get clipped
     Raylib.DrawText(playerName, minimapX, minimapY + minimapSize + 6, 18, Color.LightGray);
 
+    // Legend
     int lx = minimapX;
     int ly = minimapY + minimapSize + 28;
-    Raylib.DrawRectangle(lx, ly, 10, 10, new Color((byte)90,(byte)170,(byte)90,(byte)255));
-    Raylib.DrawText("Safe", lx + 13, ly, 12, Color.LightGray);
-    Raylib.DrawRectangle(lx + 50, ly, 10, 10, new Color((byte)40,(byte)100,(byte)40,(byte)255));
-    Raylib.DrawText("Forest", lx + 63, ly, 12, Color.LightGray);
-    Raylib.DrawRectangle(lx, ly + 16, 10, 10, new Color((byte)210,(byte)180,(byte)100,(byte)255));
-    Raylib.DrawText("Desert", lx + 13, ly + 16, 12, Color.LightGray);
-    Raylib.DrawRectangle(lx + 50, ly + 16, 10, 10, new Color((byte)220,(byte)235,(byte)255,(byte)255));
-    Raylib.DrawText("Snow", lx + 63, ly + 16, 12, Color.LightGray);
+    (Color col, string label)[] legend = {
+        (new Color((byte)90,(byte)170,(byte)90,(byte)255),  "Safe"),
+        (new Color((byte)40,(byte)100,(byte)40,(byte)255),  "Forest"),
+        (new Color((byte)210,(byte)180,(byte)100,(byte)255),"Desert"),
+        (new Color((byte)220,(byte)235,(byte)255,(byte)255),"Snow"),
+        (new Color((byte)55,(byte)75,(byte)35,(byte)255),   "Swamp"),
+        (new Color((byte)40,(byte)20,(byte)10,(byte)255),   "Volcano"),
+        (new Color((byte)100,(byte)95,(byte)90,(byte)255),  "Mountains"),
+        (new Color((byte)240,(byte)220,(byte)150,(byte)255),"Beach"),
+        (new Color((byte)30,(byte)100,(byte)180,(byte)255), "Ocean"),
+        (new Color((byte)139,(byte)90,(byte)43,(byte)255),  "Farm"),
+    };
+
+    for (int i = 0; i < legend.Length; i++)
+    {
+        int row = i / 2;
+        int col = i % 2;
+        int lbx = lx + col * 55;
+        int lby = ly + row * 16;
+        Raylib.DrawRectangle(lbx, lby, 10, 10, legend[i].col);
+        Raylib.DrawText(legend[i].label, lbx + 13, lby, 12, Color.LightGray);
+    }
 }
 
         static void Main()
@@ -5067,6 +6717,19 @@ if (!swordPickedUp && Vector2.Distance(player.Position, swordPosition) < 60)
     }
 }
 
+if (!bowPickedUp && Vector2.Distance(player.Position, bowSpawnPos) < 50 && Raylib.IsKeyPressed(KeyboardKey.E))
+{
+    bowPickedUp = true;
+    player.HasBow = true;
+    AcquireGear("Bow");
+}
+if (!crossbowPickedUp && Vector2.Distance(player.Position, crossbowSpawnPos) < 50 && Raylib.IsKeyPressed(KeyboardKey.E))
+{
+    crossbowPickedUp = true;
+    player.HasCrossbow = true;
+    AcquireGear("Crossbow");
+}
+
 if (Raylib.IsKeyPressed(KeyboardKey.G))
     armorMenuOpen = !armorMenuOpen;
 
@@ -5251,7 +6914,7 @@ if (Raylib.IsKeyPressed(KeyboardKey.G))
 
 if (Raylib.IsKeyPressed(KeyboardKey.Space) || Raylib.IsMouseButtonPressed(MouseButton.Left))
 {
-    string equipped = GetEquippedTool();
+    string equipped = GetActiveWeapon();
     if (equipped == "Sword")
         Raylib.PlaySound(soundSwordSwing);
     else if (equipped == "Stick")
@@ -5301,7 +6964,7 @@ if (Raylib.IsKeyPressed(KeyboardKey.Space) || Raylib.IsMouseButtonPressed(MouseB
 
                   if (Raylib.IsKeyPressed(KeyboardKey.Space) || Raylib.IsMouseButtonPressed(MouseButton.Left))
 {
-    string equipped = GetEquippedTool();
+    string equipped = GetActiveWeapon();
     bool hasWeapon = equipped == "Stick" || equipped == "Sword";
 
     if (!hasWeapon)
@@ -5531,18 +7194,13 @@ else
             }
         }
     }
-
-    // give athletics XP while riding bikes, and athletics+strength for horse
-    if (rideable.Riding)
-    {
-        if (rideable.Type != Rideable.RideableType.Horse)
-            player.AddAthleticsXP(1);
-        else
-        {
-            player.AddAthleticsXP(1);
-            player.AddStrengthXP(1);
-        }
-    }
+if (rideable.Riding)
+{
+    if (rideable.Type == Rideable.RideableType.Horse)
+        player.AddRidingXP(1);
+    else
+        player.AddCyclingXP(1);
+}
 }
 
  // gas pump interaction
@@ -5797,10 +7455,29 @@ foreach (GasStation station in gasStations)
                         }
                     }
 
+                    // Dungeon entrances
+foreach (var entrance in dungeonEntrances)
+{
+    if (Vector2.Distance(player.Position, entrance.pos) < 80)
+    {
+        if (Raylib.IsKeyPressed(KeyboardKey.E))
+        {
+            activeDungeon.Open(entrance.type, entrance.name, player.Position);
+            dungeonQuitConfirm = false;
+            player.InventoryOpen = false;
+            currentScene = SceneState.Dungeon;
+        }
+    }
+}
+
+
                     camera.Target = player.Position;
 }
 
                     break;
+        case SceneState.Dungeon:
+        UpdateDungeon(dt);
+        break;
 
          case SceneState.Building:
 
@@ -5829,19 +7506,19 @@ foreach (GasStation station in gasStations)
 
     if (!chestOpen && nearWardrobe)
     {
-        if (Raylib.IsKeyPressed(KeyboardKey.E))
+        if (Raylib.IsKeyPressed(KeyboardKey.Space))
             wardrobeOpen = !wardrobeOpen;
     }
 
     if (!wardrobeOpen && nearChest)
     {
-        if (Raylib.IsKeyPressed(KeyboardKey.E))
+        if (Raylib.IsKeyPressed(KeyboardKey.Space))
             chestOpen = !chestOpen;
     }
 
     if (!wardrobeOpen && !chestOpen && nearBed)
     {
-        if (Raylib.IsKeyPressed(KeyboardKey.Z))
+        if (Raylib.IsKeyPressed(KeyboardKey.Space))
         {
             player.DrunkLevel = 0;
             player.DrunkTimer = 0f;
@@ -5861,6 +7538,148 @@ foreach (GasStation station in gasStations)
     {
         chestOpen = false;
         return;
+    }
+}
+if (currentBuilding.BuildingName == "DropZone")
+{
+    // Bowling lanes
+    Vector2[] bowlingLanes = {
+        new Vector2(250, 300),
+        new Vector2(250, 450)
+    };
+    for (int i = 0; i < bowlingLanes.Length; i++)
+    {
+        if (Vector2.Distance(player.Position, bowlingLanes[i]) < 80 && Raylib.IsKeyPressed(KeyboardKey.Space))
+        {
+            if (player.Money >= 3)
+            {
+                player.Money -= 3;
+                activeBowlingGame.Open(i);
+                activeMinigameType = MinigameType.Bowling;
+                currentScene = SceneState.Minigame;
+            }
+            else { shopMessage = "Need $3 to bowl a game!"; shopMessageTimer = 1.5f; }
+        }
+    }
+
+    // Pool tables
+Vector2[] poolTables = {
+    new Vector2(240, 852),
+    
+};
+for (int i = 0; i < poolTables.Length; i++)
+{
+    if (Vector2.Distance(player.Position, poolTables[i]) < 100 && Raylib.IsKeyPressed(KeyboardKey.Space))
+    {
+        if (player.Money >= 2)
+        {
+            player.Money -= 2;
+            activePoolGame.Open(i);
+            activeMinigameType = MinigameType.Pool;
+            currentScene = SceneState.Minigame;
+        }
+        else { shopMessage = "Need $2 to play pool!"; shopMessageTimer = 1.5f; }
+    }
+}
+
+    // Claw machines
+    Vector2[] clawMachines = {
+        new Vector2(600, 250),
+        new Vector2(700, 250)
+    };
+    for (int i = 0; i < clawMachines.Length; i++)
+    {
+        if (Vector2.Distance(player.Position, clawMachines[i]) < 70 && Raylib.IsKeyPressed(KeyboardKey.Space))
+        {
+            activeClawMachine.Open(i);
+            activeMinigameType = MinigameType.Claw;
+            currentScene = SceneState.Minigame;
+        }
+    }
+
+    // Pinball
+if (Vector2.Distance(player.Position, new Vector2(1095, 255)) < 75 && Raylib.IsKeyPressed(KeyboardKey.Space))
+{
+    if (player.Money >= 2) { player.Money -= 2; activePinballGame.Open(0); activeMinigameType = MinigameType.Pinball; currentScene = SceneState.Minigame; }
+    else { shopMessage = "Need $2 to play pinball!"; shopMessageTimer = 1.5f; }
+}
+// Air Hockey
+if (Vector2.Distance(player.Position, new Vector2(1095, 415)) < 75 && Raylib.IsKeyPressed(KeyboardKey.Space))
+{
+    if (player.Money >= 3) { player.Money -= 3; activeAirHockeyGame.Open(0); activeMinigameType = MinigameType.AirHockey; currentScene = SceneState.Minigame; }
+    else { shopMessage = "Need $3 to play air hockey!"; shopMessageTimer = 1.5f; }
+}
+// Piano Tiles
+if (Vector2.Distance(player.Position, new Vector2(1095, 575)) < 75 && Raylib.IsKeyPressed(KeyboardKey.Space))
+{
+    if (player.Money >= 2) { player.Money -= 2; activePianoTilesGame.Open(0); activeMinigameType = MinigameType.PianoTiles; currentScene = SceneState.Minigame; }
+    else { shopMessage = "Need $2 to play!"; shopMessageTimer = 1.5f; }
+}
+
+// Flappy Bird (tickets)
+if (Vector2.Distance(player.Position, new Vector2(935, 575)) < 75 && Raylib.IsKeyPressed(KeyboardKey.Space))
+{
+    if (player.Money >= 1)
+    {
+        player.Money -= 1;
+        activeFlappyGame.Open(0);
+        activeMinigameType = MinigameType.Flappy;
+        currentScene = SceneState.Minigame;
+    }
+    else { shopMessage = "Need $1 to play!"; shopMessageTimer = 1.5f; }
+}
+
+// Prize counter
+if (Vector2.Distance(player.Position, new Vector2(825, 545)) < 80 && Raylib.IsKeyPressed(KeyboardKey.E))
+    prizeCounterOpen = !prizeCounterOpen;
+
+if (prizeCounterOpen)
+{
+    if (Raylib.IsKeyPressed(KeyboardKey.One))   RedeemPrize("Small Plush", 10);
+    if (Raylib.IsKeyPressed(KeyboardKey.Two))   RedeemPrize("Big Plush", 25);
+    if (Raylib.IsKeyPressed(KeyboardKey.Three)) RedeemPrize("Giant Plush", 50);
+    if (Raylib.IsKeyPressed(KeyboardKey.Four))  RedeemPrize("Jackpot Trophy", 100);
+}
+
+    // Arcade pokie-style cabinets (reuse your pokie machine)
+    Vector2[] arcadeCabinets = {
+        new Vector2(900, 250),
+        new Vector2(1000, 250)
+    };
+    for (int i = 0; i < arcadeCabinets.Length; i++)
+    {
+        if (Vector2.Distance(player.Position, arcadeCabinets[i]) < 70 && Raylib.IsKeyPressed(KeyboardKey.Space))
+        {
+            activePokieMachine.Open(i);
+            activeMinigameType = MinigameType.Pokie;
+            currentScene = SceneState.Minigame;
+        }
+    }
+
+    // Food & drink counter
+    if (Vector2.Distance(player.Position, new Vector2(600, 550)) < 80 && Raylib.IsKeyPressed(KeyboardKey.E))
+        dropZoneFoodMenuOpen = !dropZoneFoodMenuOpen;
+
+    if (dropZoneFoodMenuOpen)
+    {
+        if (Raylib.IsKeyPressed(KeyboardKey.One))  BuyDropZoneItem("Hot Dog", 6, 18);
+        if (Raylib.IsKeyPressed(KeyboardKey.Two))  BuyDropZoneItem("Nachos", 7, 20);
+        if (Raylib.IsKeyPressed(KeyboardKey.Three))BuyDropZoneItem("Soda", 4, 12);
+        if (Raylib.IsKeyPressed(KeyboardKey.Four)) BuyDropZoneItem("Slushie", 5, 14);
+    }
+}
+if (currentBuilding.BuildingName == "MiniGolf")
+{
+    if (Vector2.Distance(player.Position, new Vector2(640, 345)) < 90 && Raylib.IsKeyPressed(KeyboardKey.Space))
+    {
+        if (player.Money >= 5)
+        {
+            player.Money -= 5;
+            activeMiniGolfGame.Open(0);
+            activeMinigameType = MinigameType.MiniGolf;
+            currentScene = SceneState.Minigame;
+        }
+        else { shopMessage = "Need $5 to play mini golf!"; shopMessageTimer = 1.5f; }
     }
 }
 
@@ -6157,216 +7976,217 @@ if (currentBuilding.BuildingName == "BURGER KING")
     if (burgerKingMessageTimer > 0) burgerKingMessageTimer -= dt;
 }
 
-// ── SWIMMING COMPLEX ─────────────────────────────────────────────────────
+// SWIMMING COMPLEX
 if (currentBuilding.BuildingName == "SWIMMING COMPLEX")
 {
-    // Lane pool zone: x 50-550, y 100-440
-    Vector2 lanePoolCenter = new Vector2(300, 270);
-    Vector2 divingBoardPos = new Vector2(780, 200);
-
-    bool nearLanePool  = player.Position.X > 40  && player.Position.X < 560
-                      && player.Position.Y > 90 && player.Position.Y < 700;
-    bool nearDivingBoard = player.Position.X > 690 && player.Position.X < 870
-                    && player.Position.Y > 90  && player.Position.Y < 700;
-
-    if (!swimmingActive && !divingActive)
+    // ── START INTERACTIONS ──
+    if (!swimmingActive)
     {
-        if (nearLanePool && Raylib.IsKeyPressed(KeyboardKey.Space))
+        // lane pool — stand near it and press Space
+        if (player.Position.X < 600 && Raylib.IsKeyPressed(KeyboardKey.Space))
         {
             swimmingActive = true;
             swimmingPoolType = "lane";
             swimLapTimer = 0f;
             swimLapsCompleted = 0;
+            swimSpeed = 0f;
+            swimLeftNext = true;
+            swimPerfectStrokes = 0;
+            player.Hidden = true;
         }
-        if (nearDivingBoard && Raylib.IsKeyPressed(KeyboardKey.Space))
+        // diving pool — stand near it and press E
+        else if (player.Position.X >= 600 && Raylib.IsKeyPressed(KeyboardKey.E))
         {
             swimmingActive = true;
             swimmingPoolType = "diving";
-            divingActive = false;
-            divingBarPos = 0f;
-            divingBarDir = 1f;
+            divingStage = 0;
+            divingPower = 0f;
+            divingPowerUp = true;
+            divingRotation = 0f;
+            divingRotDir = 1f;
+            divingEntry = 0f;
+            divingEntryUp = true;
             divingJumped = false;
+            divingFallTimer = 0f;
             divingScore = 0;
             divingResult = "";
+            player.Hidden = true;
         }
     }
 
+    // ── LANE SWIMMING — rhythm strokes ──
     if (swimmingActive && swimmingPoolType == "lane")
     {
-        swimLapTimer += dt;
+        // alternate LEFT and RIGHT arrows to stroke; correct alternation builds speed
+        bool stroked = false;
+        bool correct = false;
+
+        if (Raylib.IsKeyPressed(KeyboardKey.Left))
+        {
+            stroked = true;
+            correct = swimLeftNext;
+            swimLeftNext = false;
+        }
+        else if (Raylib.IsKeyPressed(KeyboardKey.Right))
+        {
+            stroked = true;
+            correct = !swimLeftNext;
+            swimLeftNext = true;
+        }
+
+        if (stroked)
+        {
+            if (correct)
+            {
+                swimSpeed = Math.Min(1f, swimSpeed + 0.12f);
+                swimPerfectStrokes++;
+                swimStrokeWindow = 0.25f;   // flash green
+            }
+            else
+            {
+                swimSpeed = Math.Max(0f, swimSpeed - 0.15f);  // wrong key = lose momentum
+                swimStrokeWindow = -0.25f;  // flash red
+            }
+        }
+
+        // momentum decays if you stop stroking
+        swimSpeed = Math.Max(0f, swimSpeed - 0.18f * Raylib.GetFrameTime());
+        if (swimStrokeWindow > 0) swimStrokeWindow -= Raylib.GetFrameTime();
+        if (swimStrokeWindow < 0) swimStrokeWindow += Raylib.GetFrameTime();
+
+        // progress along the lane scales with current speed
+        swimLapTimer += swimSpeed * 2.2f * Raylib.GetFrameTime();
+
         if (swimLapTimer >= swimLapDuration)
         {
             swimLapTimer = 0f;
             swimLapsCompleted++;
-            player.AddAthleticsXP(30);
-            shopMessage = $"Lap {swimLapsCompleted} complete! +30 Athletics XP";
-            shopMessageTimer = 1.2f;
+            // XP rewards perfect strokes that lap
+            int xp = 25 + swimPerfectStrokes * 2;
+            player.AddSwimmingXP(xp);
+            shopMessage = $"Lap {swimLapsCompleted}! +{xp} Swimming XP";
+            shopMessageTimer = 1.8f;
+            swimPerfectStrokes = 0;
+
+            if (swimLapsCompleted >= 4)
+            {
+                swimmingActive = false;
+                player.Money += 8;
+                shopMessage = "Great session! 4 laps done. +$8";
+                shopMessageTimer = 2.5f;
+            }
         }
+
         if (Raylib.IsKeyPressed(KeyboardKey.Q))
-        {
             swimmingActive = false;
-            shopMessage = $"Finished swimming! {swimLapsCompleted} laps completed.";
-            shopMessageTimer = 2f;
-        }
     }
 
+    // ── DIVING — multi-stage timing ──
     if (swimmingActive && swimmingPoolType == "diving")
     {
-        if (!divingJumped)
+        if (divingStage == 0)
         {
-            // Move power bar
-            divingBarPos += divingBarDir * divingBarSpeed * dt;
-            if (divingBarPos >= 1f) { divingBarPos = 1f; divingBarDir = -1f; }
-            if (divingBarPos <= 0f) { divingBarPos = 0f; divingBarDir = 1f; }
+            // STAGE 1: charge jump power with a bouncing bar, lock with SPACE
+            divingPower += (divingPowerUp ? 1f : -1f) * 1.3f * Raylib.GetFrameTime();
+            if (divingPower >= 1f) { divingPower = 1f; divingPowerUp = false; }
+            if (divingPower <= 0f) { divingPower = 0f; divingPowerUp = true; }
+
+            if (Raylib.IsKeyPressed(KeyboardKey.Space))
+                divingStage = 1;
+        }
+        else if (divingStage == 1)
+        {
+            // STAGE 2: rotation timing — stop the spinning bar in the green zone
+            divingRotation += divingRotDir * 1.6f * Raylib.GetFrameTime();
+            if (divingRotation >= 1f) { divingRotation = 1f; divingRotDir = -1f; }
+            if (divingRotation <= 0f) { divingRotation = 0f; divingRotDir = 1f; }
+
+            if (Raylib.IsKeyPressed(KeyboardKey.Space))
+                divingStage = 2;
+        }
+        else if (divingStage == 2)
+        {
+            // STAGE 3: entry timing — nail the cursor at centre for a clean entry
+            divingEntry += (divingEntryUp ? 1f : -1f) * 1.9f * Raylib.GetFrameTime();
+            if (divingEntry >= 1f) { divingEntry = 1f; divingEntryUp = false; }
+            if (divingEntry <= 0f) { divingEntry = 0f; divingEntryUp = true; }
 
             if (Raylib.IsKeyPressed(KeyboardKey.Space))
             {
                 divingJumped = true;
+                divingStage = 3;
                 divingFallTimer = 0f;
-                // Score based on how close to centre (0.5)
-                float dist = MathF.Abs(divingBarPos - 0.5f);
-                if (dist < 0.05f)      { divingScore = 10; divingResult = "PERFECT DIVE! 10/10"; }
-                else if (dist < 0.12f) { divingScore = 8;  divingResult = "Great dive! 8/10"; }
-                else if (dist < 0.22f) { divingScore = 6;  divingResult = "Good dive! 6/10"; }
-                else if (dist < 0.35f) { divingScore = 4;  divingResult = "Average dive. 4/10"; }
-                else                   { divingScore = 1;  divingResult = "Belly flop! 1/10"; }
-
-                int xp = divingScore * 8;
-                player.AddAthleticsXP(xp);
-                shopMessage = $"{divingResult} +{xp} Athletics XP";
-                shopMessageTimer = 3f;
+                ScoreDive(player);
             }
         }
-        else
+        else if (divingStage == 3)
         {
-            divingFallTimer += dt;
-            if (divingFallTimer > 2f)
+            // falling animation, then show result and reset
+            divingFallTimer += Raylib.GetFrameTime();
+            if (divingFallTimer > 2.2f)
             {
-                divingJumped = false;
-                divingBarPos = 0f;
-                divingBarDir = 1f;
-                // allow another dive or exit
+                swimmingActive = false;
             }
         }
 
-        if (Raylib.IsKeyPressed(KeyboardKey.Q) && !divingJumped)
-        {
+        if (Raylib.IsKeyPressed(KeyboardKey.Q) && divingStage < 3)
             swimmingActive = false;
-            swimmingPoolType = "";
-        }
     }
 }
+
+// restore the real player once any swim/dive activity has ended
+if (currentBuilding.BuildingName == "SWIMMING COMPLEX" && !swimmingActive && player.Hidden)
+    player.Hidden = false;
 
 // ── TENNIS COURT ─────────────────────────────────────────────────────────
 if (currentBuilding.BuildingName == "TENNIS COURT")
 {
     Vector2 netPos = new Vector2(680, 300);
-    if (!tennisActive && Vector2.Distance(player.Position, netPos) < 150)
+    if (!tennisActive && Vector2.Distance(player.Position, netPos) < 150 && Raylib.IsKeyPressed(KeyboardKey.Space))
     {
-        if (Raylib.IsKeyPressed(KeyboardKey.Space))
-        {
-            tennisActive = true;
-            tennisBallPos = new Vector2(300, 300);
-            tennisBallVel = new Vector2(180, 100);
-            tennisPlayerScore = 0;
-            tennisAIScore = 0;
-            tennisPlayerPaddleY = 270f;
-            tennisAIPaddleY = 270f;
-            tennisServing = true;
-            tennisMessage = "Tennis started! W/S to move your paddle. Space to serve.";
-            tennisMessageTimer = 3f;
-        }
+        tennisActive = true;
+        tennisDifficultySelect = true;
+        player.Hidden = true;
+        tennisPlayerScore = 0;
+        tennisAIScore = 0;
+        tennisMessage = "Choose difficulty: 1 Easy  2 Normal  3 Hard";
+        tennisMessageTimer = 999f;
     }
 
     if (tennisActive)
     {
-        if (tennisSwingCooldown > 0) tennisSwingCooldown -= dt;
         if (tennisMessageTimer > 0) tennisMessageTimer -= dt;
+        if (tennisSwingCooldown > 0) tennisSwingCooldown -= dt;
 
-        // Player paddle movement (left side, x~100)
-        if (Raylib.IsKeyDown(KeyboardKey.W)) tennisPlayerPaddleY -= 300f * dt;
-        if (Raylib.IsKeyDown(KeyboardKey.S)) tennisPlayerPaddleY += 300f * dt;
-        tennisPlayerPaddleY = Math.Clamp(tennisPlayerPaddleY, 90f, 500f);
-
-        // AI tracks ball
-        float aiTarget = tennisBallPos.Y - 30f;
-        tennisAIPaddleY += Math.Sign(aiTarget - tennisAIPaddleY) * 200f * dt;
-        tennisAIPaddleY = Math.Clamp(tennisAIPaddleY, 90f, 500f);
-
-        if (!tennisServing)
+        if (tennisDifficultySelect)
         {
-            // Move ball
-            tennisBallPos += tennisBallVel * dt;
-
-            // Top/bottom bounce
-            if (tennisBallPos.Y < 90f)  { tennisBallPos.Y = 90f;  tennisBallVel.Y = MathF.Abs(tennisBallVel.Y); }
-            if (tennisBallPos.Y > 540f) { tennisBallPos.Y = 540f; tennisBallVel.Y = -MathF.Abs(tennisBallVel.Y); }
-
-            // Player paddle (x 80-110, y playerPaddleY to +60)
-            Rectangle playerPaddle = new Rectangle(80, tennisPlayerPaddleY, 22, 60);
-            Rectangle ballRect = new Rectangle(tennisBallPos.X - 8, tennisBallPos.Y - 8, 16, 16);
-            if (Raylib.CheckCollisionRecs(ballRect, playerPaddle) && tennisBallVel.X < 0)
+            if (Raylib.IsKeyPressed(KeyboardKey.One))   { tennisAIMaxSpeed = 190f; tennisAILead = 0.05f; tennisDifficultySelect = false; }
+            if (Raylib.IsKeyPressed(KeyboardKey.Two))   { tennisAIMaxSpeed = 260f; tennisAILead = 0.12f; tennisDifficultySelect = false; }
+            if (Raylib.IsKeyPressed(KeyboardKey.Three)) { tennisAIMaxSpeed = 340f; tennisAILead = 0.22f; tennisDifficultySelect = false; }
+            if (!tennisDifficultySelect)
             {
-                tennisBallVel.X = MathF.Abs(tennisBallVel.X) * 1.05f;
-                tennisBallVel.Y += Raylib.GetRandomValue(-40, 40);
-                player.AddAthleticsXP(2);
-            }
-
-            // AI paddle (x 1270-1292)
-            Rectangle aiPaddle = new Rectangle(1270, tennisAIPaddleY, 22, 60);
-            if (Raylib.CheckCollisionRecs(ballRect, aiPaddle) && tennisBallVel.X > 0)
-            {
-                tennisBallVel.X = -MathF.Abs(tennisBallVel.X) * 1.02f;
-                tennisBallVel.Y += Raylib.GetRandomValue(-30, 30);
-            }
-
-            // Score: ball goes off left = AI scores, off right = player scores
-            if (tennisBallPos.X < 60f)
-            {
-                tennisAIScore++;
-                tennisMessage = tennisAIScore >= 5 ? "AI wins the set! Good game." : $"AI scores! {tennisPlayerScore} - {tennisAIScore}";
-                tennisMessageTimer = 2f;
-                if (tennisAIScore >= 5)
-                {
-                    tennisActive = false;
-                    player.AddAthleticsXP(20);
-                }
-                else { tennisServing = true; tennisBallPos = new Vector2(300, 300); }
-            }
-            if (tennisBallPos.X > 1320f)
-            {
-                tennisPlayerScore++;
-                player.AddAthleticsXP(10);
-                tennisMessage = tennisPlayerScore >= 5 ? "You win the set! +50 Athletics XP" : $"You score! {tennisPlayerScore} - {tennisAIScore}";
-                tennisMessageTimer = 2f;
-                if (tennisPlayerScore >= 5)
-                {
-                    tennisActive = false;
-                    player.AddAthleticsXP(50);
-                }
-                else { tennisServing = true; tennisBallPos = new Vector2(1000, 300); tennisBallVel.X = MathF.Abs(tennisBallVel.X); }
+                StartTennisPoint(true);   // player serves first
+                tennisMessage = "Your serve! Hold SPACE to toss, release to serve.";
+                tennisMessageTimer = 3f;
             }
         }
         else
         {
-            if (Raylib.IsKeyPressed(KeyboardKey.Space))
-            {
-                tennisServing = false;
-                tennisBallVel = new Vector2(
-                    tennisBallPos.X < 680 ? 220 : -220,
-                    Raylib.GetRandomValue(-120, 120)
-                );
-            }
+            UpdateTennisPlay(dt);
         }
 
-        if (Raylib.IsKeyPressed(KeyboardKey.Q) && !tennisActive == false)
+        if (Raylib.IsKeyPressed(KeyboardKey.Q))
         {
             tennisActive = false;
-            shopMessage = $"Tennis ended. Score: {tennisPlayerScore} - {tennisAIScore}";
+            shopMessage = $"Tennis ended. {tennisPlayerScore} - {tennisAIScore}";
             shopMessageTimer = 2f;
         }
     }
 }
+
+// restore player when match ends
+if (currentBuilding.BuildingName == "TENNIS COURT" && !tennisActive && player.Hidden)
+    player.Hidden = false;
 
 // ── BASKETBALL COURT ─────────────────────────────────────────────────────
 if (currentBuilding.BuildingName == "BASKETBALL COURT")
@@ -6424,13 +8244,13 @@ if (currentBuilding.BuildingName == "BASKETBALL COURT")
                 {
                     bbScore++;
                     int xp = 15 + (int)(10 * (1f - powerDiff / 0.15f));
-                    player.AddAthleticsXP(xp);
-                    bbMessage = $"SWISH! Score: {bbScore} | +{xp} Athletics XP";
+                    player.AddSportsXP(xp);
+                    bbMessage = $"SWISH! Score: {bbScore} | +{xp} Sports XP";
                 }
                 else if (powerDiff < 0.25f && aimDiff < 0.35f)
                 {
                     bbMessage = "Off the rim! Close shot.";
-                    player.AddAthleticsXP(3);
+                    player.AddSportsXP(3);
                 }
                 else
                 {
@@ -6565,7 +8385,7 @@ if (currentBuilding.BuildingName == "BASKETBALL COURT")
 
         if (currentBuilding.BuildingName == "DBar")
 {
-if (Raylib.IsKeyPressed(KeyboardKey.E) && !barMenuOpen && Vector2.Distance(player.Position, barCounterPos) < 120)
+if (Raylib.IsKeyPressed(KeyboardKey.Space) && !barMenuOpen && Vector2.Distance(player.Position, barCounterPos) < 120)
     barMenuOpen = true;
 
         if (Raylib.IsKeyPressed(KeyboardKey.Q) && barMenuOpen)
@@ -6579,7 +8399,7 @@ if (Raylib.IsKeyPressed(KeyboardKey.E) && !barMenuOpen && Vector2.Distance(playe
         {
             Raylib.DrawRectangle(0, 620, 1280, 100, new Color((byte)0, (byte)0, (byte)0, (byte)180));
             Raylib.DrawText("THE BAR", 20, 630, 30, Color.Gold);
-            Raylib.DrawText("E = Order a drink ($5)", 20, 670, 24, Color.White);
+            Raylib.DrawText("Space = Order a drink ($5)", 20, 670, 24, Color.White);
         }
 
     Vector2[] pokiePositions = {
@@ -6587,6 +8407,9 @@ if (Raylib.IsKeyPressed(KeyboardKey.E) && !barMenuOpen && Vector2.Distance(playe
         new Vector2(810, 365),
         new Vector2(910, 245)
     };
+
+    Vector2 dartboardPosition = new Vector2(1250, 80); // matches the dartboard you drew in DBar
+    DartsGame activeDartsGame = new DartsGame();
 
     for (int i = 0; i < pokiePositions.Length; i++)
     {
@@ -6636,6 +8459,25 @@ for (int i = 0; i < poolTablePositions.Length; i++)
                 shopMessage = "Need $2 to play a round!";
                 shopMessageTimer = 1.5f;
             }
+        }
+    }
+}
+
+if (Vector2.Distance(player.Position, dartboardPosition) < 100)
+{
+    if (Raylib.IsKeyPressed(KeyboardKey.Space))
+    {
+        if (player.Money >= 2)
+        {
+            player.Money -= 2;
+            activeDartsGame.Open(false); // false = practice; see note below for Vs AI
+            activeMinigameType = MinigameType.Darts;
+            currentScene = SceneState.Minigame;
+        }
+        else
+        {
+            shopMessage = "Need $2 to play a round!";
+            shopMessageTimer = 1.5f;
         }
     }
 }
@@ -6786,7 +8628,29 @@ if (currentBuilding.BuildingName == "POLICE STATION")
     }
 }
 
-    camera.Target = player.Position;
+    if (currentBuilding.BuildingName == "SWIMMING COMPLEX" && swimmingActive)
+    {
+        if (swimmingPoolType == "lane")
+        {
+            int swimX = (int)(80 + (swimLapTimer / swimLapDuration) * 440);
+            camera.Target = new Vector2(swimX, 200);
+        }
+        else // diving
+        {
+            camera.Target = divingJumped
+                ? new Vector2(800, 180 + Math.Min(divingFallTimer * 200f, 490f))
+                : new Vector2(770, 170);
+        }
+    }
+        else if (currentBuilding.BuildingName == "TENNIS COURT" && tennisActive)
+{
+    camera.Target = new Vector2(640, (CourtTop + CourtBottom) / 2f);
+}
+    else
+    {
+        camera.Target = player.Position;
+    }
+
 
     break;
     case SceneState.Minigame:
@@ -6817,8 +8681,13 @@ if (currentBuilding.BuildingName == "POLICE STATION")
                 case SceneState.Building:
                     DrawInterior();
                     break;
+
                 case SceneState.Minigame:
                 DrawMinigameScreen();
+                break;
+
+                case SceneState.Dungeon:
+                DrawDungeon();
                 break;
             }
             
@@ -6999,17 +8868,16 @@ Raylib.DrawRectangle(hx + 55, hy, 8, 20, Color.DarkBrown);
             Raylib.DrawText("PRESS ENTER TO START", 390, 390, 34, Color.White);
     }
 }
-        static void DrawWorldMap()
+       static void DrawWorldMap()
 {
     if (!mapOpen) return;
 
-    int mapW = 900;
-    int mapH = 600;
+    int mapW = 900, mapH = 600;
     int mapX = ScreenWidth / 2 - mapW / 2;
     int mapY = ScreenHeight / 2 - mapH / 2;
-    float scale = 0.003f;
+    float scale = 0.003f * worldMapZoom;
+    Raylib.DrawText($"Scroll = Zoom ({worldMapZoom:F1}x)  |  0 = Reset  |  ESC or MAP to close", mapX + 10, mapY + 10, 14, Color.LightGray);
 
-    // background panel
     Raylib.DrawRectangle(mapX, mapY, mapW, mapH, new Color((byte)10,(byte)10,(byte)20,(byte)245));
     Raylib.DrawRectangleLines(mapX, mapY, mapW, mapH, Color.Gold);
     Raylib.DrawText("WORLD MAP", mapX + mapW / 2 - 70, mapY + 10, 28, Color.Gold);
@@ -7017,112 +8885,129 @@ Raylib.DrawRectangle(hx + 55, hy, 8, 20, Color.DarkBrown);
     int cx = mapX + mapW / 2;
     int cy = mapY + mapH / 2;
 
-    // clip drawing to map panel
-    // -- BIOMES --
+    // zoom in/out with scroll wheel or +/- keys
+float mapScroll = Raylib.GetMouseWheelMove();
+if (mapScroll != 0 && Raylib.CheckCollisionPointRec(Raylib.GetMousePosition(), new Rectangle(mapX, mapY, mapW, mapH)))
+    worldMapZoom = Math.Clamp(worldMapZoom + mapScroll * 0.1f, 0.5f, 4f);
+if (Raylib.IsKeyPressed(KeyboardKey.Equal)) worldMapZoom = Math.Clamp(worldMapZoom + 0.25f, 0.5f, 4f);
+if (Raylib.IsKeyPressed(KeyboardKey.Minus)) worldMapZoom = Math.Clamp(worldMapZoom - 0.25f, 0.5f, 4f);
+if (Raylib.IsKeyPressed(KeyboardKey.Zero))  worldMapZoom = 1f; // reset
 
-    // base grasslands
-    Raylib.DrawRectangle(mapX, mapY, mapW, mapH, new Color((byte)90,(byte)170,(byte)90,(byte)255));
+    // 1. Base grasslands
+Raylib.DrawRectangle(mapX, mapY, mapW, mapH, new Color((byte)90,(byte)170,(byte)90,(byte)255));
 
-    // forest top
-    int forestTopH = cy + (int)(-300 * scale) - mapY;
-    Raylib.DrawRectangle(mapX, mapY, mapW, Math.Max(0, forestTopH), new Color((byte)40,(byte)100,(byte)40,(byte)255));
+// 2. Forest 
+int forestL = cx + (int)(-20000 * scale); int forestR = cx + (int)(13000 * scale);
+int forestT = cy + (int)(-32000 * scale); int forestB = cy + (int)(-12000 * scale);
+Raylib.DrawRectangle(Math.Clamp(forestL, mapX, mapX + mapW), Math.Clamp(forestT, mapY, mapY + mapH),
+    Math.Clamp(forestR - forestL, 0, mapW), Math.Clamp(forestB - forestT, 0, mapH),
+    new Color((byte)40,(byte)100,(byte)40,(byte)255));
 
-    // forest bottom
-    int forestBotY = cy + (int)(1000 * scale);
-    Raylib.DrawRectangle(mapX, forestBotY, mapW, Math.Max(0, mapY + mapH - forestBotY), new Color((byte)40,(byte)100,(byte)40,(byte)255));
 
-    // desert right
-    int desertX = cx + (int)(4000 * scale);
-    Raylib.DrawRectangle(desertX, mapY, Math.Max(0, mapX + mapW - desertX), mapH, new Color((byte)210,(byte)180,(byte)100,(byte)255));
+// 4. Swamp (X -55000 to -30000, middle)
+int swL = cx + (int)(-55000 * scale); int swR = cx + (int)(-30000 * scale);
+int swT = cy + (int)(-12000 * scale); int swB = cy + (int)(12000  * scale);
+Raylib.DrawRectangle(Math.Clamp(swL, mapX, mapX + mapW), Math.Clamp(swT, mapY, mapY + mapH),
+    Math.Clamp(swR - swL, 0, mapW), Math.Clamp(swB - swT, 0, mapH),
+    new Color((byte)55,(byte)75,(byte)35,(byte)255));
 
-    // snow left
-    int snowX = cx + (int)(-3000 * scale);
-    Raylib.DrawRectangle(mapX, mapY, Math.Max(0, snowX - mapX), mapH, new Color((byte)220,(byte)235,(byte)255,(byte)255));
+// 5. Snow (X -60000 to -30000, middle)
+int snL = cx + (int)(-60000 * scale); int snR = cx + (int)(-30000 * scale);
+int snT = cy + (int)(-25000 * scale); int snB = cy + (int)(15000  * scale);
+Raylib.DrawRectangle(Math.Clamp(snL, mapX, mapX + mapW), Math.Clamp(snT, mapY, mapY + mapH),
+    Math.Clamp(snR - snL, 0, mapW), Math.Clamp(snB - snT, 0, mapH),
+    new Color((byte)220,(byte)235,(byte)255,(byte)255));
 
-    // safe zone
-    int szX = cx + (int)(-3000 * scale);
-    int szY = cy + (int)(-1500 * scale);
-    int szW = (int)(7000 * scale);
-    int szH = (int)(4000 * scale);
-    Raylib.DrawRectangle(szX, szY, szW, szH, new Color((byte)90,(byte)170,(byte)90,(byte)255));
-    Raylib.DrawRectangleLines(szX, szY, szW, szH, new Color((byte)120,(byte)200,(byte)120,(byte)255));
+// 6. Desert (X 8000 to 22000, middle)
+int deL = cx + (int)(8000  * scale); int deR = cx + (int)(22000 * scale);
+int deT = cy + (int)(-12000 * scale); int deB = cy + (int)(12000  * scale);
+Raylib.DrawRectangle(Math.Clamp(deL, mapX, mapX + mapW), Math.Clamp(deT, mapY, mapY + mapH),
+    Math.Clamp(deR - deL, 0, mapW), Math.Clamp(deB - deT, 0, mapH),
+    new Color((byte)210,(byte)180,(byte)100,(byte)255));
 
-    // -- ROADS --
-    // main horizontal road
-    int roadY = cy + (int)(550 * scale);
+// 7. Beach (X 22000 to 28000, full height)
+int beL = cx + (int)(22000 * scale); int beR = cx + (int)(28000 * scale);
+Raylib.DrawRectangle(Math.Clamp(beL, mapX, mapX + mapW), mapY,
+    Math.Clamp(beR - beL, 0, mapW), mapH, new Color((byte)240,(byte)220,(byte)150,(byte)255));
+
+// 8. Ocean (X 28000+, full height)
+int ocL = cx + (int)(28000 * scale);
+Raylib.DrawRectangle(Math.Clamp(ocL, mapX, mapX + mapW), mapY,
+    Math.Clamp(mapX + mapW - ocL, 0, mapW), mapH, new Color((byte)30,(byte)100,(byte)180,(byte)255));
+
+// 9. Volcano (X 22000+, Y above -12000)
+int voL = cx + (int)(22000  * scale); int voB = cy + (int)(-12000 * scale);
+Raylib.DrawRectangle(Math.Clamp(voL, mapX, mapX + mapW), mapY,
+    Math.Clamp(mapX + mapW - voL, 0, mapW), Math.Clamp(voB - mapY, 0, mapH),
+    new Color((byte)40,(byte)20,(byte)10,(byte)255));
+
+// 10. Mountains (X below -30000, Y above -12000)
+int moL = cx + (int)(-30000 * scale); int moR = cx + (int)(-10000 * scale); 
+int moT = cy + (int)(-12000 * scale); int moB = cy + (int)(23000 * scale);
+Raylib.DrawRectangle(Math.Clamp(moL, mapX, mapX + mapW),
+    Math.Clamp(moT, mapY, mapY + mapH), Math.Clamp(moR - moL, 0, mapW), Math.Clamp(moB - moT, 0, mapH),
+    new Color((byte)100,(byte)95,(byte)90,(byte)255));
+
+// 11. Safe zone
+int szX  = cx + (int)(-3000 * scale); int szY  = cy + (int)(-1500 * scale);
+int szW  = (int)(7000 * scale);       int szH  = (int)(4000 * scale);
+Raylib.DrawRectangle(szX, szY, szW, szH, new Color((byte)90,(byte)170,(byte)90,(byte)255));
+Raylib.DrawRectangleLines(szX, szY, szW, szH, new Color((byte)120,(byte)200,(byte)120,(byte)255));
+
+// 12. Farm zone
+int faX = cx + (int)(-3000  * scale); int faY = cy + (int)(-10000 * scale);
+int faW = (int)(3000 * scale);        int faH = (int)(4000  * scale);
+Raylib.DrawRectangle(Math.Clamp(faX, mapX, mapX + mapW), Math.Clamp(faY, mapY, mapY + mapH),
+    Math.Clamp(faW, 0, mapW), Math.Clamp(faH, 0, mapH),
+    new Color((byte)139,(byte)90,(byte)43,(byte)255));
+
+    // Roads
+    int roadY    = cy + (int)(550  * scale);
+    int highwayX = cx + (int)(200  * scale);
     Raylib.DrawRectangle(mapX, roadY, mapW, Math.Max(2, (int)(180 * scale)), new Color((byte)80,(byte)80,(byte)80,(byte)255));
-
-    // north/south highway
-    int highwayX = cx + (int)(200 * scale);
     Raylib.DrawRectangle(highwayX, mapY, Math.Max(2, (int)(120 * scale)), mapH, new Color((byte)80,(byte)80,(byte)80,(byte)255));
 
-    // desert side road
     int desertRoadY = cy + (int)(200 * scale);
-    Raylib.DrawRectangle(desertX, desertRoadY, mapX + mapW - desertX, Math.Max(2, (int)(120 * scale)), new Color((byte)80,(byte)80,(byte)80,(byte)255));
+    Raylib.DrawRectangle(cx + (int)(8000 * scale), desertRoadY, mapX + mapW - (cx + (int)(8000 * scale)), Math.Max(2, (int)(120 * scale)), new Color((byte)80,(byte)80,(byte)80,(byte)255));
+    Raylib.DrawRectangle(mapX, desertRoadY, Math.Max(0, cx + (int)(-30000 * scale) - mapX), Math.Max(2, (int)(120 * scale)), new Color((byte)80,(byte)80,(byte)80,(byte)255));
 
-    // snow side road
-    Raylib.DrawRectangle(mapX, desertRoadY, snowX - mapX, Math.Max(2, (int)(120 * scale)), new Color((byte)80,(byte)80,(byte)80,(byte)255));
-
-    // outer ring road top
-    int ringTopY = cy + (int)(-38000 * scale);
-    Raylib.DrawRectangle(mapX, ringTopY, mapW, Math.Max(2, (int)(180 * scale)), new Color((byte)80,(byte)80,(byte)80,(byte)255));
-
-    // outer ring road bottom
-    int ringBotY = cy + (int)(38000 * scale);
-    Raylib.DrawRectangle(mapX, ringBotY, mapW, Math.Max(2, (int)(180 * scale)), new Color((byte)80,(byte)80,(byte)80,(byte)255));
-
-    // outer ring road left
-    int ringLeftX = cx + (int)(-40000 * scale);
-    Raylib.DrawRectangle(ringLeftX, mapY, Math.Max(2, (int)(180 * scale)), mapH, new Color((byte)80,(byte)80,(byte)80,(byte)255));
-
-    // outer ring road right
-    int ringRightX = cx + (int)(39820 * scale);
+    // Ring roads
+    int ringTopY   = cy + (int)(-38000 * scale);
+    int ringBotY   = cy + (int)(38000  * scale);
+    int ringLeftX  = cx + (int)(-40000 * scale);
+    int ringRightX = cx + (int)(39820  * scale);
+    Raylib.DrawRectangle(mapX, ringTopY,   mapW, Math.Max(2, (int)(180 * scale)), new Color((byte)80,(byte)80,(byte)80,(byte)255));
+    Raylib.DrawRectangle(mapX, ringBotY,   mapW, Math.Max(2, (int)(180 * scale)), new Color((byte)80,(byte)80,(byte)80,(byte)255));
+    Raylib.DrawRectangle(ringLeftX,  mapY, Math.Max(2, (int)(180 * scale)), mapH, new Color((byte)80,(byte)80,(byte)80,(byte)255));
     Raylib.DrawRectangle(ringRightX, mapY, Math.Max(2, (int)(180 * scale)), mapH, new Color((byte)80,(byte)80,(byte)80,(byte)255));
 
-    // snow vertical connectors
-    int snow1X = cx + (int)(-20000 * scale);
-    int snow2X = cx + (int)(-10000 * scale);
-    Raylib.DrawRectangle(snow1X, mapY, Math.Max(2, (int)(120 * scale)), mapH, new Color((byte)80,(byte)80,(byte)80,(byte)255));
-    Raylib.DrawRectangle(snow2X, mapY, Math.Max(2, (int)(120 * scale)), mapH, new Color((byte)80,(byte)80,(byte)80,(byte)255));
+    // Snow/Desert connectors
+    int[] connX = { -20000, -10000, 15000, 25000 };
+    foreach (int wx in connX)
+        Raylib.DrawRectangle(cx + (int)(wx * scale), mapY, Math.Max(2, (int)(120 * scale)), mapH, new Color((byte)80,(byte)80,(byte)80,(byte)255));
 
-    // desert vertical connectors
-    int des1X = cx + (int)(15000 * scale);
-    int des2X = cx + (int)(25000 * scale);
-    Raylib.DrawRectangle(des1X, mapY, Math.Max(2, (int)(120 * scale)), mapH, new Color((byte)80,(byte)80,(byte)80,(byte)255));
-    Raylib.DrawRectangle(des2X, mapY, Math.Max(2, (int)(120 * scale)), mapH, new Color((byte)80,(byte)80,(byte)80,(byte)255));
-
-    // vertical building roads
-    int bankRoadX = cx + (int)(1020 * scale);
-    Raylib.DrawRectangle(bankRoadX, roadY - (int)(600 * scale), Math.Max(2, (int)(120 * scale)), (int)(600 * scale), new Color((byte)80,(byte)80,(byte)80,(byte)255));
-
-    int storeRoadX = cx + (int)(-1260 * scale);
-    Raylib.DrawRectangle(storeRoadX, roadY - (int)(600 * scale), Math.Max(2, (int)(120 * scale)), (int)(600 * scale), new Color((byte)80,(byte)80,(byte)80,(byte)255));
-
-    // -- LAKES --
+    // Lakes
     foreach (Lake lake in lakes)
     {
-        int lakeX = cx + (int)(lake.Position.X * scale);
-        int lakeY = cy + (int)(lake.Position.Y * scale);
-        Raylib.DrawCircle(lakeX, lakeY, (int)(120 * scale), new Color((byte)30,(byte)100,(byte)200,(byte)255));
-        Raylib.DrawCircleLines(lakeX, lakeY, (int)(120 * scale), Color.SkyBlue);
-        Raylib.DrawText("Lake", lakeX - 14, lakeY - 8, 12, Color.White);
+        int lkX = cx + (int)(lake.Position.X * scale);
+        int lkY = cy + (int)(lake.Position.Y * scale);
+        Raylib.DrawCircle(lkX, lkY, (int)(120 * scale), new Color((byte)30,(byte)100,(byte)200,(byte)255));
+        Raylib.DrawText("Lake", lkX - 14, lkY - 8, 12, Color.White);
     }
 
-    // -- BUILDINGS --
+    // Buildings
     foreach (Building building in buildings)
     {
         int bx = cx + (int)(building.Bounds.X * scale);
         int by = cy + (int)(building.Bounds.Y * scale);
-
         if (bx >= mapX && bx <= mapX + mapW && by >= mapY && by <= mapY + mapH)
         {
             Raylib.DrawRectangle(bx - 5, by - 5, 14, 14, Color.Yellow);
             Raylib.DrawRectangleLines(bx - 5, by - 5, 14, 14, Color.Gold);
-            Raylib.DrawText(building.BuildingName, bx + 12, by - 6, 12, Color.Yellow);
         }
     }
 
-    // -- PLAYER POSITION --
+    // Player dot
     int px = cx + (int)(player.Position.X * scale);
     int py = cy + (int)(player.Position.Y * scale);
     px = Math.Clamp(px, mapX + 5, mapX + mapW - 5);
@@ -7131,27 +9016,51 @@ Raylib.DrawRectangle(hx + 55, hy, 8, 20, Color.DarkBrown);
     Raylib.DrawCircleLines(px, py, 6, Color.Gold);
     Raylib.DrawText(playerName, px + 10, py - 8, 14, Color.White);
 
-    // -- BIOME LABELS --
-    Raylib.DrawText("FOREST", mapX + mapW / 2 - 30, mapY + 8, 16, new Color((byte)150,(byte)255,(byte)150,(byte)255));
-    Raylib.DrawText("FOREST", mapX + mapW / 2 - 30, forestBotY + 4, 16, new Color((byte)150,(byte)255,(byte)150,(byte)255));
-    Raylib.DrawText("DESERT", mapX + mapW - 80, mapY + mapH / 2, 16, new Color((byte)255,(byte)220,(byte)100,(byte)255));
-    Raylib.DrawText("SNOW ZONE", mapX + 8, mapY + mapH / 2, 16, new Color((byte)200,(byte)220,(byte)255,(byte)255));
-    Raylib.DrawText("SAFE ZONE", szX + 10, szY + 10, 16, new Color((byte)100,(byte)255,(byte)100,(byte)255));
-    Raylib.DrawText("GRASSLANDS", cx + (int)(2200 * scale), cy - 20, 16, new Color((byte)150,(byte)220,(byte)150,(byte)255));
+    
+    // Biome labels
+    Raylib.DrawText("FOREST",    mapX + mapW / 2 - 30, mapY + 8, 16, new Color((byte)150,(byte)255,(byte)150,(byte)255));
+    Raylib.DrawText("DESERT",    Math.Clamp(cx + (int)(12000 * scale), mapX, mapX + mapW), cy, 16, new Color((byte)255,(byte)220,(byte)100,(byte)255));
+    Raylib.DrawText("MOUNTAINS",      Math.Clamp(cx + (int)(-22000 * scale), mapX, mapX + mapW), cy, 16, new Color((byte)200,(byte)220,(byte)255,(byte)255));
+    Raylib.DrawText("SAFE ZONE", szX + 4, szY + 10, 14, new Color((byte)100,(byte)255,(byte)100,(byte)255));
+    Raylib.DrawText("SNOW",     Math.Clamp(cx + (int)(-44000 * scale), mapX, mapX + mapW), cy, 16, new Color((byte)100,(byte)160,(byte)80,(byte)255));
+    Raylib.DrawText("VOLCANO",   Math.Clamp(cx + (int)(28000 * scale), mapX, mapX + mapW), mapY + 8, 14, new Color((byte)255,(byte)120,(byte)40,(byte)255));
+    Raylib.DrawText("MOUNTAINS", mapX + 4, mapY + 8, 14, new Color((byte)200,(byte)195,(byte)185,(byte)255));
+    Raylib.DrawText("BEACH",     Math.Clamp(cx + (int)(23000 * scale), mapX, mapX + mapW), cy + 20, 12, new Color((byte)240,(byte)220,(byte)150,(byte)255));
+    Raylib.DrawText("OCEAN",     Math.Clamp(cx + (int)(31000 * scale), mapX, mapX + mapW), cy, 12, new Color((byte)100,(byte)180,(byte)255,(byte)255));
+    Raylib.DrawText("FARM",      Math.Clamp(cx + (int)(-2000 * scale), mapX, mapX + mapW), Math.Clamp(cy + (int)(-8000 * scale), mapY, mapY + mapH), 14, new Color((byte)200,(byte)150,(byte)80,(byte)255));
 
-    // -- LEGEND --
+    // Legend
     int lx = mapX + 10;
     int ly = mapY + mapH - 80;
     Raylib.DrawRectangle(lx, ly, mapW - 20, 70, new Color((byte)0,(byte)0,(byte)0,(byte)180));
-    Raylib.DrawCircle(lx + 20, ly + 18, 6, Color.White);
-    Raylib.DrawText("= You", lx + 30, ly + 10, 14, Color.White);
-    Raylib.DrawRectangle(lx + 100, ly + 12, 12, 12, Color.Yellow);
-    Raylib.DrawText("= Building", lx + 116, ly + 10, 14, Color.Yellow);
-    Raylib.DrawCircle(lx + 240, ly + 18, 8, new Color((byte)30,(byte)100,(byte)200,(byte)255));
-    Raylib.DrawText("= Lake", lx + 252, ly + 10, 14, Color.SkyBlue);
+    (Color col, string label)[] legend = {
+        (Color.White,                                        "= You"),
+        (Color.Yellow,                                       "= Building"),
+        (new Color((byte)30,(byte)100,(byte)200,(byte)255), "= Lake"),
+        (new Color((byte)40,(byte)100,(byte)40,(byte)255),  "= Forest"),
+        (new Color((byte)210,(byte)180,(byte)100,(byte)255),"= Desert"),
+        (new Color((byte)220,(byte)235,(byte)255,(byte)255),"= Snow"),
+        (new Color((byte)55,(byte)75,(byte)35,(byte)255),   "= Swamp"),
+        (new Color((byte)40,(byte)20,(byte)10,(byte)255),   "= Volcano"),
+        (new Color((byte)100,(byte)95,(byte)90,(byte)255),  "= Mountains"),
+        (new Color((byte)240,(byte)220,(byte)150,(byte)255),"= Beach"),
+        (new Color((byte)30,(byte)100,(byte)180,(byte)255), "= Ocean"),
+        (new Color((byte)139,(byte)90,(byte)43,(byte)255),  "= Farm"),
+    };
+    for (int i = 0; i < legend.Length; i++)
+    {
+        int col = i % 6;
+        int row = i / 6;
+        int lbx = lx + 10 + col * 140;
+        int lby = ly + 8 + row * 28;
+        if (legend[i].label == "= You")
+            Raylib.DrawCircle(lbx + 5, lby + 6, 5, legend[i].col);
+        else
+            Raylib.DrawRectangle(lbx, lby, 12, 12, legend[i].col);
+        Raylib.DrawText(legend[i].label, lbx + 16, lby, 14, Color.LightGray);
+    }
 
-    // -- CLOSE HINT --
-    Raylib.DrawText("ESC or click MAP to close", mapX + mapW - 220, mapY + 10, 16, Color.LightGray);
+    Raylib.DrawText("ESC or MAP to close", mapX + mapW - 200, mapY + 10, 16, Color.LightGray);
 }
         static void DrawPauseMenu()
 {
@@ -7163,8 +9072,8 @@ Raylib.DrawRectangle(hx + 55, hy, 8, 20, Color.DarkBrown);
     Raylib.DrawRectangle(0, 0, ScreenWidth, ScreenHeight, new Color((byte)0, (byte)0, (byte)0, (byte)150));
 
     // panel
-    Raylib.DrawRectangle(ScreenWidth / 2 - 200, ScreenHeight / 2 - 250, 400, 600, new Color((byte)20, (byte)20, (byte)30, (byte)240));
-    Raylib.DrawRectangleLines(ScreenWidth / 2 - 200, ScreenHeight / 2 - 250, 400, 500, Color.Gold);
+    Raylib.DrawRectangle(ScreenWidth / 2 - 200, ScreenHeight / 2 - 250, 400, 575, new Color((byte)20, (byte)20, (byte)30, (byte)240));
+    Raylib.DrawRectangleLines(ScreenWidth / 2 - 200, ScreenHeight / 2 - 250, 400, 575, Color.Gold);
     Raylib.DrawText("PAUSED", ScreenWidth / 2 - 70, ScreenHeight / 2 - 230, 40, Color.Gold);
 
     Vector2 mouse = Raylib.GetMousePosition();
@@ -7173,7 +9082,7 @@ Raylib.DrawRectangle(hx + 55, hy, 8, 20, Color.DarkBrown);
 
     for (int i = 0; i < buttons.Length; i++)
     {
-        Rectangle btn = new Rectangle(ScreenWidth / 2 - 150, ScreenHeight / 2 - 140 + i * 80, 300, 55);
+        Rectangle btn = new Rectangle(ScreenWidth / 2 - 150, ScreenHeight / 2 - 160 + i * 80, 300, 55);
         bool hover = Raylib.CheckCollisionPointRec(mouse, btn);
 
         Raylib.DrawRectangleRec(btn, new Color((byte)40, (byte)40, (byte)40, (byte)255));
@@ -7269,13 +9178,13 @@ static void DrawPauseLoadMenu()
 
 static void DrawOptionsMenu()
 {
-    Raylib.DrawRectangle(ScreenWidth / 2 + 220, ScreenHeight / 2 - 250, 400, 300, new Color((byte)20, (byte)20, (byte)30, (byte)240));
-    Raylib.DrawRectangleLines(ScreenWidth / 2 + 220, ScreenHeight / 2 - 250, 400, 300, Color.Gold);
+    Raylib.DrawRectangle(ScreenWidth / 2 + 220, ScreenHeight / 2 - 250, 400, 480, new Color((byte)20, (byte)20, (byte)30, (byte)240));
+    Raylib.DrawRectangleLines(ScreenWidth / 2 + 220, ScreenHeight / 2 - 250, 400, 480, Color.Gold);
     Raylib.DrawText("OPTIONS", ScreenWidth / 2 + 300, ScreenHeight / 2 - 235, 28, Color.Gold);
 
     Vector2 mouse = Raylib.GetMousePosition();
 
-    // day speed slider
+    // ── DAY SPEED ────────────────────────────────────────────────────────────
     Raylib.DrawText("Day Speed", ScreenWidth / 2 + 240, ScreenHeight / 2 - 180, 22, Color.White);
     Rectangle sliderBg = new Rectangle(ScreenWidth / 2 + 240, ScreenHeight / 2 - 150, 300, 16);
     Raylib.DrawRectangleRec(sliderBg, new Color((byte)60, (byte)60, (byte)60, (byte)255));
@@ -7290,23 +9199,120 @@ static void DrawOptionsMenu()
     }
     Raylib.DrawText($"{daySpeed:F3}", ScreenWidth / 2 + 555, ScreenHeight / 2 - 153, 18, Color.LightGray);
 
-    // minimap size toggle
-    Raylib.DrawText("Minimap Size", ScreenWidth / 2 + 240, ScreenHeight / 2 - 100, 22, Color.White);
-    Rectangle minimapBtn = new Rectangle(ScreenWidth / 2 + 240, ScreenHeight / 2 - 70, 160, 40);
+    // ── MUSIC VOLUME ─────────────────────────────────────────────────────────
+    Raylib.DrawText("Music Volume", ScreenWidth / 2 + 240, ScreenHeight / 2 - 110, 22, Color.White);
+    Rectangle musicSliderBg = new Rectangle(ScreenWidth / 2 + 240, ScreenHeight / 2 - 80, 260, 16);
+    Raylib.DrawRectangleRec(musicSliderBg, new Color((byte)60, (byte)60, (byte)60, (byte)255));
+    Raylib.DrawRectangle(ScreenWidth / 2 + 240, ScreenHeight / 2 - 80, (int)(260 * musicVolume), 16, new Color((byte)80, (byte)160, (byte)255, (byte)255));
+    Raylib.DrawRectangleLines(ScreenWidth / 2 + 240, ScreenHeight / 2 - 80, 260, 16, Color.White);
+    if (Raylib.IsMouseButtonDown(MouseButton.Left) && Raylib.CheckCollisionPointRec(mouse, musicSliderBg))
+    {
+        musicVolume = Math.Clamp((mouse.X - (ScreenWidth / 2 + 240)) / 260f, 0f, 1f);
+        Raylib.SetMusicVolume(currentMusic, musicVolume);
+    }
+    // minus button
+    Rectangle musicMinus = new Rectangle(ScreenWidth / 2 + 510, ScreenHeight / 2 - 84, 28, 24);
+    Rectangle musicPlus  = new Rectangle(ScreenWidth / 2 + 544, ScreenHeight / 2 - 84, 28, 24);
+    bool hMusicMinus = Raylib.CheckCollisionPointRec(mouse, musicMinus);
+    bool hMusicPlus  = Raylib.CheckCollisionPointRec(mouse, musicPlus);
+    Raylib.DrawRectangleRec(musicMinus, new Color((byte)40,(byte)40,(byte)40,(byte)255));
+    Raylib.DrawRectangleLinesEx(musicMinus, 2, hMusicMinus ? Color.Gold : Color.White);
+    Raylib.DrawText("-", ScreenWidth / 2 + 519, ScreenHeight / 2 - 81, 20, Color.White);
+    Raylib.DrawRectangleRec(musicPlus, new Color((byte)40,(byte)40,(byte)40,(byte)255));
+    Raylib.DrawRectangleLinesEx(musicPlus, 2, hMusicPlus ? Color.Gold : Color.White);
+    Raylib.DrawText("+", ScreenWidth / 2 + 552, ScreenHeight / 2 - 81, 20, Color.White);
+    if (hMusicMinus && Raylib.IsMouseButtonPressed(MouseButton.Left))
+    {
+        musicVolume = Math.Clamp(musicVolume - 0.1f, 0f, 1f);
+        Raylib.SetMusicVolume(currentMusic, musicVolume);
+    }
+    if (hMusicPlus && Raylib.IsMouseButtonPressed(MouseButton.Left))
+    {
+        musicVolume = Math.Clamp(musicVolume + 0.1f, 0f, 1f);
+        Raylib.SetMusicVolume(currentMusic, musicVolume);
+    }
+    Raylib.DrawText($"{(int)(musicVolume * 100)}%", ScreenWidth / 2 + 578, ScreenHeight / 2 - 80, 18, Color.LightGray);
+
+    // ── SOUND EFFECTS VOLUME ─────────────────────────────────────────────────
+    Raylib.DrawText("Sound Effects", ScreenWidth / 2 + 240, ScreenHeight / 2 - 40, 22, Color.White);
+    Rectangle soundSliderBg = new Rectangle(ScreenWidth / 2 + 240, ScreenHeight / 2 - 10, 260, 16);
+    Raylib.DrawRectangleRec(soundSliderBg, new Color((byte)60, (byte)60, (byte)60, (byte)255));
+    Raylib.DrawRectangle(ScreenWidth / 2 + 240, ScreenHeight / 2 - 10, (int)(260 * soundVolume), 16, new Color((byte)255, (byte)160, (byte)40, (byte)255));
+    Raylib.DrawRectangleLines(ScreenWidth / 2 + 240, ScreenHeight / 2 - 10, 260, 16, Color.White);
+    if (Raylib.IsMouseButtonDown(MouseButton.Left) && Raylib.CheckCollisionPointRec(mouse, soundSliderBg))
+    {
+        soundVolume = Math.Clamp((mouse.X - (ScreenWidth / 2 + 240)) / 260f, 0f, 1f);
+        Raylib.SetSoundVolume(soundTreeChop,    soundVolume);
+        Raylib.SetSoundVolume(soundTreeFall,    soundVolume);
+        Raylib.SetSoundVolume(soundRockHit,     soundVolume);
+        Raylib.SetSoundVolume(soundRockBreak,   soundVolume);
+        Raylib.SetSoundVolume(soundSwordSwing,  soundVolume);
+        Raylib.SetSoundVolume(soundStickSwing,  soundVolume);
+        Raylib.SetSoundVolume(soundDogHit,      soundVolume);
+        Raylib.SetSoundVolume(soundDogDie,      soundVolume);
+        Raylib.SetSoundVolume(soundHorseGallop, soundVolume);
+        Raylib.SetSoundVolume(soundPauseOpen,   soundVolume);
+        Raylib.SetSoundVolume(soundPauseClose,  soundVolume);
+    }
+    Rectangle soundMinus = new Rectangle(ScreenWidth / 2 + 510, ScreenHeight / 2 - 14, 28, 24);
+    Rectangle soundPlus  = new Rectangle(ScreenWidth / 2 + 544, ScreenHeight / 2 - 14, 28, 24);
+    bool hSoundMinus = Raylib.CheckCollisionPointRec(mouse, soundMinus);
+    bool hSoundPlus  = Raylib.CheckCollisionPointRec(mouse, soundPlus);
+    Raylib.DrawRectangleRec(soundMinus, new Color((byte)40,(byte)40,(byte)40,(byte)255));
+    Raylib.DrawRectangleLinesEx(soundMinus, 2, hSoundMinus ? Color.Gold : Color.White);
+    Raylib.DrawText("-", ScreenWidth / 2 + 519, ScreenHeight / 2 - 11, 20, Color.White);
+    Raylib.DrawRectangleRec(soundPlus, new Color((byte)40,(byte)40,(byte)40,(byte)255));
+    Raylib.DrawRectangleLinesEx(soundPlus, 2, hSoundPlus ? Color.Gold : Color.White);
+    Raylib.DrawText("+", ScreenWidth / 2 + 552, ScreenHeight / 2 - 11, 20, Color.White);
+    if (hSoundMinus && Raylib.IsMouseButtonPressed(MouseButton.Left))
+    {
+        soundVolume = Math.Clamp(soundVolume - 0.1f, 0f, 1f);
+        Raylib.SetSoundVolume(soundTreeChop,    soundVolume);
+        Raylib.SetSoundVolume(soundTreeFall,    soundVolume);
+        Raylib.SetSoundVolume(soundRockHit,     soundVolume);
+        Raylib.SetSoundVolume(soundRockBreak,   soundVolume);
+        Raylib.SetSoundVolume(soundSwordSwing,  soundVolume);
+        Raylib.SetSoundVolume(soundStickSwing,  soundVolume);
+        Raylib.SetSoundVolume(soundDogHit,      soundVolume);
+        Raylib.SetSoundVolume(soundDogDie,      soundVolume);
+        Raylib.SetSoundVolume(soundHorseGallop, soundVolume);
+        Raylib.SetSoundVolume(soundPauseOpen,   soundVolume);
+        Raylib.SetSoundVolume(soundPauseClose,  soundVolume);
+    }
+    if (hSoundPlus && Raylib.IsMouseButtonPressed(MouseButton.Left))
+    {
+        soundVolume = Math.Clamp(soundVolume + 0.1f, 0f, 1f);
+        Raylib.SetSoundVolume(soundTreeChop,    soundVolume);
+        Raylib.SetSoundVolume(soundTreeFall,    soundVolume);
+        Raylib.SetSoundVolume(soundRockHit,     soundVolume);
+        Raylib.SetSoundVolume(soundRockBreak,   soundVolume);
+        Raylib.SetSoundVolume(soundSwordSwing,  soundVolume);
+        Raylib.SetSoundVolume(soundStickSwing,  soundVolume);
+        Raylib.SetSoundVolume(soundDogHit,      soundVolume);
+        Raylib.SetSoundVolume(soundDogDie,      soundVolume);
+        Raylib.SetSoundVolume(soundHorseGallop, soundVolume);
+        Raylib.SetSoundVolume(soundPauseOpen,   soundVolume);
+        Raylib.SetSoundVolume(soundPauseClose,  soundVolume);
+    }
+    Raylib.DrawText($"{(int)(soundVolume * 100)}%", ScreenWidth / 2 + 578, ScreenHeight / 2 - 10, 18, Color.LightGray);
+
+    // ── MINIMAP SIZE ─────────────────────────────────────────────────────────
+    Raylib.DrawText("Minimap Size", ScreenWidth / 2 + 240, ScreenHeight / 2 + 50, 22, Color.White);
+    Rectangle minimapBtn = new Rectangle(ScreenWidth / 2 + 240, ScreenHeight / 2 + 80, 160, 40);
     bool hoverMinimap = Raylib.CheckCollisionPointRec(mouse, minimapBtn);
     Raylib.DrawRectangleRec(minimapBtn, new Color((byte)40, (byte)40, (byte)40, (byte)255));
     Raylib.DrawRectangleLinesEx(minimapBtn, 2, hoverMinimap ? Color.Gold : Color.White);
-    Raylib.DrawText(minimapSize == 200 ? "Normal" : "Large", ScreenWidth / 2 + 270, ScreenHeight / 2 - 58, 22, hoverMinimap ? Color.Gold : Color.White);
+    Raylib.DrawText(minimapSize == 200 ? "Normal" : "Large", ScreenWidth / 2 + 270, ScreenHeight / 2 + 92, 22, hoverMinimap ? Color.Gold : Color.White);
     if (hoverMinimap && Raylib.IsMouseButtonPressed(MouseButton.Left))
         minimapSize = minimapSize == 200 ? 300 : 200;
 
-    // rain toggle
-    Raylib.DrawText("Rain", ScreenWidth / 2 + 240, ScreenHeight / 2 - 10, 22, Color.White);
-    Rectangle rainBtn = new Rectangle(ScreenWidth / 2 + 240, ScreenHeight / 2 + 20, 160, 40);
+    // ── RAIN TOGGLE ──────────────────────────────────────────────────────────
+    Raylib.DrawText("Rain", ScreenWidth / 2 + 240, ScreenHeight / 2 + 140, 22, Color.White);
+    Rectangle rainBtn = new Rectangle(ScreenWidth / 2 + 240, ScreenHeight / 2 + 170, 160, 40);
     bool hoverRain = Raylib.CheckCollisionPointRec(mouse, rainBtn);
     Raylib.DrawRectangleRec(rainBtn, new Color((byte)40, (byte)40, (byte)40, (byte)255));
     Raylib.DrawRectangleLinesEx(rainBtn, 2, hoverRain ? Color.Gold : Color.White);
-    Raylib.DrawText(isRaining ? "ON" : "OFF", ScreenWidth / 2 + 270, ScreenHeight / 2 + 32, 22, isRaining ? Color.SkyBlue : Color.DarkGray);
+    Raylib.DrawText(isRaining ? "ON" : "OFF", ScreenWidth / 2 + 270, ScreenHeight / 2 + 182, 22, isRaining ? Color.SkyBlue : Color.DarkGray);
     if (hoverRain && Raylib.IsMouseButtonPressed(MouseButton.Left))
         isRaining = !isRaining;
 }
@@ -7408,40 +9414,50 @@ static void DrawCheatsMenu()
         }
             Raylib.BeginMode2D(camera);
 
-// base
-Raylib.DrawRectangle(-40000, -40000, 80000, 80000, new Color(90, 170, 90, 255));
+// =====================
+// BASE & BIOMES
+// =====================
 
-// forest top
-Raylib.DrawRectangle(-40000, -40000, 80000, 39700, new Color(40, 100, 40, 255));
+// Base fallback (shouldn't be visible)
+Raylib.DrawRectangle(-55000, -40000, 95000, 80000, new Color((byte)90,(byte)170,(byte)90,(byte)255));
 
-// forest bottom
-Raylib.DrawRectangle(-40000, 1000, 80000, 39000, new Color(40, 100, 40, 255));
+// FOREST — top band (Y -40000 to -12000) full width
+Raylib.DrawRectangle(-55000, -40000, 95000, 28000, new Color((byte)40,(byte)100,(byte)40,(byte)255));
 
-// desert (right, X 4000 to 26000, middle strip only)
-Raylib.DrawRectangle(4000, -300, 22000, 1300, new Color(210, 180, 100, 255));
+// FOREST — bottom band (Y 12000 to 40000) full width
+Raylib.DrawRectangle(-55000, 12000, 95000, 28000, new Color((byte)40,(byte)100,(byte)40,(byte)255));
 
-// snow (left, X -30000 to -3000, middle strip only)
-Raylib.DrawRectangle(-30000, -300, 27000, 1300, new Color(220, 235, 255, 255));
+// SWAMP — far left (X -55000 to -30000, middle strip Y -12000 to 12000)
+Raylib.DrawRectangle(-55000, -12000, 25000, 24000, new Color((byte)55,(byte)75,(byte)35,(byte)255));
 
-// ocean beach sand (X 26000 to 30000)
-Raylib.DrawRectangle(26000, -40000, 4000, 80000, new Color(240, 220, 150, 255));
+// SNOW — left (X -30000 to -10000, middle strip)
+Raylib.DrawRectangle(-60000, -15000, 30000, 30000, new Color((byte)220,(byte)235,(byte)255,(byte)255));
 
-// ocean water (X 30000+)
-Raylib.DrawRectangle(30000, -40000, 10000, 80000, new Color(30, 100, 180, 255));
+// SAFE ZONE — centre-left (X -10000 to -3000, middle strip + safe zone overlay)
+//Raylib.DrawRectangle(-10, -12000, 7000, 24000, new Color((byte)90,(byte)170,(byte)90,(byte)255));
 
-// swamp (far left, X -55000 to -30000)
-Raylib.DrawRectangle(-55000, -40000, 25000, 80000, new Color(55, 75, 35, 255));
+// GRASSLANDS — centre (X -3000 to 8000, middle strip)
+Raylib.DrawRectangle(-10000, -12000, 18000, 24000, new Color((byte)140, (byte)195, (byte)80, (byte)255));
 
-// volcano (far right top, X 26000+, Y -40000 to -2000)
-Raylib.DrawRectangle(26000, -40000, 14000, 38000, new Color(40, 20, 10, 255));
+// DESERT — centre-right (X 8000 to 22000, middle strip)
+Raylib.DrawRectangle(8000, -12000, 14000, 24000, new Color((byte)210,(byte)180,(byte)100,(byte)255));
 
-// mountains (far left top, X -55000 to -26000, Y -40000 to -2000)
-Raylib.DrawRectangle(-55000, -40000, 29000, 38000, new Color(100, 95, 90, 255));
+// BEACH — right (X 22000 to 28000, full height)
+Raylib.DrawRectangle(22000, -40000, 6000, 80000, new Color((byte)240,(byte)220,(byte)150,(byte)255));
 
-// safe zone
-Raylib.DrawRectangle(-3000, -1500, 7000, 4000, new Color(90, 170, 90, 255));
+// OCEAN — far right (X 28000 to 40000, full height)
+Raylib.DrawRectangle(28000, -40000, 12000, 80000, new Color((byte)30,(byte)100,(byte)180,(byte)255));
 
-// Farm zone
+// VOLCANO — top right (X 22000 to 40000, Y -40000 to -12000)
+Raylib.DrawRectangle(22000, -40000, 18000, 28000, new Color((byte)40,(byte)20,(byte)10,(byte)255));
+
+// MOUNTAINS — top left (X -30000 to -10000, Y -15000 to 23000)
+Raylib.DrawRectangle(-30000, -15000, 20000, 38000, new Color((byte)100,(byte)95,(byte)90,(byte)255));
+
+// SAFE ZONE overlay (exact safe zone bounds, sits on top of grasslands)
+Raylib.DrawRectangle(-3000, -1500, 7000, 4000, new Color((byte)90,(byte)170,(byte)90,(byte)255));
+
+// FARM ZONE (north of safe zone)
 Raylib.DrawRectangle(-3000, -10000, 3000, 4000, Color.Brown);
 
 DrawSafeZoneTexture();
@@ -7924,6 +9940,36 @@ if (building.BuildingName == "BASKETBALL COURT")
  
         
     }
+
+    // Mini golf exterior decoration — find the MiniGolf building and add flourishes
+foreach (var b in buildings)
+{
+    if (b.BuildingName != "MiniGolf") continue;
+    int golfX = (int)b.Bounds.X;
+    int golfY = (int)b.Bounds.Y;
+    int golfW = (int)b.Bounds.Width;
+    int golfH = (int)b.Bounds.Height;
+
+    // big sign
+    Raylib.DrawRectangle(golfX + golfW / 2 - 70, golfY - 40, 140, 30, new Color((byte)255, (byte)220, (byte)80, (byte)255));
+    Raylib.DrawRectangleLines(golfX + golfW / 2 - 70, golfY - 40, 140, 30, new Color((byte)180, (byte)140, (byte)20, (byte)255));
+    Raylib.DrawText("MINI GOLF", golfX + golfW / 2 - 56, golfY - 34, 18, new Color((byte)40, (byte)90, (byte)40, (byte)255));
+
+    // decorative putting green strip out front
+    Raylib.DrawRectangle(golfX - 60, golfY + golfH + 10, golfW + 120, 70, new Color((byte)60, (byte)150, (byte)70, (byte)255));
+    Raylib.DrawCircle(golfX + 20, golfY + golfH + 45, 7, Color.Black);
+    Raylib.DrawLine(golfX + 20, golfY + golfH + 45, golfX + 20, golfY + golfH + 20, Color.White);
+    Raylib.DrawTriangle(
+        new Vector2(golfX + 20, golfY + golfH + 20),
+        new Vector2(golfX + 20, golfY + golfH + 30),
+        new Vector2(golfX + 36, golfY + golfH + 25),
+        Color.Red);
+    Raylib.DrawCircle(golfX + golfW + 40, golfY + golfH + 45, 4, Color.White);
+
+    // windmill-style obstacle decoration
+    Raylib.DrawRectangle(golfX + golfW / 2 - 4, golfY + golfH + 25, 8, 40, new Color((byte)120, (byte)75, (byte)35, (byte)255));
+    Raylib.DrawCircle(golfX + golfW / 2, golfY + golfH + 25, 4, Color.White);
+}
  
     // ── GAS STATION BUILDING EXTERIOR ───────────────────────────────────────
     if (building.BuildingName == "GAS STATION")
@@ -8364,7 +10410,41 @@ else if (building.BuildingName == "BARN DEALER")
 foreach (GasStation gs in gasStations)
     DrawGasStation(gs, gs.OriginX, gs.OriginY);
 
+// Dungeon cave entrances
+foreach (var entrance in dungeonEntrances)
+{
+    int ex = (int)entrance.pos.X;
+    int ey = (int)entrance.pos.Y;
 
+    // Rocky surround
+    Raylib.DrawCircle(ex, ey + 8, 38, new Color((byte)70,(byte)65,(byte)55,(byte)255));
+    Raylib.DrawCircle(ex - 14, ey,     20, new Color((byte)80,(byte)72,(byte)60,(byte)255));
+    Raylib.DrawCircle(ex + 16, ey + 2, 18, new Color((byte)75,(byte)68,(byte)57,(byte)255));
+
+    // Cave mouth
+    Raylib.DrawEllipse(ex, ey + 6, 28, 20, new Color((byte)15,(byte)10,(byte)8,(byte)255));
+
+    // Stalactites
+    Raylib.DrawTriangle(new Vector2(ex - 14, ey - 12), new Vector2(ex - 8, ey - 12), new Vector2(ex - 11, ey - 2),  new Color((byte)60,(byte)54,(byte)44,(byte)255));
+    Raylib.DrawTriangle(new Vector2(ex - 2,  ey - 14), new Vector2(ex + 4, ey - 14), new Vector2(ex + 1,  ey - 3),  new Color((byte)60,(byte)54,(byte)44,(byte)255));
+    Raylib.DrawTriangle(new Vector2(ex + 9,  ey - 12), new Vector2(ex + 15,ey - 12), new Vector2(ex + 12, ey - 2),  new Color((byte)60,(byte)54,(byte)44,(byte)255));
+
+    // Glow from inside
+    Raylib.DrawEllipse(ex, ey + 8, 16, 11, new Color((byte)255,(byte)140,(byte)0,(byte)40));
+
+    // Sign above entrance
+    Raylib.DrawRectangle(ex - 36, ey - 48, 72, 20, new Color((byte)70,(byte)45,(byte)18,(byte)255));
+    Raylib.DrawRectangleLines(ex - 36, ey - 48, 72, 20, new Color((byte)100,(byte)70,(byte)30,(byte)255));
+    int nw = Raylib.MeasureText(entrance.name, 11);
+    Raylib.DrawText(entrance.name, ex - nw / 2, ey - 46, 11, Color.Gold);
+
+    // Prompt when nearby
+    if (Vector2.Distance(player.Position, entrance.pos) < 80)
+    {
+        int pw2 = Raylib.MeasureText("E = Enter Dungeon", 20);
+        Raylib.DrawText("E = Enter Dungeon", ex - pw2 / 2, ey - 75, 20, Color.Gold);
+    }
+}
             foreach (TreeObject tree in trees)
             {
                 tree.Draw();
@@ -8517,6 +10597,7 @@ if (!swordPickedUp)
     if (Vector2.Distance(player.Position, swordPosition) < 60)
         Raylib.DrawText("E = Pick up Sword", sx - 50, sy - 60, 18, Color.Gold);
 }
+
 
             DrawStreetLights();
             fenceManager.Draw();
@@ -8731,6 +10812,221 @@ if (!swordPickedUp)
     Raylib.DrawText("TROLLEYS", 150, 900, 14, Color.DarkGray);
     Raylib.DrawText("BASKETS", 970, 900, 14, Color.DarkGray);
 
+}
+
+if (currentBuilding.BuildingName == "DropZone")
+{
+    Raylib.DrawText("DROPZONE ARCADE", ScreenWidth / 2 - 200, 30, 40, Color.Gold);
+
+    // ── BOWLING LANES (left side) ──────────────────────────────────────
+    // bowling area divider
+    Raylib.DrawRectangle(330, 150, 8, 400, new Color((byte)60, (byte)60, (byte)60, (byte)255));
+    Raylib.DrawText("BOWLING", 140, 158, 22, Color.Gold);
+
+    // bowling lane 1
+    Raylib.DrawRectangle(210, 240, 80, 130, new Color((byte)200, (byte)160, (byte)90, (byte)255));
+    Raylib.DrawRectangleLines(210, 240, 80, 130, new Color((byte)120, (byte)70, (byte)20, (byte)255));
+    Raylib.DrawRectangle(210, 240, 80, 14, new Color((byte)90, (byte)55, (byte)25, (byte)255)); // foul line
+    for (int p = 0; p < 3; p++)                                                                  // pins
+        Raylib.DrawCircle(236 + p * 14, 268, 4, Color.White);
+    Raylib.DrawCircle(250, 350, 7, new Color((byte)30, (byte)30, (byte)160, (byte)255));         // ball
+    Raylib.DrawText("LANE 1", 222, 376, 14, Color.White);
+
+    // bowling lane 2
+    Raylib.DrawRectangle(210, 390, 80, 130, new Color((byte)200, (byte)160, (byte)90, (byte)255));
+    Raylib.DrawRectangleLines(210, 390, 80, 130, new Color((byte)120, (byte)70, (byte)20, (byte)255));
+    Raylib.DrawRectangle(210, 390, 80, 14, new Color((byte)90, (byte)55, (byte)25, (byte)255));
+    for (int p = 0; p < 3; p++)
+        Raylib.DrawCircle(236 + p * 14, 418, 4, Color.White);
+    Raylib.DrawCircle(250, 500, 7, new Color((byte)30, (byte)30, (byte)160, (byte)255));
+    Raylib.DrawText("LANE 2", 222, 526, 14, Color.White);
+
+    // ── CLAW MACHINES (middle) ─────────────────────────────────────────
+    Raylib.DrawRectangle(440, 150, 8, 400, new Color((byte)60, (byte)60, (byte)60, (byte)255)); // divider
+    Raylib.DrawText("CLAW MACHINES", 540, 158, 20, Color.Gold);
+
+    // claw machine 1
+    Raylib.DrawRectangle(570, 200, 60, 100, new Color((byte)255, (byte)80, (byte)160, (byte)255));
+    Raylib.DrawRectangle(576, 210, 48, 55, new Color((byte)60, (byte)80, (byte)120, (byte)160)); // glass
+    Raylib.DrawCircle(588, 250, 5, Color.Brown);                                                 // plush
+    Raylib.DrawCircle(602, 252, 5, Color.SkyBlue);
+    Raylib.DrawCircle(615, 250, 5, Color.Gold);
+    Raylib.DrawLine(600, 210, 600, 225, Color.LightGray);                                        // claw cable
+    Raylib.DrawCircle(600, 225, 4, Color.DarkGray);                                              // claw
+    Raylib.DrawText("CLAW", 583, 304, 12, Color.White);
+
+    // claw machine 2
+    Raylib.DrawRectangle(670, 200, 60, 100, new Color((byte)255, (byte)80, (byte)160, (byte)255));
+    Raylib.DrawRectangle(676, 210, 48, 55, new Color((byte)60, (byte)80, (byte)120, (byte)160));
+    Raylib.DrawCircle(688, 250, 5, Color.Green);
+    Raylib.DrawCircle(702, 252, 5, new Color((byte)240, (byte)180, (byte)200, (byte)255));
+    Raylib.DrawCircle(715, 250, 5, Color.White);
+    Raylib.DrawLine(700, 210, 700, 225, Color.LightGray);
+    Raylib.DrawCircle(700, 225, 4, Color.DarkGray);
+    Raylib.DrawText("CLAW", 683, 304, 12, Color.White);
+
+    // pool table 1
+    Raylib.DrawRectangle(150, 802, 180, 100, new Color((byte)0, (byte)100, (byte)40, (byte)255));
+    Raylib.DrawRectangleLines(150, 802, 180, 100, new Color((byte)80, (byte)40, (byte)10, (byte)255));
+    Raylib.DrawRectangle(148, 800, 184, 8, new Color((byte)80, (byte)40, (byte)10, (byte)255));
+    Raylib.DrawRectangle(148, 900, 184, 8, new Color((byte)80, (byte)40, (byte)10, (byte)255));
+    Raylib.DrawRectangle(148, 800, 8, 104, new Color((byte)80, (byte)40, (byte)10, (byte)255));
+    Raylib.DrawRectangle(324, 800, 8, 104, new Color((byte)80, (byte)40, (byte)10, (byte)255));
+    Raylib.DrawCircle(240, 852, 6, Color.White);
+    Raylib.DrawText("POOL TABLE 1", 162, 858, 14, Color.White);
+
+    // ── FLAPPY BIRD MACHINE ────────────────────────────────────────────
+    Raylib.DrawRectangle(900, 520, 70, 110, new Color((byte)90, (byte)170, (byte)210, (byte)255));
+    Raylib.DrawRectangle(906, 530, 58, 70, new Color((byte)135, (byte)206, (byte)235, (byte)255));
+    Raylib.DrawCircle(935, 560, 6, Color.Gold);          // bird
+    Raylib.DrawRectangle(920, 530, 8, 20, Color.Green);  // pipe
+    Raylib.DrawRectangle(950, 575, 8, 25, Color.Green);
+    Raylib.DrawText("FLAPPY", 906, 634, 11, Color.White);
+    if (Vector2.Distance(player.Position, new Vector2(935, 575)) < 75)
+        Raylib.DrawText("SPACE = Play ($1)", 875, 652, 14, Color.Gold);
+
+    // ── PRIZE COUNTER ──────────────────────────────────────────────────
+    Raylib.DrawRectangle(760, 510, 130, 70, new Color((byte)180, (byte)60, (byte)140, (byte)255));
+    Raylib.DrawRectangle(760, 510, 130, 10, new Color((byte)220, (byte)100, (byte)180, (byte)255));
+    Raylib.DrawText("PRIZES", 795, 535, 18, Color.White);
+    Raylib.DrawCircle(780, 560, 6, Color.Gold);          // trophy
+    Raylib.DrawCircle(800, 560, 5, Color.Brown);         // plush
+    Raylib.DrawText($"Tickets: {player.Tickets}", 760, 584, 14, new Color((byte)255,(byte)200,(byte)60,(byte)255));
+    if (Vector2.Distance(player.Position, new Vector2(825, 545)) < 80)
+        Raylib.DrawText("E = Redeem Prizes", 760, 602, 14, Color.Gold);
+
+    // ── PRIZE REDEMPTION POPUP ─────────────────────────────────────────
+    if (prizeCounterOpen)
+    {
+        Raylib.DrawRectangle(1280 / 2 - 200, 130, 400, 280, new Color((byte)0, (byte)0, (byte)0, (byte)235));
+        Raylib.DrawRectangleLines(1280 / 2 - 200, 130, 400, 280, Color.Gold);
+        Raylib.DrawText("PRIZE COUNTER", 1280 / 2 - 110, 145, 26, Color.Gold);
+        Raylib.DrawText($"Your tickets: {player.Tickets}", 1280 / 2 - 180, 185, 20, new Color((byte)255,(byte)200,(byte)60,(byte)255));
+        Raylib.DrawText("1. Small Plush     - 10 tickets", 1280 / 2 - 180, 225, 18, Color.White);
+        Raylib.DrawText("2. Big Plush       - 25 tickets", 1280 / 2 - 180, 255, 18, Color.White);
+        Raylib.DrawText("3. Giant Plush     - 50 tickets", 1280 / 2 - 180, 285, 18, Color.White);
+        Raylib.DrawText("4. Jackpot Trophy  - 100 tickets", 1280 / 2 - 180, 315, 18, Color.White);
+        Raylib.DrawText("E = Close", 1280 / 2 - 50, 360, 18, Color.Gray);
+    }
+
+    // ── ARCADE CABINETS (right) ────────────────────────────────────────
+    Raylib.DrawRectangle(840, 150, 8, 400, new Color((byte)60, (byte)60, (byte)60, (byte)255)); // divider
+    Raylib.DrawText("ARCADE", 920, 158, 22, Color.Gold);
+
+    // arcade cabinet 1
+    Raylib.DrawRectangle(874, 200, 52, 100, new Color((byte)40, (byte)40, (byte)90, (byte)255));
+    Raylib.DrawRectangle(880, 210, 40, 30, Color.SkyBlue);                                       // screen
+    Raylib.DrawRectangle(884, 250, 10, 10, Color.Red);                                           // buttons
+    Raylib.DrawRectangle(902, 250, 10, 10, Color.Yellow);
+    Raylib.DrawText("ARCADE", 876, 304, 11, Color.White);
+
+    // arcade cabinet 2
+    Raylib.DrawRectangle(974, 200, 52, 100, new Color((byte)40, (byte)40, (byte)90, (byte)255));
+    Raylib.DrawRectangle(980, 210, 40, 30, Color.SkyBlue);
+    Raylib.DrawRectangle(984, 250, 10, 10, Color.Red);
+    Raylib.DrawRectangle(1002, 250, 10, 10, Color.Yellow);
+    Raylib.DrawText("ARCADE", 976, 304, 11, Color.White);
+
+    // ── FOOD & DRINK COUNTER ───────────────────────────────────────────
+    Raylib.DrawRectangle(520, 510, 160, 70, new Color((byte)150, (byte)90, (byte)40, (byte)255));
+    Raylib.DrawRectangle(520, 510, 160, 10, new Color((byte)180, (byte)120, (byte)60, (byte)255));
+    Raylib.DrawText("FOOD & DRINKS", 535, 535, 18, Color.White);
+    Raylib.DrawCircle(540, 560, 5, Color.Red);    // soda cup
+    Raylib.DrawCircle(560, 560, 5, Color.Yellow); // nachos
+    Raylib.DrawCircle(640, 560, 5, Color.Orange); // hotdog
+
+    // ── PINBALL MACHINE ────────────────────────────────────────────────
+    Raylib.DrawRectangle(1060, 200, 70, 110, new Color((byte)120, (byte)80, (byte)200, (byte)255));
+    Raylib.DrawRectangle(1066, 210, 58, 70, new Color((byte)25, (byte)20, (byte)50, (byte)255));
+    Raylib.DrawCircle(1080, 235, 4, Color.Orange);
+    Raylib.DrawCircle(1100, 250, 4, Color.Yellow);
+    Raylib.DrawCircle(1090, 265, 4, Color.Red);
+    Raylib.DrawText("PINBALL", 1066, 314, 11, Color.White);
+    if (Vector2.Distance(player.Position, new Vector2(1095, 255)) < 75)
+        Raylib.DrawText("SPACE = Play ($2)", 1035, 332, 14, Color.Gold);
+
+    // ── AIR HOCKEY ─────────────────────────────────────────────────────
+    Raylib.DrawRectangle(1060, 360, 70, 110, new Color((byte)60, (byte)90, (byte)140, (byte)255));
+    Raylib.DrawRectangle(1066, 370, 58, 70, new Color((byte)220, (byte)235, (byte)250, (byte)255));
+    Raylib.DrawLine(1066, 405, 1124, 405, new Color((byte)150, (byte)170, (byte)200, (byte)255));
+    Raylib.DrawCircle(1095, 405, 5, Color.Black);
+    Raylib.DrawText("AIR HOCKEY", 1062, 474, 10, Color.White);
+    if (Vector2.Distance(player.Position, new Vector2(1095, 415)) < 75)
+        Raylib.DrawText("SPACE = Play ($3)", 1035, 492, 14, Color.Gold);
+
+    // ── PIANO TILES ────────────────────────────────────────────────────
+    Raylib.DrawRectangle(1060, 520, 70, 110, new Color((byte)30, (byte)30, (byte)45, (byte)255));
+    Raylib.DrawRectangle(1066, 530, 58, 70, new Color((byte)12, (byte)12, (byte)20, (byte)255));
+    for (int c = 0; c < 4; c++)
+        Raylib.DrawRectangle(1068 + c * 14, 540 + (c % 2) * 20, 12, 18, new Color((byte)40, (byte)120, (byte)255, (byte)255));
+    Raylib.DrawText("PIANO", 1072, 634, 11, Color.White);
+    if (Vector2.Distance(player.Position, new Vector2(1095, 575)) < 75)
+        Raylib.DrawText("SPACE = Play ($2)", 1035, 652, 14, Color.Gold);
+
+    // ── INTERACTION PROMPTS ────────────────────────────────────────────
+    Vector2[] bowlingLanes = { new Vector2(250, 300)};
+    foreach (var lane in bowlingLanes)
+        if (Vector2.Distance(player.Position, lane) < 80)
+            Raylib.DrawText("SPACE = Bowl ($3)", (int)lane.X - 60, (int)lane.Y + 95, 16, Color.Gold);
+    
+    Vector2[] poolTables = { new Vector2(240, 852)};
+foreach (var table in poolTables)
+    if (Vector2.Distance(player.Position, table) < 100)
+        Raylib.DrawText("SPACE = Pool ($2)", (int)table.X - 60, (int)table.Y + 56, 16, Color.Gold);
+
+    Vector2[] clawMachines = { new Vector2(600, 250), new Vector2(700, 250) };
+    foreach (var claw in clawMachines)
+        if (Vector2.Distance(player.Position, claw) < 70)
+            Raylib.DrawText("SPACE = Play ($2)", (int)claw.X - 60, (int)claw.Y + 72, 14, Color.Gold);
+
+    Vector2[] arcadeCabinets = { new Vector2(900, 250), new Vector2(1000, 250) };
+    foreach (var cab in arcadeCabinets)
+        if (Vector2.Distance(player.Position, cab) < 70)
+            Raylib.DrawText("SPACE = Play", (int)cab.X - 44, (int)cab.Y + 72, 14, Color.Gold);
+
+    if (Vector2.Distance(player.Position, new Vector2(600, 550)) < 80)
+        Raylib.DrawText("E = Order Food", 545, 588, 16, Color.Gold);
+
+    // ── FOOD MENU POPUP ────────────────────────────────────────────────
+    if (dropZoneFoodMenuOpen)
+    {
+        Raylib.DrawRectangle(ScreenWidth / 2 - 180, 150, 360, 240, new Color((byte)0, (byte)0, (byte)0, (byte)230));
+        Raylib.DrawRectangleLines(ScreenWidth / 2 - 180, 150, 360, 240, Color.Gold);
+        Raylib.DrawText("SNACK BAR", ScreenWidth / 2 - 70, 165, 26, Color.Gold);
+        Raylib.DrawText("1. Hot Dog  - $6  (+18 HP)", ScreenWidth / 2 - 160, 210, 20, Color.White);
+        Raylib.DrawText("2. Nachos   - $7  (+20 HP)", ScreenWidth / 2 - 160, 245, 20, Color.White);
+        Raylib.DrawText("3. Soda     - $4  (+12 HP)", ScreenWidth / 2 - 160, 280, 20, Color.White);
+        Raylib.DrawText("4. Slushie  - $5  (+14 HP)", ScreenWidth / 2 - 160, 315, 20, Color.White);
+        Raylib.DrawText("E = Close", ScreenWidth / 2 - 50, 355, 18, Color.Gray);
+    }
+
+    // entrance mat
+    Raylib.DrawRectangle(540, 825, 200, 120, new Color((byte)60, (byte)60, (byte)70, (byte)255));
+    Raylib.DrawRectangle(550, 835, 180, 100, new Color((byte)80, (byte)40, (byte)120, (byte)255));
+}
+
+if (currentBuilding.BuildingName == "MiniGolf")
+{
+    Raylib.DrawText("MINI GOLF CLUBHOUSE", ScreenWidth / 2 - 230, 40, 40, Color.Gold);
+
+    // the start kiosk / first tee
+    Raylib.DrawRectangle(540, 300, 200, 90, new Color((byte)60, (byte)150, (byte)70, (byte)255));
+    Raylib.DrawRectangleLines(540, 300, 200, 90, new Color((byte)40, (byte)100, (byte)50, (byte)255));
+    // hole + flag on the kiosk
+    Raylib.DrawCircle(640, 345, 9, Color.Black);
+    Raylib.DrawLine(640, 345, 640, 315, Color.White);
+    Raylib.DrawTriangle(new Vector2(640, 315), new Vector2(640, 327), new Vector2(660, 321), Color.Red);
+    Raylib.DrawText("START COURSE", 565, 396, 16, Color.White);
+
+    // decorative greenery
+    for (int i = 0; i < 6; i++)
+    {
+        Raylib.DrawCircle(200 + i * 180, 200, 14, new Color((byte)40, (byte)120, (byte)50, (byte)255));
+        Raylib.DrawCircle(200 + i * 180, 540, 14, new Color((byte)40, (byte)120, (byte)50, (byte)255));
+    }
+
+    if (Vector2.Distance(player.Position, new Vector2(640, 345)) < 90)
+        Raylib.DrawText("SPACE = Play 9 Holes ($5)", 510, 410, 18, Color.Gold);
 }
 
 if (currentBuilding.BuildingName == "BANK")
@@ -9273,7 +11569,9 @@ if (currentBuilding.BuildingName != "DBar" &&
     currentBuilding.BuildingName != "POLICE STATION" &&
     currentBuilding.BuildingName != "MARAE" &&
     currentBuilding.BuildingName != "BANK" &&
-    currentBuilding.BuildingName != "STORE")
+    currentBuilding.BuildingName != "STORE" &&
+    currentBuilding.BuildingName != "DropZone" &&
+    currentBuilding.BuildingName != "MiniGolf")
 {
     foreach (Rectangle obj in currentBuilding.InteriorObjects)
         Raylib.DrawRectangleRec(obj, Color.DarkBrown);
@@ -9285,6 +11583,18 @@ if (currentBuilding.BuildingName != "DBar" &&
         Raylib.DrawRectangle(100, 150, 300, 40, new Color((byte)80, (byte)40, (byte)10, (byte)255));
         Raylib.DrawRectangle(100, 150, 300, 8, new Color((byte)120, (byte)70, (byte)20, (byte)255));
         Raylib.DrawText("BAR", 220, 162, 20, Color.Gold);
+
+        // dartboard (mounted on the wall, left side)
+        int dbX = 1250, dbY = 80; // centre of the board
+        Raylib.DrawCircle(dbX, dbY, 56, new Color((byte)20, (byte)20, (byte)20, (byte)255));   // backboard/surround
+        Raylib.DrawCircle(dbX, dbY, 50, new Color((byte)235, (byte)225, (byte)200, (byte)255)); // board face
+        // alternating wedge feel via two rings of colour
+        Raylib.DrawCircle(dbX, dbY, 40, new Color((byte)40, (byte)40, (byte)40, (byte)255));
+        Raylib.DrawCircle(dbX, dbY, 32, new Color((byte)200, (byte)190, (byte)160, (byte)255));
+        Raylib.DrawCircle(dbX, dbY, 20, new Color((byte)180, (byte)40, (byte)40, (byte)255));   // outer bull ring
+        Raylib.DrawCircle(dbX, dbY, 9,  new Color((byte)0, (byte)110, (byte)40, (byte)255));    // bullseye
+        Raylib.DrawCircle(dbX, dbY, 4,  Color.Red);
+        
 
         // pool table 1
         Raylib.DrawRectangle(150, 280, 180, 100, new Color((byte)0, (byte)100, (byte)40, (byte)255));
@@ -11296,61 +13606,75 @@ if (currentBuilding.BuildingName == "SWIMMING COMPLEX")
 
 if (currentBuilding.BuildingName == "TENNIS COURT")
 {
-    // Court surface
-    Raylib.DrawRectangle(0, 0, 1400, 1000, new Color((byte)50,(byte)160,(byte)50,(byte)255));
+    // court surface
+    Raylib.DrawRectangle((int)CourtLeft - 30, (int)CourtTop - 30,
+        (int)(CourtRight - CourtLeft) + 60, (int)(CourtBottom - CourtTop) + 60,
+        new Color((byte)30, (byte)110, (byte)40, (byte)255));
+    Raylib.DrawRectangle((int)CourtLeft, (int)CourtTop,
+        (int)(CourtRight - CourtLeft), (int)(CourtBottom - CourtTop),
+        new Color((byte)40, (byte)140, (byte)55, (byte)255));
 
-    // Court lines
-    Raylib.DrawRectangleLines(60, 80, 1280, 560, Color.White);
-    // Service boxes
-    Raylib.DrawLine(700, 80, 700, 640, Color.White);   // centre line
-    Raylib.DrawLine(60, 360, 1340, 360, Color.White);  // service line
-    Raylib.DrawLine(60, 200, 700, 200, Color.White);   // left service boxes
-    Raylib.DrawLine(700, 200, 1340, 200, Color.White);
-    // Net
-    Raylib.DrawRectangle(670, 80, 10, 560, new Color((byte)200,(byte)200,(byte)200,(byte)255));
-    Raylib.DrawRectangle(665, 78, 20, 10, new Color((byte)160,(byte)160,(byte)160,(byte)255));
-    Raylib.DrawRectangle(665, 628, 20, 10, new Color((byte)160,(byte)160,(byte)160,(byte)255));
-    // Net mesh lines
-    for (int ny = 88; ny < 638; ny += 20)
-        Raylib.DrawLine(670, ny, 680, ny, new Color((byte)160,(byte)160,(byte)160,(byte)120));
+    // court lines
+    Raylib.DrawRectangleLinesEx(new Rectangle(CourtLeft, CourtTop, CourtRight - CourtLeft, CourtBottom - CourtTop), 3, Color.White);
+    // service boxes
+    Raylib.DrawLine((int)CourtLeft, (int)((CourtTop + CourtBottom) / 2), (int)CourtRight, (int)((CourtTop + CourtBottom) / 2), Color.White);
+    Raylib.DrawLine((int)(CourtLeft + 180), (int)CourtTop, (int)(CourtLeft + 180), (int)CourtBottom, Color.White);
+    Raylib.DrawLine((int)(CourtRight - 180), (int)CourtTop, (int)(CourtRight - 180), (int)CourtBottom, Color.White);
+    // net
+    Raylib.DrawRectangle((int)CourtMidX - 3, (int)CourtTop - 10, 6, (int)(CourtBottom - CourtTop) + 20, new Color((byte)230, (byte)230, (byte)230, (byte)255));
+    for (int ny = (int)CourtTop; ny < CourtBottom; ny += 12)
+        Raylib.DrawRectangle((int)CourtMidX - 3, ny, 6, 6, new Color((byte)180,(byte)180,(byte)180,(byte)200));
 
-    // Baselines ticks
-    for (int bx2 = 60; bx2 <= 1340; bx2 += 64)
-        Raylib.DrawRectangle(bx2, 636, 4, 10, Color.White);
-
-    // Score display
-    Raylib.DrawRectangle(540, 0, 320, 70, new Color((byte)20,(byte)20,(byte)20,(byte)200));
-    Raylib.DrawText($"YOU: {tennisPlayerScore}  AI: {tennisAIScore}", 560, 15, 28, Color.Gold);
-
-    if (tennisActive)
+    if (tennisActive && !tennisDifficultySelect)
     {
-        // Player paddle (left)
-        Raylib.DrawRectangle(80, (int)tennisPlayerPaddleY, 22, 60, new Color((byte)255,(byte)200,(byte)0,(byte)255));
-        Raylib.DrawRectangleLines(80, (int)tennisPlayerPaddleY, 22, 60, Color.White);
-        // AI paddle (right)
-        Raylib.DrawRectangle(1270, (int)tennisAIPaddleY, 22, 60, new Color((byte)220,(byte)50,(byte)50,(byte)255));
-        Raylib.DrawRectangleLines(1270, (int)tennisAIPaddleY, 22, 60, Color.White);
-        // Ball
-        Raylib.DrawCircle((int)tennisBallPos.X, (int)tennisBallPos.Y, 10, new Color((byte)200,(byte)220,(byte)50,(byte)255));
-        Raylib.DrawCircleLines((int)tennisBallPos.X, (int)tennisBallPos.Y, 10, Color.DarkGreen);
+        // player figure (their colours)
+        Raylib.DrawCircle((int)tennisPlayerPos.X, (int)tennisPlayerPos.Y - 12, 11, Program.player.SkinColor);
+        Raylib.DrawRectangle((int)tennisPlayerPos.X - 12, (int)tennisPlayerPos.Y - 2, 24, 26, Program.player.ShirtColor);
+        // racket — swings out when active
+        if (tennisSwinging)
+            Raylib.DrawCircle((int)tennisPlayerPos.X + 24, (int)tennisPlayerPos.Y, 10, new Color((byte)220,(byte)220,(byte)120,(byte)255));
+        else
+            Raylib.DrawCircle((int)tennisPlayerPos.X + 16, (int)tennisPlayerPos.Y - 6, 8, new Color((byte)200,(byte)200,(byte)100,(byte)255));
+
+        // AI figure
+        Raylib.DrawCircle((int)tennisAIPos.X, (int)tennisAIPos.Y - 12, 11, new Color((byte)230,(byte)200,(byte)170,(byte)255));
+        Raylib.DrawRectangle((int)tennisAIPos.X - 12, (int)tennisAIPos.Y - 2, 24, 26, new Color((byte)200,(byte)60,(byte)60,(byte)255));
+
+        // ball
+        Raylib.DrawCircle((int)tennisBallPos.X, (int)tennisBallPos.Y, 8, new Color((byte)220,(byte)240,(byte)60,(byte)255));
+        // landing target marker while in flight
+        if (tennisBallInFlight)
+            Raylib.DrawCircleLines((int)tennisBallTarget.X, (int)tennisBallTarget.Y, 12, new Color((byte)255,(byte)255,(byte)255,(byte)120));
+
+        // scoreboard
+        Raylib.DrawRectangle(440, 20, 400, 50, new Color((byte)0,(byte)0,(byte)0,(byte)180));
+        Raylib.DrawText($"YOU {tennisPlayerScore}   -   {tennisAIScore} AI   (first to {tennisPointsToWin})", 460, 32, 24, Color.White);
+
+        // serve power bar
+        if (tennisServePhase == 2 && tennisPlayerServing)
+        {
+            Raylib.DrawRectangle(440, 640, 400, 20, new Color((byte)40,(byte)40,(byte)40,(byte)255));
+            Raylib.DrawRectangle(440, 640, (int)(400 * tennisServeToss), 20, Color.Orange);
+            Raylib.DrawText("Release SPACE to serve!", 440, 666, 18, Color.LightGray);
+        }
     }
 
-    Raylib.DrawText("YOU", 68, 72, 16, Color.Gold);
-    Raylib.DrawText("AI", 1272, 72, 16, new Color((byte)220,(byte)50,(byte)50,(byte)255));
+    if (tennisDifficultySelect)
+    {
+        Raylib.DrawRectangle(390, 280, 500, 160, new Color((byte)0,(byte)0,(byte)0,(byte)220));
+        Raylib.DrawText("SELECT DIFFICULTY", 470, 300, 28, Color.Gold);
+        Raylib.DrawText("1 - Easy", 470, 345, 22, Color.White);
+        Raylib.DrawText("2 - Normal", 470, 375, 22, Color.White);
+        Raylib.DrawText("3 - Hard", 470, 405, 22, Color.White);
+    }
 
-    if (tennisMessageTimer > 0)
-        Raylib.DrawText(tennisMessage, 200, 700, 22, Color.White);
+    if (tennisMessageTimer > 0 || tennisMessage.Contains("GAME") || tennisMessage.Contains("Match"))
+    {
+        int mw = Raylib.MeasureText(tennisMessage, 24);
+        Raylib.DrawText(tennisMessage, 640 - mw / 2, 90, 24, Color.Yellow);
+    }
 
-    if (!tennisActive)
-        Raylib.DrawText("Space = Start Game (stand near net)", 400, 700, 22, Color.LightGray);
-    else if (tennisServing)
-        Raylib.DrawText("SPACE = Serve!", 560, 680, 24, Color.Gold);
-    else
-        Raylib.DrawText("W/S = Move  |  Q = Quit", 480, 680, 22, Color.LightGray);
-
-    // entrance mat
-    Raylib.DrawRectangle(560, 900, 280, 40, new Color((byte)30,(byte)100,(byte)30,(byte)255));
-    Raylib.DrawText("TENNIS COURT", 592, 912, 18, Color.White);
+    Raylib.DrawText("WASD / Arrows = Move  |  SPACE = Serve / Swing  |  Q = Quit", 400, 700, 18, Color.LightGray);
 }
 
 if (currentBuilding.BuildingName == "BASKETBALL COURT")
@@ -11599,6 +13923,7 @@ Raylib.DrawText("FACILITIES", 1312, 172, 14, Color.LightGray);
                 new Color((byte)180,(byte)50,(byte)50,(byte)255));
     }
 }
+if (!player.Hidden)
     player.Draw();
 
     Raylib.EndMode2D();
@@ -11621,43 +13946,51 @@ if (currentBuilding.BuildingName == "SWIMMING COMPLEX" && swimmingActive)
         int barW = 900;
         float prog = swimLapTimer / swimLapDuration;
         Raylib.DrawRectangle(190, 658, barW, 32, new Color((byte)20,(byte)60,(byte)120,(byte)255));
-        Raylib.DrawRectangle(190, 658, (int)(barW * prog), 32, new Color((byte)30,(byte)160,(byte)220,(byte)255));
+        Color fill = swimStrokeWindow > 0 ? new Color((byte)60,(byte)220,(byte)90,(byte)255)
+                : swimStrokeWindow < 0 ? new Color((byte)220,(byte)70,(byte)60,(byte)255)
+                : new Color((byte)30,(byte)160,(byte)220,(byte)255);
+        Raylib.DrawRectangle(190, 658, (int)(barW * prog), 32, fill);
         Raylib.DrawRectangleLines(190, 658, barW, 32, Color.White);
-        Raylib.DrawText($"+30 Athletics XP per lap | Q = Stop", 190, 700, 18, Color.LightGray);
+        Raylib.DrawText($"Speed: {(int)(swimSpeed * 100)}%  |  Alternate LEFT/RIGHT to swim!  |  Q = Stop", 190, 700, 18, Color.LightGray);
     }
     else if (swimmingPoolType == "diving")
-    {
-        Raylib.DrawRectangle(0, 620, 1280, 100, new Color((byte)0,(byte)0,(byte)0,(byte)180));
+{
+    Raylib.DrawRectangle(0, 620, 1280, 100, new Color((byte)0,(byte)0,(byte)0,(byte)180));
 
-        if (!divingJumped)
-        {
-            Raylib.DrawText("DIVING — Time your jump! Land near CENTRE for high score.", 20, 628, 22, Color.SkyBlue);
-            int barW = 900;
-            int barX = 190;
-            int barY = 658;
-            int barH = 32;
-            // background
-            Raylib.DrawRectangle(barX, barY, barW, barH, new Color((byte)20,(byte)40,(byte)80,(byte)255));
-            // sweet spot centre
-            int centreW = (int)(barW * 0.1f);
-            Raylib.DrawRectangle(barX + barW / 2 - centreW / 2, barY, centreW, barH,
-                new Color((byte)0,(byte)220,(byte)0,(byte)255));
-            // good zone
-            int goodW = (int)(barW * 0.24f);
-            Raylib.DrawRectangle(barX + barW / 2 - goodW / 2, barY, goodW, barH,
-                new Color((byte)100,(byte)220,(byte)50,(byte)180));
-            // cursor
-            int cursorX = barX + (int)(divingBarPos * barW) - 5;
-            Raylib.DrawRectangle(cursorX, barY - 6, 10, barH + 12, Color.White);
-            Raylib.DrawRectangleLines(barX, barY, barW, barH, Color.White);
-            Raylib.DrawText("SPACE = Jump!", 190, 698, 18, Color.LightGray);
-        }
-        else
-        {
-            Raylib.DrawText(divingScore >= 8 ? $"🤸 {divingResult}" : divingResult,
-                20, 648, 28, divingScore >= 8 ? Color.Gold : Color.White);
-        }
+    int barW = 900, barX = 190, barY = 658, barH = 32;
+
+    if (divingStage == 0)
+    {
+        Raylib.DrawText("DIVING — Stage 1: SPACE to set JUMP POWER!", 20, 628, 22, Color.SkyBlue);
+        Raylib.DrawRectangle(barX, barY, barW, barH, new Color((byte)20,(byte)40,(byte)80,(byte)255));
+        Raylib.DrawRectangle(barX, barY, (int)(barW * divingPower), barH, new Color((byte)30,(byte)200,(byte)90,(byte)255));
+        Raylib.DrawRectangleLines(barX, barY, barW, barH, Color.White);
     }
+    else if (divingStage == 1)
+    {
+        Raylib.DrawText("Stage 2: SPACE to stop the SPIN in the green!", 20, 628, 22, Color.SkyBlue);
+        Raylib.DrawRectangle(barX, barY, barW, barH, new Color((byte)20,(byte)40,(byte)80,(byte)255));
+        int gw = (int)(barW * 0.22f);
+        Raylib.DrawRectangle(barX + barW / 2 - gw / 2, barY, gw, barH, new Color((byte)0,(byte)200,(byte)0,(byte)200));
+        int cx = barX + (int)(divingRotation * barW) - 5;
+        Raylib.DrawRectangle(cx, barY - 6, 10, barH + 12, Color.White);
+        Raylib.DrawRectangleLines(barX, barY, barW, barH, Color.White);
+    }
+    else if (divingStage == 2)
+    {
+        Raylib.DrawText("Stage 3: SPACE for a clean ENTRY at the centre!", 20, 628, 22, Color.SkyBlue);
+        Raylib.DrawRectangle(barX, barY, barW, barH, new Color((byte)20,(byte)40,(byte)80,(byte)255));
+        int sw = (int)(barW * 0.08f);
+        Raylib.DrawRectangle(barX + barW / 2 - sw / 2, barY, sw, barH, new Color((byte)0,(byte)220,(byte)0,(byte)255));
+        int cx = barX + (int)(divingEntry * barW) - 5;
+        Raylib.DrawRectangle(cx, barY - 6, 10, barH + 12, Color.White);
+        Raylib.DrawRectangleLines(barX, barY, barW, barH, Color.White);
+    }
+    else
+    {
+        Raylib.DrawText(divingResult, 20, 648, 26, divingScore >= 7 ? Color.Gold : Color.White);
+    }
+}
 }
 
 // Basketball power/aim HUD
@@ -11871,7 +14204,7 @@ if (currentBuilding.BuildingName == "BurgerKing" && mcdonaldsMessageTimer > 0)
         {
             Raylib.DrawRectangle(0, 620, 1280, 100, new Color((byte)0, (byte)0, (byte)0, (byte)180));
             Raylib.DrawText("POKIE MACHINE", 20, 630, 30, Color.Gold);
-            Raylib.DrawText($"E = Spin ($5) | Wallet: ${player.Money}", 20, 670, 24, Color.White);
+            Raylib.DrawText($"Space = Spin ($5) | Wallet: ${player.Money}", 20, 670, 24, Color.White);
         }
     }
 
@@ -11881,6 +14214,13 @@ if (Vector2.Distance(player.Position, new Vector2(910, 365)) < 80)
     Raylib.DrawRectangle(0, 620, 1280, 100, new Color((byte)0,(byte)0,(byte)0,(byte)180));
     Raylib.DrawText("POKIE MACHINE", 20, 630, 30, Color.Gold);
     Raylib.DrawText("This machine is taken! That bloke won't budge.", 20, 670, 24, Color.Orange);
+}
+// Darts board
+if (Vector2.Distance(player.Position, new Vector2(1250, 80)) < 80)
+{
+    Raylib.DrawRectangle(0, 620, 1280, 100, new Color((byte)0,(byte)0,(byte)0,(byte)180));
+    Raylib.DrawText("Dart board", 20, 630, 30, Color.Gold);
+    Raylib.DrawText("Press space to play darts", 20, 670, 24, Color.White);
 }
 
     foreach (Vector2 tablePos in poolTablePositions)
@@ -12136,6 +14476,7 @@ if (currentBuilding.BuildingName == "McDONALD'S" &&
 
             if (currentScene == SceneState.World)
     DrawToolbar();
+    DrawCombatColumn();
 
     if (camera.Zoom != 1f)
 {
@@ -12161,59 +14502,8 @@ if (currentBuilding.BuildingName == "McDONALD'S" &&
     Raylib.DrawText($"ENTERING {currentBiome}", ScreenWidth / 2 - textWidth / 2, 280, 36, biomeColor);
 }
            
- if (player.InventoryOpen)
-{
-    int invX = ScreenWidth - 380;
-    int invY = 100;
-    int slotSize = 80;
-    int padding = 10;
-    int cols = 4;
+ DrawInventoryUI();
 
-    // build dynamic item list
-    List<(string name, int count)> items = new();
-    if (player.Logs > 0) items.Add(("Logs", player.Logs));
-    if (player.BirchLogs > 0) items.Add(("Birch Logs", player.BirchLogs));
-    if (player.OakLogs > 0) items.Add(("Oak Logs", player.OakLogs));
-    if (player.PineLogs > 0) items.Add(("Pine Logs", player.PineLogs));
-    if (player.ArcticLogs > 0) items.Add(("Arctic Logs", player.ArcticLogs));
-    if (player.DeadWood > 0) items.Add(("Dead Wood", player.DeadWood));
-    if (player.Fish > 0) items.Add(("Fish", player.Fish));
-    if (player.Bones > 0) items.Add(("Bones", player.Bones));
-    if (player.Fur > 0) items.Add(("Fur", player.Fur));
-    if (player.Stingers > 0) items.Add(("Stingers", player.Stingers));
-    if (player.BearPelts > 0) items.Add(("Pelts", player.BearPelts));
-    if (player.DogFangs > 0) items.Add(("Bones", player.DogFangs));
-    if (player.Money > 0) items.Add(("Money", player.Money));
-    if (player.HasAxe) items.Add(("Axe", 1));
-
-    // background panel
-    Raylib.DrawRectangle(invX - 20, invY - 20, cols * (slotSize + padding) + 30, 5 * (slotSize + padding) + 60, new Color((byte)0, (byte)0, (byte)0, (byte)220));
-    Raylib.DrawText("INVENTORY", invX, invY - 10, 24, Color.Gold);
-
-    for (int i = 0; i < 20; i++)
-    {
-        int col = i % cols;
-        int row = i / cols;
-        int x = invX + col * (slotSize + padding);
-        int y = invY + 20 + row * (slotSize + padding);
-
-        // slot background
-        Raylib.DrawRectangle(x, y, slotSize, slotSize, new Color((byte)40, (byte)40, (byte)40, (byte)255));
-        Raylib.DrawRectangleLines(x, y, slotSize, slotSize, new Color((byte)100, (byte)100, (byte)100, (byte)255));
-
-        if (i >= items.Count) continue;
-
-        // draw icon
-        DrawInventoryIcon(items[i].name, x, y, slotSize);
-
-        // item name and count top left
-        Raylib.DrawText($"{items[i].count}", x + 6, y + 6, 16, Color.White);
-        Raylib.DrawText(items[i].name, x + 4, y + slotSize - 20, 13, Color.LightGray);
-    }
-
-    if (player.HasTrolley || player.HasBasket)
-    Raylib.DrawText("SPACE = Return (anywhere near entrance)", 400, 890, 14, Color.DarkGray);
-}
 if (levelUpTimer > 0)
 {
     byte alpha = (byte)(255 * Math.Min(1f, levelUpTimer));
@@ -12391,13 +14681,25 @@ for (int i = -55000; i < -26000; i += 700)
 }
             
 
-            lakes.Add(new Lake(new Vector2(700, 1200)));
-            lakes.Add(new Lake(new Vector2(-900, -600)));
+lakes.Add(new Lake(new Vector2(700, 1200)));
+lakes.Add(new Lake(new Vector2(-900, -600)));
+
+dungeonEntrances.Add((new Vector2(-1200, -800),  "Crypt",   "The Dark Crypt"));
+dungeonEntrances.Add((new Vector2(-600,  -3200),  "Forest",  "Forest Tomb"));
+dungeonEntrances.Add((new Vector2(-18000, 300),   "Snow",    "Ice Cavern"));
+dungeonEntrances.Add((new Vector2(14000,  400),   "Desert",  "Desert Ruins"));
+dungeonEntrances.Add((new Vector2(32000, -4000),  "Volcano", "Lava Cavern"));
 
 
 //Dbars
 AddDBar(1700, 410);
 AddDBar(-4000, 410);
+
+//DropZone
+AddDropZone(-50, 1800);
+
+//Mini golf
+AddMiniGolf(450, 2000);
 
 //Banks
 AddBank(1200, 380);
@@ -13458,6 +15760,10 @@ private void DrawMountainGoat(int x, int y)
 
         public bool Hidden = false;
         public bool HasAxe = false;
+        public int Arrows = 0;
+        public int Bolts = 0;
+        public bool HasBow = false;
+        public bool HasCrossbow = false;
 
         public int WoodcuttingLevel = 1;
         public int FishingLevel = 1;
@@ -13506,8 +15812,10 @@ private void DrawMountainGoat(int x, int y)
         public int StaminaXP = 0;
         public int SwimmingLevel = 1;
         public int SwimmingXP = 0;
-        public int RangeLevel = 1;
-        public int RangeXP = 0;
+        public int DivingLevel = 1;
+        public int DivingXP = 0;
+        public int RangedLevel = 1;
+        public int RangedXP = 0;
         public int FarmingLevel = 1;
         public int FarmingXP = 0;
         public int SportsLevel = 1;
@@ -13516,8 +15824,6 @@ private void DrawMountainGoat(int x, int y)
         public int SpiritualXP = 0;
         public int CookingLevel = 1;
         public int CookingXP = 0;
-        public int DivingLevel = 1;
-        public int DivingXP = 0;
         public int ElementalLevel = 1;
         public int ElementalXP = 0;
         public int AlchemistLevel = 1;
@@ -13530,6 +15836,10 @@ private void DrawMountainGoat(int x, int y)
         public int MysticalXP = 0;   
         public int StrengthLevel = 1;
         public int StrengthXP = 0;
+        public int GamblingLevel = 1;
+        public int GamblingXP = 0;
+        public int PlushPrizes = 0;
+        public int Tickets = 0;
         public bool HasTrolley = false;
         public bool HasBasket = false;
         public float BaseSpeed => 300 + (AthleticsLevel * 2);
@@ -13543,6 +15853,13 @@ private void DrawMountainGoat(int x, int y)
         public int DrunkLevel = 0;
         public float DrunkTimer = 0f;
         public float DrunkSpeedMultiplier => DrunkLevel == 0 ? 1f : Math.Max(0.3f, 1f - (DrunkLevel * 0.15f));
+        public List<string> OwnedGear = new List<string>();
+        public bool OwnsGear(string item) => OwnedGear.Contains(item);
+        public void AddGear(string item)
+        {
+            if (!OwnedGear.Contains(item))   // own one copy is enough to equip freely
+                OwnedGear.Add(item);
+        }
         List<(Vector2 pos, float timer, Color color)> dustParticles = new();
         public Color BootsColor => Program.armorBoots != null
         ? new Color((byte)120, (byte)80, (byte)30, (byte)255)  // leather brown default
@@ -13955,6 +16272,93 @@ public void AddStrengthXP(int xp)
         StrengthXP = 0;
         StrengthLevel++;
         Program.ShowLevelUp("Strength", StrengthLevel);
+    }
+}
+
+public void AddGamblingXP(int xp)
+{
+    if (GamblingLevel >= 100) return;
+    GamblingXP += xp;
+    int requiredXP = GamblingLevel * GamblingLevel * 50;
+    if (GamblingXP >= requiredXP)
+    {
+        GamblingXP = 0;
+        GamblingLevel++;
+        Program.ShowLevelUp("Gambling", GamblingLevel);
+    }
+}
+public void AddRidingXP(int xp)
+{
+    if (RidingLevel >= 100) return;
+    RidingXP += xp;
+    int requiredXP = RidingLevel * RidingLevel * 50;
+    if (RidingXP >= requiredXP)
+    {
+        RidingXP = 0;
+        RidingLevel++;
+        Program.ShowLevelUp("Riding", RidingLevel);
+    }
+}
+
+public void AddCyclingXP(int xp)
+{
+    if (CyclingLevel >= 100) return;
+    CyclingXP += xp;
+    int requiredXP = CyclingLevel * CyclingLevel * 50;
+    if (CyclingXP >= requiredXP)
+    {
+        CyclingXP = 0;
+        CyclingLevel++;
+        Program.ShowLevelUp("Cycling", CyclingLevel);
+    }
+}
+public void AddSwimmingXP(int xp)
+{
+    if (SwimmingLevel >= 100) return;
+    SwimmingXP += xp;
+    int requiredXP = SwimmingLevel * SwimmingLevel * 50;
+    if (SwimmingXP >= requiredXP)
+    {
+        SwimmingXP = 0;
+        SwimmingLevel++;
+        Program.ShowLevelUp("Swimming", SwimmingLevel);
+    }
+}
+
+public void AddDivingXP(int xp)
+{
+    if (DivingLevel >= 100) return;
+    DivingXP += xp;
+    int requiredXP = DivingLevel * DivingLevel * 50;
+    if (DivingXP >= requiredXP)
+    {
+        DivingXP = 0;
+        DivingLevel++;
+        Program.ShowLevelUp("Diving", DivingLevel);
+    }
+}
+public void AddSportsXP(int xp)
+{
+    if (SportsLevel >= 100) return;
+    SportsXP += xp;
+    int requiredXP = SportsLevel * SportsLevel * 50;
+    if (SportsXP >= requiredXP)
+    {
+        SportsXP = 0;
+        SportsLevel++;
+        Program.ShowLevelUp("Sports", SportsLevel);
+    }
+}
+public void AddRangedXP(int xp)
+{
+    if (RangedLevel >= 100) return;
+    RangedXP += xp;
+    int requiredXP = RangedLevel * RangedLevel * 50;
+    if (RangedXP >= requiredXP)
+    {
+        RangedXP = 0;
+        RangedLevel++;
+        Program.ShowLevelUp("Ranged", RangedLevel);
     }
 }
 public void TriggerChopAnim()  { isChopping = true; chopAnimAngle = 0f; }
@@ -16646,7 +19050,7 @@ switch (Facing)
 
     }
 }
-     class PoolGame
+   class PoolGame
 {
     public bool IsOpen = false;
     public int TableIndex = -1;
@@ -16677,18 +19081,51 @@ switch (Facing)
     public string Message = "";
     public float MessageTimer = 0f;
 
+    // ---- AI / turn system ----
+    public bool VsAI = false;             // set in Open()
+    public static bool SelectingMode = false;
+    public static int modeChoice = 0; // 0 = Practice, 1 = Vs AI
+    public int CurrentPlayer = 0;         // 0 = human, 1 = AI
+    public int Player0Group = -1;         // -1 unassigned, 0 = solids(1-7), 1 = stripes(9-15)
+    public int Player1Group = -1;
+    public bool TableOpen = true;         // groups not yet assigned
+    public bool PottedThisTurn = false;   // did current shooter pot one of theirs
+    public bool FoulThisTurn = false;
+    public int Winner = -1;
+
+    float aiThinkTimer = 0f;
+    bool aiShotQueued = false;
+
     public void Open(int tableIndex)
-    {
-        IsOpen = true;
-        TableIndex = tableIndex;
-        GameOver = false;
-        BallsPotted = 0;
-        Message = "";
-        MessageTimer = 0;
-        inputLocked = true;
-        SetupPockets();
-        RackBalls();
-    }
+{
+    IsOpen = true;
+    TableIndex = tableIndex;
+    SelectingMode = true;   // show the menu first
+    modeChoice = 0;
+    GameOver = false;
+    Message = "";
+    MessageTimer = 0;
+    inputLocked = true;
+}
+
+// Called once the player confirms their choice on the menu
+void StartGame(bool vsAI)
+{
+    SelectingMode = false;
+    VsAI = vsAI;
+    BallsPotted = 0;
+    CurrentPlayer = 0;
+    Player0Group = -1;
+    Player1Group = -1;
+    TableOpen = true;
+    Winner = -1;
+    GameOver = false;
+    aiThinkTimer = 0f;
+    aiShotQueued = false;
+    inputLocked = true;
+    SetupPockets();
+    RackBalls();
+}
 
     public void Close()
     {
@@ -16740,9 +19177,58 @@ switch (Facing)
         Scratched = false;
     }
 
+    // ---- helpers for groups ----
+    bool IsSolid(int i)  => i >= 1 && i <= 7;
+    bool IsStripe(int i) => i >= 9 && i <= 15;
+
+    int GroupOf(int i)
+    {
+        if (IsSolid(i)) return 0;
+        if (IsStripe(i)) return 1;
+        return -1; // cue or 8-ball
+    }
+
+    int GroupForPlayer(int p) => p == 0 ? Player0Group : Player1Group;
+
+    bool AllGroupPotted(int group)
+    {
+        for (int i = 1; i <= 15; i++)
+        {
+            if (i == 8) continue;
+            if (GroupOf(i) == group && !Potted[i]) return false;
+        }
+        return true;
+    }
+
     public void Update(float dt, Player player)
     {
         if (MessageTimer > 0) MessageTimer -= dt;
+
+        // ---- mode selection screen ----
+    if (SelectingMode)
+    {
+        if (Raylib.IsKeyPressed(KeyboardKey.Left) || Raylib.IsKeyPressed(KeyboardKey.Up))   modeChoice = 0;
+        if (Raylib.IsKeyPressed(KeyboardKey.Right) || Raylib.IsKeyPressed(KeyboardKey.Down)) modeChoice = 1;
+        if (Raylib.IsKeyPressed(KeyboardKey.One))  modeChoice = 0;
+        if (Raylib.IsKeyPressed(KeyboardKey.Two))  modeChoice = 1;
+
+        // mouse hover + click
+        Vector2 mouse = Raylib.GetMousePosition();
+        Rectangle practiceBtn = new Rectangle(1280 / 2 - 320, 340, 280, 120);
+        Rectangle aiBtn       = new Rectangle(1280 / 2 + 40, 340, 280, 120);
+        if (Raylib.CheckCollisionPointRec(mouse, practiceBtn)) modeChoice = 0;
+        if (Raylib.CheckCollisionPointRec(mouse, aiBtn))       modeChoice = 1;
+        if (Raylib.IsMouseButtonPressed(MouseButton.Left))
+        {
+            if (Raylib.CheckCollisionPointRec(mouse, practiceBtn)) StartGame(false);
+            if (Raylib.CheckCollisionPointRec(mouse, aiBtn))       StartGame(true);
+        }
+
+        if (Raylib.IsKeyPressed(KeyboardKey.Enter) || Raylib.IsKeyPressed(KeyboardKey.Space))
+            StartGame(modeChoice == 1);
+
+        return; // nothing else runs while the menu is up
+    }
 
         if (BallsMoving)
         {
@@ -16751,13 +19237,34 @@ switch (Facing)
         }
 
         if (GameOver) return;
-        if (inputLocked)
-   {
-        if (Raylib.IsKeyUp(KeyboardKey.Space))
-            inputLocked = false;
-        return;
-}
 
+        if (inputLocked)
+        {
+            if (Raylib.IsKeyUp(KeyboardKey.Space))
+                inputLocked = false;
+            return;
+        }
+
+        // ---- AI turn ----
+        if (VsAI && CurrentPlayer == 1)
+        {
+            aiThinkTimer += dt;
+            if (!aiShotQueued)
+            {
+                PlanAIShot();
+                aiShotQueued = true;
+            }
+            // small delay so the AI doesn't snap-shoot
+            if (aiThinkTimer > 0.9f)
+            {
+                aiThinkTimer = 0f;
+                aiShotQueued = false;
+                Shoot();
+            }
+            return;
+        }
+
+        // ---- Human turn ----
         if (Raylib.IsKeyDown(KeyboardKey.Left))  AimAngle -= 1.6f * dt;
         if (Raylib.IsKeyDown(KeyboardKey.Right)) AimAngle += 1.6f * dt;
 
@@ -16773,6 +19280,80 @@ switch (Facing)
         }
     }
 
+    // ---- AI picks a target ball + pocket and aims the cue at the contact point ----
+    void PlanAIShot()
+    {
+        int myGroup = GroupForPlayer(1);
+
+        // Build list of legal target balls
+        List<int> targets = new List<int>();
+        if (TableOpen || myGroup == -1)
+        {
+            for (int i = 1; i <= 15; i++)
+                if (i != 8 && !Potted[i]) targets.Add(i);
+        }
+        else
+        {
+            for (int i = 1; i <= 15; i++)
+                if (i != 8 && GroupOf(i) == myGroup && !Potted[i]) targets.Add(i);
+            // if my group is cleared, go for the 8
+            if (targets.Count == 0 && AllGroupPotted(myGroup) && !Potted[8])
+                targets.Add(8);
+        }
+        if (targets.Count == 0)
+        {
+            for (int i = 1; i <= 15; i++) if (!Potted[i]) targets.Add(i);
+        }
+
+        Vector2 cue = BallPos[0];
+        float bestScore = float.MaxValue;
+        float bestAngle = AimAngle;
+        float bestPower = 0.6f;
+
+        // Evaluate every (target ball, pocket) pair, pick the easiest
+        foreach (int ball in targets)
+        {
+            Vector2 bp = BallPos[ball];
+            foreach (var pocket in Pockets)
+            {
+                // direction the ball must travel to reach the pocket
+                Vector2 ballToPocket = pocket - bp;
+                float ballToPocketDist = ballToPocket.Length();
+                if (ballToPocketDist < 1f) continue;
+                Vector2 ballToPocketDir = ballToPocket / ballToPocketDist;
+
+                // the "ghost ball" position: where the cue must strike from
+                Vector2 ghost = bp - ballToPocketDir * (BallRadius * 2f);
+
+                Vector2 cueToGhost = ghost - cue;
+                float cueToGhostDist = cueToGhost.Length();
+                if (cueToGhostDist < 1f) continue;
+                Vector2 cueToGhostDir = cueToGhost / cueToGhostDist;
+
+                // cut angle: how square the hit is (1 = straight, 0 = impossible thin cut)
+                float cut = Vector2.Dot(cueToGhostDir, ballToPocketDir);
+                if (cut <= 0.1f) continue; // behind the ball, skip
+
+                // lower score = better shot: prefer square cuts and shorter distances
+                float score = (1f - cut) * 1000f + ballToPocketDist * 0.5f + cueToGhostDist * 0.3f;
+
+                if (score < bestScore)
+                {
+                    bestScore = score;
+                    bestAngle = MathF.Atan2(cueToGhostDir.Y, cueToGhostDir.X);
+                    // power scales with total distance the cue+object ball travel
+                    float totalDist = cueToGhostDist + ballToPocketDist;
+                    bestPower = Math.Clamp(0.35f + totalDist / 1600f, 0.35f, 0.95f);
+                }
+            }
+        }
+
+        // add a little inaccuracy so the AI is beatable
+        float miss = (Raylib.GetRandomValue(-100, 100) / 100f) * 0.05f;
+        AimAngle = bestAngle + miss;
+        Power = bestPower;
+    }
+
     void Shoot()
     {
         float speed = 200f + Power * 1400f;
@@ -16780,7 +19361,17 @@ switch (Facing)
         Power = 0f;
         BallsMoving = true;
         Aiming = false;
+        ChargingPower = false;
+
+        // reset per-turn tracking
+        PottedThisTurn = false;
+        FoulThisTurn = false;
+        firstHitGroup = -2; // -2 = nothing hit yet
+        firstHitWasCue = false;
     }
+
+    int firstHitGroup = -2;
+    bool firstHitWasCue = false;
 
     void UpdatePhysics(float dt, Player player)
     {
@@ -16807,6 +19398,14 @@ switch (Facing)
                 float dist = diff.Length();
                 if (dist < BallRadius * 2 && dist > 0.001f)
                 {
+                    // record first ball the cue contacts (for foul detection)
+                    if (firstHitGroup == -2 && (i == 0 || j == 0))
+                    {
+                        int other = (i == 0) ? j : i;
+                        if (other == 8) firstHitGroup = 2;       // 8-ball
+                        else firstHitGroup = GroupOf(other);     // 0 or 1
+                    }
+
                     Vector2 normal = diff / dist;
                     float overlap = BallRadius * 2 - dist;
                     BallPos[i] -= normal * (overlap / 2f);
@@ -16837,16 +19436,19 @@ switch (Facing)
                     if (i == 0)
                     {
                         Scratched = true;
+                        FoulThisTurn = true;
                         Message = "Scratch! Cue ball potted.";
                         MessageTimer = 2f;
+                    }
+                    else if (i == 8)
+                    {
+                        HandleEightBall(player);
                     }
                     else
                     {
                         BallsPotted++;
                         player.Money += 3;
-                        Message = i == 8 ? "8-Ball potted! You win!" : "Ball potted! +$3";
-                        MessageTimer = 1.5f;
-                        if (i == 8) GameOver = true;
+                        HandleObjectBallPotted(i);
                     }
                     break;
                 }
@@ -16861,19 +19463,121 @@ switch (Facing)
         {
             BallsMoving = false;
             Aiming = true;
+            ResolveTurn(player);
+        }
+    }
 
-            if (Scratched)
+    void HandleObjectBallPotted(int i)
+    {
+        // First legal pot on an open table assigns groups
+        if (TableOpen)
+        {
+            int g = GroupOf(i);
+            if (CurrentPlayer == 0) { Player0Group = g; Player1Group = 1 - g; }
+            else                    { Player1Group = g; Player0Group = 1 - g; }
+            TableOpen = false;
+            Message = (g == 0 ? "Solids" : "Stripes") + $" go to {(CurrentPlayer == 0 ? "You" : "AI")}!";
+            MessageTimer = 1.8f;
+        }
+
+        if (GroupOf(i) == GroupForPlayer(CurrentPlayer))
+            PottedThisTurn = true;
+        else
+            Message = "Potted opponent's ball.";
+    }
+
+    void HandleEightBall(Player player)
+    {
+        // Potting the 8 is only a win if your group is already cleared
+        bool cleared = !TableOpen && AllGroupPotted(GroupForPlayer(CurrentPlayer));
+        if (cleared && !Scratched)
+        {
+            Winner = CurrentPlayer;
+            Message = CurrentPlayer == 0 ? "8-Ball potted! YOU WIN!" : "AI pots the 8. You lose.";
+        }
+        else
+        {
+            Winner = 1 - CurrentPlayer; // potting 8 early = loss
+            Message = CurrentPlayer == 0 ? "8-Ball too early! You lose." : "AI potted 8 early. YOU WIN!";
+        }
+        MessageTimer = 3f;
+        GameOver = true;
+    }
+
+    void ResolveTurn(Player player)
+    {
+        if (GameOver)
+        {
+            // respot cue if needed not relevant; just stop
+            return;
+        }
+
+        // foul: no ball hit, or first contact was not the shooter's group
+        int myGroup = GroupForPlayer(CurrentPlayer);
+        if (firstHitGroup == -2) FoulThisTurn = true;
+        else if (!TableOpen && myGroup != -1 && firstHitGroup != myGroup && firstHitGroup != 2)
+        {
+            // hitting the 8 first is only legal once your group is cleared
+            FoulThisTurn = true;
+        }
+        else if (!TableOpen && firstHitGroup == 2 && !AllGroupPotted(myGroup))
+        {
+            FoulThisTurn = true; // hit 8 first illegally
+        }
+
+        if (Scratched)
+        {
+            BallPos[0] = new Vector2(TableLeft + TableWidth * 0.25f, TableTop + TableHeight / 2f);
+            BallVel[0] = Vector2.Zero;
+            Potted[0] = false;
+            Scratched = false;
+            FoulThisTurn = true;
+        }
+
+        // keep shooting if you legally potted one of yours and didn't foul
+        bool continueTurn = PottedThisTurn && !FoulThisTurn;
+
+        if (!continueTurn)
+        {
+            CurrentPlayer = 1 - CurrentPlayer;
+            aiThinkTimer = 0f;
+            aiShotQueued = false;
+            if (MessageTimer <= 0)
             {
-                BallPos[0] = new Vector2(TableLeft + TableWidth * 0.25f, TableTop + TableHeight / 2f);
-                BallVel[0] = Vector2.Zero;
-                Potted[0] = false;
-                Scratched = false;
+                Message = CurrentPlayer == 0 ? "Your turn." : "AI's turn.";
+                MessageTimer = 1.5f;
             }
         }
+
+        AimAngle = 0f;
+        Power = 0f;
     }
 
     public void Draw(Player player)
     {
+         // ---- mode selection screen ----
+    if (SelectingMode)
+    {
+        Raylib.DrawRectangle(0, 0, 1280, 720, new Color((byte)15, (byte)45, (byte)20, (byte)255));
+        string title = "8-BALL POOL";
+        int tw = Raylib.MeasureText(title, 60);
+        Raylib.DrawText(title, 1280 / 2 - tw / 2, 150, 60, Color.Gold);
+
+        string sub = "Choose a mode";
+        int sw = Raylib.MeasureText(sub, 26);
+        Raylib.DrawText(sub, 1280 / 2 - sw / 2, 250, 26, Color.LightGray);
+
+        Rectangle practiceBtn = new Rectangle(1280 / 2 - 320, 340, 280, 120);
+        Rectangle aiBtn       = new Rectangle(1280 / 2 + 40, 340, 280, 120);
+
+        DrawModeButton(practiceBtn, "PRACTICE", "Pot freely, solo", modeChoice == 0);
+        DrawModeButton(aiBtn,       "VS AI",     "Play a full match", modeChoice == 1);
+
+        string hint = "LEFT/RIGHT or mouse to choose  -  ENTER to start  -  ESC to leave";
+        int hw = Raylib.MeasureText(hint, 18);
+        Raylib.DrawText(hint, 1280 / 2 - hw / 2, 520, 18, Color.Gray);
+        return;
+    }
         Raylib.DrawRectangle(0, 0, 1280, 720, new Color((byte)20, (byte)60, (byte)20, (byte)255));
 
         Raylib.DrawRectangle(TableLeft, TableTop, TableWidth, TableHeight, new Color((byte)10, (byte)110, (byte)40, (byte)255));
@@ -16886,7 +19590,9 @@ switch (Facing)
         for (int i = 0; i < 16; i++)
             if (!Potted[i]) DrawBall(i);
 
-        if (Aiming && !BallsMoving && !Potted[0])
+        // only draw the aim guide on the human's turn
+        bool humanAiming = Aiming && !BallsMoving && !Potted[0] && !(VsAI && CurrentPlayer == 1);
+        if (humanAiming)
         {
             Vector2 dir = new Vector2(MathF.Cos(AimAngle), MathF.Sin(AimAngle));
             Vector2 cueBallPos = BallPos[0];
@@ -16912,7 +19618,17 @@ switch (Facing)
         }
 
         Raylib.DrawText("8-BALL POOL", 1280 / 2 - 110, 30, 40, Color.Gold);
-        Raylib.DrawText($"Balls Potted: {BallsPotted}", TableLeft, TableTop - 40, 22, Color.White);
+
+        // turn + group HUD
+        string turnText = VsAI
+            ? (CurrentPlayer == 0 ? "YOUR TURN" : "AI THINKING...")
+            : "8-Ball Pool";
+        Raylib.DrawText(turnText, TableLeft, TableTop - 70, 24,
+            CurrentPlayer == 0 ? Color.SkyBlue : Color.Orange);
+
+        string groupText = TableOpen ? "Table open"
+            : $"You: {(Player0Group == 0 ? "Solids" : "Stripes")}  |  AI: {(Player1Group == 0 ? "Solids" : "Stripes")}";
+        Raylib.DrawText(groupText, TableLeft, TableTop - 40, 22, Color.White);
         Raylib.DrawText($"Wallet: ${player.Money}", TableLeft + TableWidth - 200, TableTop - 40, 22, Color.White);
 
         if (MessageTimer > 0)
@@ -16923,14 +19639,17 @@ switch (Facing)
 
         if (GameOver)
         {
-            string winText = "YOU WIN! 8-Ball potted!";
+            string winText = Winner == 0 ? "YOU WIN!" : "AI WINS!";
             int ww = Raylib.MeasureText(winText, 34);
-            Raylib.DrawText(winText, 1280 / 2 - ww / 2, TableTop + TableHeight / 2 - 20, 34, Color.Gold);
+            Raylib.DrawText(winText, 1280 / 2 - ww / 2, TableTop + TableHeight / 2 - 20, 34,
+                Winner == 0 ? Color.Gold : Color.Red);
             Raylib.DrawText("ESC = Leave Table", 1280 / 2 - 90, TableTop + TableHeight / 2 + 30, 20, Color.LightGray);
         }
         else
         {
-            string prompt = BallsMoving ? "Balls rolling..." : "LEFT/RIGHT = Aim | Hold SPACE = Power | Release = Shoot | ESC = Leave";
+            string prompt = BallsMoving ? "Balls rolling..."
+                : (VsAI && CurrentPlayer == 1) ? "AI is taking its shot..."
+                : "LEFT/RIGHT = Aim | Hold SPACE = Power | Release = Shoot | ESC = Leave";
             int pw = Raylib.MeasureText(prompt, 18);
             Raylib.DrawText(prompt, 1280 / 2 - pw / 2, 720 - 40, 18, Color.LightGray);
         }
@@ -16978,6 +19697,350 @@ switch (Facing)
             _ => Color.Gray
         };
     }
+void DrawModeButton(Rectangle r, string label, string desc, bool selected)
+{
+    Color fill   = selected ? new Color((byte)40, (byte)110, (byte)55, (byte)255)
+                            : new Color((byte)25, (byte)60, (byte)35, (byte)255);
+    Color border = selected ? Color.Gold : new Color((byte)80, (byte)80, (byte)80, (byte)255);
+
+    Raylib.DrawRectangleRec(r, fill);
+    Raylib.DrawRectangleLinesEx(r, selected ? 4 : 2, border);
+
+    int lw = Raylib.MeasureText(label, 32);
+    Raylib.DrawText(label, (int)(r.X + r.Width / 2 - lw / 2), (int)(r.Y + 28), 32,
+        selected ? Color.White : Color.LightGray);
+
+    int dw = Raylib.MeasureText(desc, 16);
+    Raylib.DrawText(desc, (int)(r.X + r.Width / 2 - dw / 2), (int)(r.Y + 72), 16, Color.LightGray);
+}
+}
+class DartsGame
+{
+    public bool IsOpen = false;
+
+    // ---- board geometry ----
+    const int BoardCX = 640;          // centre of the play board (screen space)
+    const int BoardCY = 360;
+    const float RBull = 12f;          // bullseye (50)
+    const float ROuterBull = 26f;     // outer bull (25)
+    const float RTripleInner = 95f;   // triple ring band
+    const float RTripleOuter = 110f;
+    const float RDoubleInner = 165f;
+    const float RDoubleOuter = 180f;  // outside this = miss
+
+    // standard dartboard number order, clockwise from top (12 o'clock = 20)
+    static readonly int[] Sectors =
+        { 20, 1, 18, 4, 13, 6, 10, 15, 2, 17, 3, 19, 7, 16, 8, 11, 14, 9, 12, 5 };
+
+    // ---- game state ----
+    public bool VsAI = false;
+    public int[] Scores = new int[2];       // remaining score per player
+    public int CurrentPlayer = 0;           // 0 = human, 1 = AI
+    public int DartsLeft = 3;
+    public int TurnStartScore;              // to restore on a bust
+    public bool GameOver = false;
+    public int Winner = -1;
+
+    public string Message = "";
+    public float MessageTimer = 0f;
+    public bool inputLocked = true;
+
+    // aiming reticle
+    Vector2 aim;
+    Vector2 aimVel;
+    float driftTimer = 0f;
+
+    // last throws (for showing dart markers on the board)
+    System.Collections.Generic.List<Vector2> marks = new();
+
+    // AI pacing
+    float aiTimer = 0f;
+    bool aiThrowQueued = false;
+    Vector2 aiAim;
+
+    Random rng = new Random();
+
+    public void Open(bool vsAI)
+    {
+        IsOpen = true;
+        VsAI = vsAI;
+        Scores[0] = 501;
+        Scores[1] = 501;
+        CurrentPlayer = 0;
+        DartsLeft = 3;
+        TurnStartScore = 501;
+        GameOver = false;
+        Winner = -1;
+        marks.Clear();
+        inputLocked = true;
+        aim = new Vector2(BoardCX, BoardCY);
+        aimVel = new Vector2(120, 90);
+        Message = vsAI ? "501 vs AI. SPACE to throw." : "501 Practice. SPACE to throw.";
+        MessageTimer = 2.5f;
+    }
+
+    public void Close() => IsOpen = false;
+
+    public void Update(float dt, Player player)
+    {
+        if (MessageTimer > 0) MessageTimer -= dt;
+        if (GameOver) return;
+
+        if (inputLocked)
+        {
+            if (Raylib.IsKeyUp(KeyboardKey.Space)) inputLocked = false;
+            return;
+        }
+
+        // ---- AI turn ----
+        if (VsAI && CurrentPlayer == 1)
+        {
+            aiTimer += dt;
+            if (!aiThrowQueued)
+            {
+                aiAim = PlanAIThrow();
+                aiThrowQueued = true;
+            }
+            if (aiTimer > 1.0f)
+            {
+                aiTimer = 0f;
+                aiThrowQueued = false;
+                ThrowAt(aiAim, player);
+            }
+            return;
+        }
+
+        // ---- human turn: reticle drifts, SPACE to throw ----
+        // wander the aim velocity a little so it isn't a straight line
+        driftTimer += dt;
+        if (driftTimer > 0.4f)
+        {
+            driftTimer = 0f;
+            aimVel.X += (float)(rng.NextDouble() - 0.5) * 120;
+            aimVel.Y += (float)(rng.NextDouble() - 0.5) * 120;
+            float max = 220f;
+            aimVel = Vector2.Clamp(aimVel, new Vector2(-max, -max), new Vector2(max, max));
+        }
+
+        aim += aimVel * dt;
+        // bounce the reticle around the board area so it stays on the board
+        if (aim.X < BoardCX - RDoubleOuter) { aim.X = BoardCX - RDoubleOuter; aimVel.X *= -1; }
+        if (aim.X > BoardCX + RDoubleOuter) { aim.X = BoardCX + RDoubleOuter; aimVel.X *= -1; }
+        if (aim.Y < BoardCY - RDoubleOuter) { aim.Y = BoardCY - RDoubleOuter; aimVel.Y *= -1; }
+        if (aim.Y > BoardCY + RDoubleOuter) { aim.Y = BoardCY + RDoubleOuter; aimVel.Y *= -1; }
+
+        if (Raylib.IsKeyPressed(KeyboardKey.Space))
+            ThrowAt(aim, player);
+    }
+
+    // AI aims near a sensible target with some scatter (beatable)
+    Vector2 PlanAIThrow()
+    {
+        int remaining = Scores[1];
+        Vector2 target;
+
+        if (remaining <= 40 && remaining % 2 == 0)
+            target = SectorCentre(remaining / 2, RDoubleInner + 6); // go for the double to check out
+        else if (remaining > 60)
+            target = SectorCentre(20, RTripleInner + 4);            // treble 20
+        else
+            target = SectorCentre(Math.Min(remaining, 20), RTripleInner + 4);
+
+        // scatter: tighten this to make the AI harder
+        float scatter = 26f;
+        target.X += (float)(rng.NextDouble() - 0.5) * scatter * 2;
+        target.Y += (float)(rng.NextDouble() - 0.5) * scatter * 2;
+        return target;
+    }
+
+    // centre point of a sector's number at a given radius from the bull
+    Vector2 SectorCentre(int number, float radius)
+    {
+        int idx = Array.IndexOf(Sectors, number);
+        if (idx < 0) idx = 0;
+        // each sector spans 18 degrees; index 0 (=20) is centred at the top
+        float angDeg = idx * 18f - 90f; // -90 so sector 20 sits at the top
+        float ang = angDeg * MathF.PI / 180f;
+        return new Vector2(BoardCX + MathF.Cos(ang) * radius, BoardCY + MathF.Sin(ang) * radius);
+    }
+
+    void ThrowAt(Vector2 pt, Player player)
+    {
+        marks.Add(pt);
+        int score = ScoreAt(pt, out string label);
+
+        int p = CurrentPlayer;
+        int after = Scores[p] - score;
+
+        if (after == 0)
+        {
+            // must finish on a double (or bull) — standard 501 rule
+            bool legalFinish = label.StartsWith("D") || label == "BULL";
+            if (legalFinish)
+            {
+                Scores[p] = 0;
+                GameOver = true;
+                Winner = p;
+                Message = p == 0 ? $"{label}! YOU CHECK OUT — WIN!" : $"AI checks out with {label}. You lose.";
+                MessageTimer = 4f;
+                if (p == 0) player.Money += 25;
+                return;
+            }
+            else
+            {
+                Bust(player, $"{label} — must finish on a double. Bust!");
+                return;
+            }
+        }
+        else if (after < 0 || after == 1)
+        {
+            Bust(player, $"{label} — bust!");
+            return;
+        }
+        else
+        {
+            Scores[p] = after;
+            Message = $"{label}  (−{score}).  {Scores[p]} left.";
+            MessageTimer = 1.6f;
+        }
+
+        DartsLeft--;
+        if (DartsLeft <= 0)
+            EndTurn(player);
+    }
+
+    void Bust(Player player, string msg)
+    {
+        Scores[CurrentPlayer] = TurnStartScore; // restore
+        Message = msg;
+        MessageTimer = 2f;
+        DartsLeft = 0;
+        EndTurn(player);
+    }
+
+    void EndTurn(Player player)
+    {
+        CurrentPlayer = 1 - CurrentPlayer;
+        DartsLeft = 3;
+        TurnStartScore = Scores[CurrentPlayer];
+        marks.Clear();
+        aiTimer = 0f;
+        aiThrowQueued = false;
+        if (MessageTimer <= 0)
+        {
+            Message = CurrentPlayer == 0 ? "Your turn." : "AI's turn.";
+            MessageTimer = 1.2f;
+        }
+    }
+
+    // ---- scoring: map a point to a dart score ----
+    int ScoreAt(Vector2 pt, out string label)
+    {
+        Vector2 d = pt - new Vector2(BoardCX, BoardCY);
+        float dist = d.Length();
+
+        if (dist <= RBull)       { label = "BULL"; return 50; }
+        if (dist <= ROuterBull)  { label = "25";   return 25; }
+        if (dist > RDoubleOuter) { label = "MISS"; return 0; }
+
+        // which sector? angle measured from top, clockwise
+        float ang = MathF.Atan2(d.Y, d.X) * 180f / MathF.PI; // -180..180, 0 = +X (right)
+        ang += 90f;                  // rotate so top = 0
+        if (ang < 0) ang += 360f;
+        int idx = (int)MathF.Floor((ang + 9f) / 18f) % 20; // +9 so sectors centre on numbers
+        int number = Sectors[idx];
+
+        if (dist >= RTripleInner && dist <= RTripleOuter) { label = "T" + number; return number * 3; }
+        if (dist >= RDoubleInner && dist <= RDoubleOuter) { label = "D" + number; return number * 2; }
+        label = number.ToString();
+        return number;
+    }
+
+    public void Draw(Player player)
+    {
+        Raylib.DrawRectangle(0, 0, 1280, 720, new Color((byte)25, (byte)35, (byte)30, (byte)255));
+
+        // board rings
+        Raylib.DrawCircle(BoardCX, BoardCY, RDoubleOuter + 14, new Color((byte)15, (byte)15, (byte)15, (byte)255));
+        Raylib.DrawCircle(BoardCX, BoardCY, RDoubleOuter, new Color((byte)235, (byte)225, (byte)200, (byte)255));
+
+        // sector wedges (alternating shade) + numbers
+        for (int i = 0; i < 20; i++)
+        {
+            float a0 = (i * 18f - 9f - 90f) * MathF.PI / 180f;
+            float a1 = (i * 18f + 9f - 90f) * MathF.PI / 180f;
+            Color wedge = (i % 2 == 0)
+                ? new Color((byte)210, (byte)200, (byte)170, (byte)255)
+                : new Color((byte)60, (byte)55, (byte)45, (byte)255);
+            // crude wedge via triangle fan
+            Vector2 c = new Vector2(BoardCX, BoardCY);
+            Vector2 p0 = c + new Vector2(MathF.Cos(a0), MathF.Sin(a0)) * RDoubleOuter;
+            Vector2 p1 = c + new Vector2(MathF.Cos(a1), MathF.Sin(a1)) * RDoubleOuter;
+            Raylib.DrawTriangle(c, p1, p0, wedge); // winding order matters in raylib
+
+            // number label outside the ring
+            Vector2 np = SectorCentre(Sectors[i], RDoubleOuter + 24);
+            string ns = Sectors[i].ToString();
+            int nw = Raylib.MeasureText(ns, 16);
+            Raylib.DrawText(ns, (int)np.X - nw / 2, (int)np.Y - 8, 16, Color.White);
+        }
+
+        // double & triple rings (drawn as thin outlines)
+        Raylib.DrawRing(new Vector2(BoardCX, BoardCY), RTripleInner, RTripleOuter, 0, 360, 64, new Color((byte)180,(byte)40,(byte)40,(byte)255));
+        Raylib.DrawRing(new Vector2(BoardCX, BoardCY), RDoubleInner, RDoubleOuter, 0, 360, 64, new Color((byte)0,(byte)120,(byte)50,(byte)255));
+
+        // bull
+        Raylib.DrawCircle(BoardCX, BoardCY, ROuterBull, new Color((byte)0, (byte)110, (byte)40, (byte)255));
+        Raylib.DrawCircle(BoardCX, BoardCY, RBull, new Color((byte)180, (byte)40, (byte)40, (byte)255));
+
+        // existing dart marks this turn
+        foreach (var m in marks)
+        {
+            Raylib.DrawCircle((int)m.X, (int)m.Y, 3, Color.Yellow);
+            Raylib.DrawCircleLines((int)m.X, (int)m.Y, 5, Color.Black);
+        }
+
+        // aiming reticle (human turn only)
+        if (!GameOver && !(VsAI && CurrentPlayer == 1) && !inputLocked)
+        {
+            Raylib.DrawCircleLines((int)aim.X, (int)aim.Y, 10, Color.White);
+            Raylib.DrawLineEx(new Vector2(aim.X - 14, aim.Y), new Vector2(aim.X + 14, aim.Y), 2, Color.White);
+            Raylib.DrawLineEx(new Vector2(aim.X, aim.Y - 14), new Vector2(aim.X, aim.Y + 14), 2, Color.White);
+        }
+
+        // HUD
+        Raylib.DrawText("501 DARTS", 1280 / 2 - 90, 30, 36, Color.Gold);
+
+        Color p0col = CurrentPlayer == 0 ? Color.SkyBlue : Color.Gray;
+        Color p1col = CurrentPlayer == 1 ? Color.Orange  : Color.Gray;
+        Raylib.DrawText($"YOU: {Scores[0]}", 120, 100, 30, p0col);
+        Raylib.DrawText(VsAI ? $"AI: {Scores[1]}" : $"P2: {Scores[1]}", 1280 - 220, 100, 30, p1col);
+
+        if (!GameOver)
+        {
+            string dots = new string('|', DartsLeft);
+            Raylib.DrawText($"Darts left: {dots}", 120, 140, 22, Color.White);
+        }
+
+        if (MessageTimer > 0)
+        {
+            int mw = Raylib.MeasureText(Message, 26);
+            Raylib.DrawText(Message, 1280 / 2 - mw / 2, 600, 26, Color.Yellow);
+        }
+
+        if (GameOver)
+        {
+            string w = Winner == 0 ? "YOU WIN!" : (VsAI ? "AI WINS!" : "PLAYER 2 WINS!");
+            int ww = Raylib.MeasureText(w, 40);
+            Raylib.DrawText(w, 1280 / 2 - ww / 2, 650, 40, Winner == 0 ? Color.Gold : Color.Red);
+        }
+
+        string prompt = GameOver ? "ESC = Leave"
+            : (VsAI && CurrentPlayer == 1) ? "AI is throwing..."
+            : "SPACE = Throw  |  ESC = Leave";
+        int pw = Raylib.MeasureText(prompt, 18);
+        Raylib.DrawText(prompt, 1280 / 2 - pw / 2, 720 - 40, 18, Color.LightGray);
+    }
 }
  class PokieMachine
 {
@@ -16998,6 +20061,15 @@ switch (Facing)
     public string ResultMessage = "";
     public float ResultTimer = 0f;
     public bool HasSpunOnce = false;
+    public int[] GetAvailableBets(Player player)
+{
+    var bets = new System.Collections.Generic.List<int>();
+    bets.Add(5);
+    if (player.GamblingLevel >= 5)  bets.Add(10);
+    if (player.GamblingLevel >= 10) bets.Add(25);
+    if (player.GamblingLevel >= 20) bets.Add(50);
+    return bets.ToArray();
+}
 
     public void Open(int machineIndex)
     {
@@ -17070,34 +20142,2088 @@ switch (Facing)
     }
 
     private void EvaluateResult(Player player)
-    {
-        bool allMatch = Reels[0] == Reels[1] && Reels[1] == Reels[2];
-        bool twoMatch = !allMatch && (Reels[0] == Reels[1] || Reels[1] == Reels[2] || Reels[0] == Reels[2]);
+{
+    bool allMatch = Reels[0] == Reels[1] && Reels[1] == Reels[2];
 
-        if (allMatch)
+    // find which symbol appears twice (if any)
+    SlotSymbol twoMatchSymbol = SlotSymbol.Cherry;
+    bool twoMatch = false;
+    if (!allMatch)
+    {
+        if (Reels[0] == Reels[1]) { twoMatch = true; twoMatchSymbol = Reels[0]; }
+        else if (Reels[1] == Reels[2]) { twoMatch = true; twoMatchSymbol = Reels[1]; }
+        else if (Reels[0] == Reels[2]) { twoMatch = true; twoMatchSymbol = Reels[0]; }
+    }
+
+    if (allMatch)
+    {
+        int multiplier = SlotData.ThreeMatchMultiplier[Reels[0]];
+        int winnings = BetAmount * multiplier;
+        player.Money += winnings;
+
+        ResultMessage = Reels[0] switch
         {
-            int multiplier = SlotData.ThreeMatchMultiplier[Reels[0]];
-            int winnings = BetAmount * multiplier;
-            player.Money += winnings;
-            ResultMessage = Reels[0] == SlotSymbol.Seven
-                ? $"JACKPOT!!! Triple 7s — you won ${winnings}!"
-                : $"Triple match! You won ${winnings}!";
-        }
-        else if (twoMatch)
+            SlotSymbol.Seven   => $"JACKPOT! Triple 7s — ${winnings}!",
+            SlotSymbol.Star    => $"Triple Stars! You won ${winnings}!",
+            SlotSymbol.Bell    => $"Triple Bells! You won ${winnings}!",
+            SlotSymbol.Lemon   => $"Triple Lemons! You won ${winnings}!",
+            SlotSymbol.Cherry  => $"Triple Cherries! You won ${winnings}!",
+            _ => $"Triple match! You won ${winnings}!"
+        };
+    }
+    else if (twoMatch)
+    {
+        float mult = SlotData.TwoMatchMultiplier[twoMatchSymbol];
+        int winnings = (int)(BetAmount * mult);
+
+        if (winnings <= 0)
         {
-            int winnings = (int)(BetAmount * SlotData.TwoMatchMultiplier);
-            player.Money += winnings;
-            ResultMessage = $"Two in a row! You got ${winnings} back.";
+            ResultMessage = $"Two {twoMatchSymbol}s - no payout. Lost ${BetAmount}.";
         }
         else
         {
-            ResultMessage = $"No match. Lost ${BetAmount}.";
+            player.Money += winnings;
+            ResultMessage = twoMatchSymbol == SlotSymbol.Seven
+                ? $"Two 7s! Nice — you got ${winnings} back."
+                : $"Two {twoMatchSymbol}s — ${winnings} back.";
         }
+    }
+    else
+    {
+        ResultMessage = $"No match. Lost ${BetAmount}.";
+    }
+    // after allMatch block — three of a kind pays more XP
+if (allMatch)
+{
+    // ... existing winnings code ...
+    player.AddGamblingXP(30);  // big win = more XP
+}
+else if (twoMatch)
+{
+    // ... existing winnings code ...
+    player.AddGamblingXP(15);
+}
+else
+{
+    ResultMessage = $"No match. Lost ${BetAmount}.";
+    player.AddGamblingXP(10);  // XP even on loss
+}
 
-        ResultTimer = 2.5f;
+ResultTimer = 2.5f;
+}
+}
+class BowlingGame
+{
+    public bool IsOpen = false;
+    public int LaneIndex = -1;
+
+    public const int LaneLeft = 480;
+    public const int LaneTop = 120;
+    public const int LaneWidth = 320;
+    public const int LaneLength = 460;
+
+    public Vector2 BallPos;
+    public float BallVelY = 0f;
+    public float BallVelX = 0f;
+    public bool BallRolling = false;
+    public float AimX = 0f;        // -1 to 1, horizontal launch angle
+    public float Power = 0f;
+    public bool ChargingPower = false;
+    public float SettleTimer = 0f;
+    public bool BallAtEnd = false;
+
+    public bool[] PinDown = new bool[10];
+    public Vector2[] PinPos = new Vector2[10];
+    public Vector2[] PinVel = new Vector2[10];     
+    public Vector2[] PinHome = new Vector2[10];  
+
+    public int Frame = 1;
+    public int Roll = 1;           // 1 or 2 within a frame
+    public int TotalScore = 0;
+    public int PinsThisFrame = 0;
+    public bool GameOver = false;
+    public string Message = "";
+    public float MessageTimer = 0f;
+    public bool InputLocked = false;
+
+    public void Open(int laneIndex)
+    {
+        IsOpen = true;
+        LaneIndex = laneIndex;
+        Frame = 1; Roll = 1; TotalScore = 0; PinsThisFrame = 0;
+        GameOver = false;
+        InputLocked = true;
+        Message = "Frame 1 - Hold SPACE to bowl!";
+        MessageTimer = 2.5f;
+        SetupPins();
+        ResetBall();
+    }
+
+    public void Close() { IsOpen = false; LaneIndex = -1; }
+
+    void SetupPins()
+{
+    float cx = LaneLeft + LaneWidth / 2f;
+    float topY = LaneTop + 50;
+    float rowGap = 34f;
+    float pinGap = 30f;
+    int idx = 0;
+    for (int row = 0; row < 4; row++)
+    {
+        float rowY = topY + row * rowGap;
+        float startX = cx - row * (pinGap / 2f);
+        for (int col = 0; col <= row; col++)
+        {
+            Vector2 pos = new Vector2(startX + col * pinGap, rowY);
+            PinPos[idx] = pos;
+            PinHome[idx] = pos;
+            PinVel[idx] = Vector2.Zero;
+            PinDown[idx] = false;
+            idx++;
+        }
     }
 }
 
+    void ResetBall()
+    {
+        BallPos = new Vector2(LaneLeft + LaneWidth / 2f, LaneTop + LaneLength - 30);
+        BallVelX = 0f; BallVelY = 0f;
+        AimX = 0f; Power = 0f;
+        BallRolling = false;
+        ChargingPower = false;
+        BallAtEnd = false;       
+        SettleTimer = 0f; 
+    }
+
+    public void Update(float dt, Player player)
+    {
+        if (MessageTimer > 0) MessageTimer -= dt;
+
+        if (GameOver)
+        {
+            if (Raylib.IsKeyPressed(KeyboardKey.Space))
+                Restart();        // play again
+            return;
+        }
+
+        if (InputLocked)
+        {
+            if (!Raylib.IsKeyDown(KeyboardKey.Space))
+                InputLocked = false;
+            return;
+        }
+
+        if (BallRolling)
+        {
+            UpdateRoll(dt, player);
+            return;
+        }
+
+        // aim
+        if (Raylib.IsKeyDown(KeyboardKey.Left))  AimX = Math.Max(-1f, AimX - 1.2f * dt);
+        if (Raylib.IsKeyDown(KeyboardKey.Right)) AimX = Math.Min( 1f, AimX + 1.2f * dt);
+
+        // power charge
+        if (Raylib.IsKeyDown(KeyboardKey.Space))
+        {
+            ChargingPower = true;
+            Power = Math.Min(1f, Power + dt * 0.7f);
+        }
+        else if (ChargingPower)
+        {
+            ChargingPower = false;
+            BallVelY = -(300f + Power * 700f);     // travel up the lane
+            BallVelX = AimX * 160f;
+            BallRolling = true;
+        }
+    }
+
+  void UpdateRoll(float dt, Player player)
+{
+    const float pinRadius = 9f;
+    const float ballRadius = 14f;
+    const float pinFriction = 0.90f;
+
+    // move the ball
+    BallPos.X += BallVelX * dt;
+    BallPos.Y += BallVelY * dt;
+
+    // gutter clamp
+    if (BallPos.X < LaneLeft + 14) { BallPos.X = LaneLeft + 14; BallVelX = 0; }
+    if (BallPos.X > LaneLeft + LaneWidth - 14) { BallPos.X = LaneLeft + LaneWidth - 14; BallVelX = 0; }
+
+    // ball hits pins — transfer momentum
+    for (int i = 0; i < 10; i++)
+    {
+        if (PinDown[i]) continue;
+        Vector2 diff = PinPos[i] - BallPos;
+        float dist = diff.Length();
+        if (dist < ballRadius + pinRadius && dist > 0.001f)
+        {
+            Vector2 normal = diff / dist;
+            float ballSpeed = new Vector2(BallVelX, BallVelY).Length();
+            PinVel[i] += normal * (ballSpeed * 0.6f + 120f);
+            BallVelX += normal.X * 30f;
+        }
+    }
+
+    // update pin movement + pin-to-pin collisions
+    for (int i = 0; i < 10; i++)
+    {
+        if (PinDown[i]) continue;
+        if (PinVel[i].Length() < 1f) continue;
+
+        PinPos[i] += PinVel[i] * dt;
+        PinVel[i] *= pinFriction;
+
+        if (Vector2.Distance(PinPos[i], PinHome[i]) > 12f)
+        {
+            for (int j = 0; j < 10; j++)
+            {
+                if (j == i || PinDown[j]) continue;
+                Vector2 d = PinPos[j] - PinPos[i];
+                float dd = d.Length();
+                if (dd < pinRadius * 2.4f && dd > 0.001f)
+                {
+                    Vector2 n = d / dd;
+                    PinVel[j] += n * (PinVel[i].Length() * 0.7f + 40f);
+                }
+            }
+        }
+    }
+
+    // mark pins as down once they've travelled far enough and slowed
+    for (int i = 0; i < 10; i++)
+    {
+        if (PinDown[i]) continue;
+        if (Vector2.Distance(PinPos[i], PinHome[i]) > 18f && PinVel[i].Length() < 30f)
+            PinDown[i] = true;
+    }
+
+    // ball reached the end of the lane
+if (BallPos.Y <= LaneTop + 20)
+{
+    BallPos.Y = LaneTop + 20;
+    BallVelX = 0; BallVelY = 0;
+    BallAtEnd = true;
+}
+
+// once the ball is parked at the end, wait for pins to settle then resolve
+if (BallAtEnd)
+{
+    bool pinsMoving = false;
+    for (int i = 0; i < 10; i++)
+        if (!PinDown[i] && PinVel[i].Length() > 25f) pinsMoving = true;
+
+    if (pinsMoving)
+        SettleTimer = 0f;        // reset timer while things still move
+    else
+        SettleTimer += dt;       // count up once everything is still
+
+    // resolve after half a second of stillness, or force after 3s max
+    if (SettleTimer > 0.5f)
+    {
+        BallAtEnd = false;
+        SettleTimer = 0f;
+        ResolveRoll(player);
+    }
+}
+
+    void ResolveRoll(Player player)
+    {
+        int downNow = PinDown.Count(p => p);
+        int knockedThisRoll = downNow - PinsThisFrame;
+
+        if (Roll == 1)
+        {
+            PinsThisFrame = downNow;
+            if (downNow == 10)
+            {
+                TotalScore += 10;
+                player.Money += 5;
+                Message = "STRIKE!  +$5";
+                MessageTimer = 2.5f;
+                NextFrame();
+            }
+            else
+            {
+                Message = $"Knocked {knockedThisRoll}. Roll 2!";
+                MessageTimer = 2f;
+                Roll = 2;
+                BallRolling = false;
+                ResetBall();
+            }
+        }
+        else
+        {
+            TotalScore += downNow;
+            if (downNow == 10)
+            {
+                player.Money += 3;
+                Message = "SPARE!  +$3";
+            }
+            else
+                Message = $"Frame done: {downNow} pins.";
+            MessageTimer = 2.5f;
+            NextFrame();
+        }
+    }
+
+    void NextFrame()
+    {
+        Frame++;
+        Roll = 1;
+        PinsThisFrame = 0;
+        if (Frame > 10)
+        {
+            GameOver = true;
+            Message = $"Game over! Final score: {TotalScore}";
+            MessageTimer = 6f;
+        }
+        else
+        {
+            SetupPins();
+            ResetBall();
+            BallRolling = false;
+        }
+    }
+}
+
+void Restart()
+{
+    Frame = 1; Roll = 1; TotalScore = 0; PinsThisFrame = 0;
+    GameOver = false;
+    InputLocked = true;
+    Message = "Frame 1 - Hold SPACE to bowl!";
+    MessageTimer = 2.5f;
+    SetupPins();
+    ResetBall();
+}
+    public void Draw(Player player)
+    {
+        Raylib.ClearBackground(new Color((byte)25, (byte)18, (byte)10, (byte)255));
+
+        // lane
+        Raylib.DrawRectangle(LaneLeft, LaneTop, LaneWidth, LaneLength, new Color((byte)200, (byte)160, (byte)90, (byte)255));
+        // gutters
+        Raylib.DrawRectangle(LaneLeft - 18, LaneTop, 18, LaneLength, new Color((byte)40, (byte)40, (byte)50, (byte)255));
+        Raylib.DrawRectangle(LaneLeft + LaneWidth, LaneTop, 18, LaneLength, new Color((byte)40, (byte)40, (byte)50, (byte)255));
+        // lane boards
+        for (int b = 1; b < 8; b++)
+            Raylib.DrawLine(LaneLeft + b * (LaneWidth / 8), LaneTop, LaneLeft + b * (LaneWidth / 8), LaneTop + LaneLength, new Color((byte)170, (byte)130, (byte)70, (byte)120));
+
+        // pins
+        for (int i = 0; i < 10; i++)
+        {
+            if (PinDown[i]) continue;
+            float leanX = Math.Clamp(PinVel[i].X * 0.05f, -6f, 6f);
+            int px = (int)(PinPos[i].X + leanX);
+            int py = (int)PinPos[i].Y;
+            Raylib.DrawCircle(px, py, 9, Color.White);
+            Raylib.DrawCircleLines(px, py, 9, Color.Red);
+            Raylib.DrawRectangle(px - 2, py - 4, 4, 3, Color.Red);
+        }
+
+        // ball
+        Raylib.DrawCircle((int)BallPos.X, (int)BallPos.Y, 14, new Color((byte)30, (byte)30, (byte)160, (byte)255));
+        Raylib.DrawCircle((int)BallPos.X - 4, (int)BallPos.Y - 4, 4, new Color((byte)120, (byte)120, (byte)220, (byte)255));
+
+        // aim guide while setting up
+        if (!BallRolling && !GameOver)
+        {
+            Vector2 aimDir = new Vector2(AimX * 0.5f, -1f);
+            aimDir = Vector2.Normalize(aimDir);
+            for (float t = 20; t < 200; t += 16)
+            {
+                Vector2 pt = BallPos + aimDir * t;
+                Raylib.DrawCircle((int)pt.X, (int)pt.Y, 2, new Color((byte)255, (byte)255, (byte)255, (byte)150));
+            }
+        }
+
+        // power meter
+        if (ChargingPower)
+        {
+            Raylib.DrawRectangle(LaneLeft, LaneTop + LaneLength + 20, 200, 18, new Color((byte)40, (byte)40, (byte)40, (byte)255));
+            Raylib.DrawRectangle(LaneLeft, LaneTop + LaneLength + 20, (int)(200 * Power), 18, Color.Red);
+            Raylib.DrawRectangleLines(LaneLeft, LaneTop + LaneLength + 20, 200, 18, Color.White);
+            Raylib.DrawText("POWER", LaneLeft, LaneTop + LaneLength + 42, 14, Color.White);
+        }
+
+        // HUD
+        Raylib.DrawText("BOWLING", 1280 / 2 - 90, 30, 36, Color.Gold);
+        Raylib.DrawText($"Frame: {Math.Min(Frame, 10)}/10   Roll: {Roll}", 60, 100, 22, Color.White);
+        Raylib.DrawText($"Score: {TotalScore}", 60, 130, 22, Color.White);
+        Raylib.DrawText($"Wallet: ${player.Money}", 60, 160, 22, Color.Gold);
+
+        if (MessageTimer > 0)
+        {
+            int mw = Raylib.MeasureText(Message, 26);
+            Raylib.DrawText(Message, 1280 / 2 - mw / 2, LaneTop + LaneLength + 70, 26, Color.Yellow);
+        }
+
+       if (GameOver)
+{
+    // dim the screen
+    Raylib.DrawRectangle(0, 0, 1280, 720, new Color((byte)0, (byte)0, (byte)0, (byte)150));
+
+    string over = "GAME OVER";
+    int ow = Raylib.MeasureText(over, 50);
+    Raylib.DrawText(over, 1280 / 2 - ow / 2, 240, 50, Color.Gold);
+
+    string score = $"Final Score: {TotalScore}";
+    int sw = Raylib.MeasureText(score, 32);
+    Raylib.DrawText(score, 1280 / 2 - sw / 2, 320, 32, Color.White);
+
+    string playAgain = "SPACE = Play Again";
+    int paw = Raylib.MeasureText(playAgain, 26);
+    Raylib.DrawText(playAgain, 1280 / 2 - paw / 2, 400, 26, Color.Green);
+
+    string quit = "ESC = Quit to Arcade";
+    int qw = Raylib.MeasureText(quit, 26);
+    Raylib.DrawText(quit, 1280 / 2 - qw / 2, 440, 26, Color.Red);
+}
+else
+{
+    string prompt = BallRolling ? "Ball rolling..."
+        : "LEFT/RIGHT = Aim  |  Hold SPACE = Power  |  Release = Bowl  |  ESC = Leave";
+    int pw = Raylib.MeasureText(prompt, 18);
+    Raylib.DrawText(prompt, 1280 / 2 - pw / 2, 720 - 36, 18, Color.LightGray);
+}
+    }
+}
+class ClawMachine
+{
+    public bool IsOpen = false;
+    public int MachineIndex = -1;
+
+    public const int CabLeft = 440;
+    public const int CabTop = 130;
+    public const int CabWidth = 400;
+    public const int CabHeight = 380;
+
+    public float ClawX;            // claw horizontal position
+    public float ClawY;            // claw vertical position
+    public bool MovingRight = true;
+    public bool Dropping = false;
+    public bool Rising = false;
+    public bool Grabbed = false;
+    public int GrabbedPrize = -1;
+    public float ClawSpeed = 160f;
+
+    public Vector2[] PrizePos = new Vector2[6];
+    public Color[] PrizeColor = new Color[6];
+    public string[] PrizeName = new string[6];
+    public bool[] PrizeTaken = new bool[6];
+
+    public int Plays = 0;
+    public string Message = "";
+    public float MessageTimer = 0f;
+    public bool ReturningHome = false;
+
+    static readonly (string name, Color col)[] PrizePool =
+    {
+        ("Teddy",   Color.Brown),
+        ("Bunny",   new Color((byte)240,(byte)180,(byte)200,(byte)255)),
+        ("Robot",   Color.SkyBlue),
+        ("Star",    Color.Gold),
+        ("Frog",    Color.Green),
+        ("Kitty",   new Color((byte)255,(byte)160,(byte)90,(byte)255)),
+        ("Panda",   Color.White),
+        ("Dino",    new Color((byte)120,(byte)200,(byte)120,(byte)255)),
+    };
+
+    public void Open(int idx)
+    {
+        IsOpen = true;
+        MachineIndex = idx;
+        Plays = 0;
+        Message = "Insert $2 - SPACE to start the claw";
+        MessageTimer = 3f;
+        ResetClaw();
+        ScatterPrizes();
+    }
+
+    public void Close() { IsOpen = false; MachineIndex = -1; }
+
+    void ResetClaw()
+    {
+        ClawX = CabLeft + CabWidth / 2f;
+        ClawY = CabTop + 30;
+        MovingRight = true;
+        Dropping = false; Rising = false; Grabbed = false;
+        GrabbedPrize = -1; ReturningHome = false;
+    }
+
+    void ScatterPrizes()
+    {
+        for (int i = 0; i < 6; i++)
+        {
+            PrizeTaken[i] = false;
+            var pick = PrizePool[Raylib.GetRandomValue(0, PrizePool.Length - 1)];
+            PrizeName[i] = pick.name;
+            PrizeColor[i] = pick.col;
+            float px = CabLeft + 50 + i * ((CabWidth - 100) / 5f);
+            float py = CabTop + CabHeight - 50 + Raylib.GetRandomValue(-12, 12);
+            PrizePos[i] = new Vector2(px, py);
+        }
+    }
+
+    public void Update(float dt, Player player)
+    {
+        if (MessageTimer > 0) MessageTimer -= dt;
+
+        // idle, waiting to start a play
+        if (!Dropping && !Rising && !ReturningHome && GrabbedPrize == -1 && !Grabbed)
+        {
+            // move claw left/right with arrows, drop with space
+            if (Raylib.IsKeyDown(KeyboardKey.Left))  ClawX = Math.Max(CabLeft + 30, ClawX - ClawSpeed * dt);
+            if (Raylib.IsKeyDown(KeyboardKey.Right)) ClawX = Math.Min(CabLeft + CabWidth - 30, ClawX + ClawSpeed * dt);
+
+            if (Raylib.IsKeyPressed(KeyboardKey.Space))
+            {
+                if (player.Money >= 2)
+                {
+                    player.Money -= 2;
+                    Plays++;
+                    Dropping = true;
+                }
+                else
+                {
+                    Message = "Need $2 to play!";
+                    MessageTimer = 1.5f;
+                }
+            }
+            return;
+        }
+
+        // dropping down to grab
+        if (Dropping)
+        {
+            ClawY += 200f * dt;
+            float floorY = CabTop + CabHeight - 50;
+            if (ClawY >= floorY)
+            {
+                ClawY = floorY;
+                Dropping = false;
+                Rising = true;
+
+                // check grab — must be close to a prize, with a success chance
+                int closest = -1; float best = 9999f;
+                for (int i = 0; i < 6; i++)
+                {
+                    if (PrizeTaken[i]) continue;
+                    float dx = Math.Abs(PrizePos[i].X - ClawX);
+                    if (dx < best) { best = dx; closest = i; }
+                }
+                if (closest != -1 && best < 28f && Raylib.GetRandomValue(0, 100) < 45)
+                {
+                    Grabbed = true;
+                    GrabbedPrize = closest;
+                }
+            }
+            return;
+        }
+
+        // rising back up
+        if (Rising)
+        {
+            ClawY -= 200f * dt;
+            if (Grabbed && GrabbedPrize != -1)
+                PrizePos[GrabbedPrize] = new Vector2(ClawX, ClawY + 28);
+
+            if (ClawY <= CabTop + 30)
+            {
+                ClawY = CabTop + 30;
+                Rising = false;
+                ReturningHome = true;
+            }
+            return;
+        }
+
+        // carrying prize back to the chute (top-left)
+        if (ReturningHome)
+        {
+            float homeX = CabLeft + 40;
+            ClawX -= ClawSpeed * 1.4f * dt;
+            if (Grabbed && GrabbedPrize != -1)
+                PrizePos[GrabbedPrize] = new Vector2(ClawX, ClawY + 28);
+
+            if (ClawX <= homeX)
+            {
+                ClawX = homeX;
+                if (Grabbed && GrabbedPrize != -1)
+                {
+                    PrizeTaken[GrabbedPrize] = true;
+                    player.PlushPrizes++;     // <-- see note below
+                    Message = $"You won a {PrizeName[GrabbedPrize]}!  Added to your collection!";
+                    MessageTimer = 3.5f;
+                }
+                else
+                {
+                    Message = "Aww, the claw slipped! Try again.";
+                    MessageTimer = 2.5f;
+                }
+                ResetClaw();
+            }
+        }
+    }
+
+    public void Draw(Player player)
+    {
+        Raylib.ClearBackground(new Color((byte)30, (byte)10, (byte)40, (byte)255));
+
+        // cabinet glass
+        Raylib.DrawRectangle(CabLeft, CabTop, CabWidth, CabHeight, new Color((byte)60, (byte)80, (byte)120, (byte)90));
+        Raylib.DrawRectangleLinesEx(new Rectangle(CabLeft, CabTop, CabWidth, CabHeight), 6, new Color((byte)255, (byte)80, (byte)160, (byte)255));
+
+        // prize chute (top-left)
+        Raylib.DrawRectangle(CabLeft + 16, CabTop + 16, 50, 50, new Color((byte)20, (byte)20, (byte)30, (byte)255));
+        Raylib.DrawRectangleLines(CabLeft + 16, CabTop + 16, 50, 50, Color.Gold);
+        Raylib.DrawText("CHUTE", CabLeft + 18, CabTop + 68, 10, Color.Gold);
+
+        // prizes
+        for (int i = 0; i < 6; i++)
+        {
+            if (PrizeTaken[i]) continue;
+            DrawPlush(PrizePos[i], PrizeColor[i], PrizeName[i]);
+        }
+
+        // claw rail
+        Raylib.DrawLine(CabLeft, CabTop + 30, CabLeft + CabWidth, CabTop + 30, Color.LightGray);
+        // claw cable
+        Raylib.DrawLine((int)ClawX, CabTop + 30, (int)ClawX, (int)ClawY, Color.LightGray);
+        // claw head
+        Raylib.DrawCircle((int)ClawX, (int)ClawY, 10, Color.DarkGray);
+        bool closed = Grabbed || Dropping;
+        // claw prongs
+        Raylib.DrawLineEx(new Vector2(ClawX, ClawY), new Vector2(ClawX - (closed ? 6 : 14), ClawY + 22), 3, Color.Gray);
+        Raylib.DrawLineEx(new Vector2(ClawX, ClawY), new Vector2(ClawX + (closed ? 6 : 14), ClawY + 22), 3, Color.Gray);
+        Raylib.DrawLineEx(new Vector2(ClawX, ClawY), new Vector2(ClawX, ClawY + 24), 3, Color.Gray);
+
+        // HUD
+        Raylib.DrawText("CLAW MACHINE", 1280 / 2 - 130, 30, 36, Color.Gold);
+        Raylib.DrawText($"Wallet: ${player.Money}", 60, 100, 22, Color.Gold);
+        Raylib.DrawText($"Plays: {Plays}", 60, 130, 22, Color.White);
+        Raylib.DrawText($"Prizes won: {player.PlushPrizes}", 60, 160, 20, Color.Pink);
+
+        if (MessageTimer > 0)
+        {
+            int mw = Raylib.MeasureText(Message, 24);
+            Raylib.DrawText(Message, 1280 / 2 - mw / 2, CabTop + CabHeight + 30, 24, Color.Yellow);
+        }
+
+        bool idle = !Dropping && !Rising && !ReturningHome && !Grabbed;
+        string prompt = idle
+            ? "LEFT/RIGHT = Move Claw  |  SPACE = Drop ($2)  |  ESC = Leave"
+            : "Claw in motion...";
+        int pw = Raylib.MeasureText(prompt, 18);
+        Raylib.DrawText(prompt, 1280 / 2 - pw / 2, 720 - 36, 18, Color.LightGray);
+    }
+
+    void DrawPlush(Vector2 pos, Color col, string name)
+    {
+        int x = (int)pos.X, y = (int)pos.Y;
+        // body
+        Raylib.DrawCircle(x, y, 16, col);
+        // head
+        Raylib.DrawCircle(x, y - 16, 11, col);
+        // ears
+        Raylib.DrawCircle(x - 8, y - 24, 5, col);
+        Raylib.DrawCircle(x + 8, y - 24, 5, col);
+        // eyes
+        Raylib.DrawCircle(x - 4, y - 17, 2, Color.Black);
+        Raylib.DrawCircle(x + 4, y - 17, 2, Color.Black);
+        // label
+        int tw = Raylib.MeasureText(name, 10);
+        Raylib.DrawText(name, x - tw / 2, y + 18, 10, Color.White);
+    }
+}
+class PinballGame
+{
+    public bool IsOpen = false;
+    public bool InputLocked = false;
+
+    public const int TableLeft = 490;
+    public const int TableTop = 80;
+    public const int TableWidth = 300;
+    public const int TableHeight = 560;
+
+    public Vector2 BallPos;
+    public Vector2 BallVel;
+    public const float BallRadius = 10f;
+    public const float Gravity = 520f;
+
+    public bool BallInPlay = false;
+    public float LaunchPower = 0f;
+    public bool Charging = false;
+
+    public float LeftFlipperAngle = 0f;   // 0 rest, negative = flipped up
+    public float RightFlipperAngle = 0f;
+
+    public int Score = 0;
+    public int Balls = 3;
+    public bool GameOver = false;
+    public string Message = "";
+    public float MessageTimer = 0f;
+    public bool LaunchedFromLane = false;
+
+    // bumpers: position + radius
+    public (Vector2 pos, float r, int pts)[] Bumpers;
+
+    public void Open(int idx)
+    {
+        IsOpen = true;
+        InputLocked = true;
+        Score = 0; Balls = 3; GameOver = false;
+        Message = "Hold SPACE to launch!";
+        MessageTimer = 2.5f;
+        Bumpers = new (Vector2, float, int)[]
+        {
+            (new Vector2(TableLeft + 90,  TableTop + 150), 24f, 100),
+            (new Vector2(TableLeft + 200, TableTop + 150), 24f, 100),
+            (new Vector2(TableLeft + 145, TableTop + 250), 28f, 200),
+            (new Vector2(TableLeft + 70,  TableTop + 340), 20f, 150),
+            (new Vector2(TableLeft + 220, TableTop + 340), 20f, 150),
+        };
+        ResetBall();
+    }
+
+    public void Close() { IsOpen = false; }
+
+    void ResetBall()
+    {
+        // ball sits in the launch lane on the right
+        BallPos = new Vector2(TableLeft + TableWidth - 18, TableTop + TableHeight - 30);
+        BallVel = Vector2.Zero;
+        BallInPlay = false;
+        LaunchPower = 0f;
+        Charging = false;
+        LaunchedFromLane = false;
+    }
+
+    public void Update(float dt, Player player)
+    {
+        if (MessageTimer > 0) MessageTimer -= dt;
+
+        if (InputLocked)
+        {
+            if (!Raylib.IsKeyDown(KeyboardKey.Space)) InputLocked = false;
+            return;
+        }
+
+        if (GameOver)
+        {
+            if (Raylib.IsKeyPressed(KeyboardKey.Space)) { Open(0); }
+            return;
+        }
+
+        // flippers
+        LeftFlipperAngle  = Raylib.IsKeyDown(KeyboardKey.Left)  ? -0.6f : Math.Min(0f, LeftFlipperAngle + 6f * dt);
+        RightFlipperAngle = Raylib.IsKeyDown(KeyboardKey.Right) ?  0.6f : Math.Max(0f, RightFlipperAngle - 6f * dt);
+
+        if (!BallInPlay)
+        {
+            if (Raylib.IsKeyDown(KeyboardKey.Space))
+            {
+                Charging = true;
+                LaunchPower = Math.Min(1f, LaunchPower + dt * 0.8f);
+            }
+            else if (Charging)
+        {
+            Charging = false;
+            BallVel = new Vector2(0, -(400f + LaunchPower * 600f));
+            BallInPlay = true;
+            LaunchedFromLane = true;   // track that it's still in the launch lane
+        }
+            return;
+        }
+
+        // physics
+        BallVel.Y += Gravity * dt;
+        BallPos += BallVel * dt;
+
+        // top deflector — when the ball reaches the top of the launch lane, push it left into play
+if (LaunchedFromLane && BallPos.Y - BallRadius < TableTop + 60 && BallPos.X > TableLeft + TableWidth - 60)
+{
+    BallVel.X = -280f;          // kick it left into the main area
+    BallVel.Y = Math.Abs(BallVel.Y) * 0.3f;  // convert some upward into a gentle downward arc
+    LaunchedFromLane = false;
+}
+
+        // walls
+        if (BallPos.X - BallRadius < TableLeft) { BallPos.X = TableLeft + BallRadius; BallVel.X *= -0.7f; }
+        if (BallPos.X + BallRadius > TableLeft + TableWidth) { BallPos.X = TableLeft + TableWidth - BallRadius; BallVel.X *= -0.7f; }
+        if (BallPos.Y - BallRadius < TableTop) { BallPos.Y = TableTop + BallRadius; BallVel.Y *= -0.7f; }
+
+        // bumpers — bounce ball away and score
+        foreach (var b in Bumpers)
+        {
+            Vector2 diff = BallPos - b.pos;
+            float dist = diff.Length();
+            if (dist < BallRadius + b.r && dist > 0.001f)
+            {
+                Vector2 n = diff / dist;
+                BallPos = b.pos + n * (BallRadius + b.r);
+                BallVel = n * Math.Max(380f, BallVel.Length()) * 1.05f;
+                Score += b.pts;
+                Message = $"+{b.pts}!";
+                MessageTimer = 0.6f;
+            }
+        }
+
+        // flippers — simple paddle bounce near the bottom
+        float flipperY = TableTop + TableHeight - 70;
+        // left flipper zone
+        if (BallPos.Y > flipperY && BallPos.X < TableLeft + TableWidth / 2f && BallVel.Y > 0)
+        {
+            if (LeftFlipperAngle < -0.2f && BallPos.Y < flipperY + 40)
+            {
+                BallVel.Y = -620f;
+                BallVel.X = 220f;
+                Score += 10;
+            }
+        }
+        // right flipper zone
+        if (BallPos.Y > flipperY && BallPos.X >= TableLeft + TableWidth / 2f && BallVel.Y > 0)
+        {
+            if (RightFlipperAngle > 0.2f && BallPos.Y < flipperY + 40)
+            {
+                BallVel.Y = -620f;
+                BallVel.X = -220f;
+                Score += 10;
+            }
+        }
+
+        // drained — ball fell past the bottom
+        if (BallPos.Y - BallRadius > TableTop + TableHeight)
+        {
+            Balls--;
+            if (Balls <= 0)
+            {
+                GameOver = true;
+                Message = $"Game Over! Score: {Score}";
+                MessageTimer = 6f;
+                if (Score > 1000) player.Money += 10;
+                else if (Score > 500) player.Money += 5;
+            }
+            else
+            {
+                Message = $"Ball lost! {Balls} left";
+                MessageTimer = 2f;
+                ResetBall();
+            }
+        }
+    }
+
+    public void Draw(Player player)
+    {
+        Raylib.ClearBackground(new Color((byte)15, (byte)10, (byte)30, (byte)255));
+
+        // table
+        Raylib.DrawRectangle(TableLeft, TableTop, TableWidth, TableHeight, new Color((byte)25, (byte)20, (byte)50, (byte)255));
+        Raylib.DrawRectangleLinesEx(new Rectangle(TableLeft - 10, TableTop - 10, TableWidth + 20, TableHeight + 20), 10, new Color((byte)120, (byte)80, (byte)200, (byte)255));
+
+        // launch lane divider
+        Raylib.DrawRectangle(TableLeft + TableWidth - 30, TableTop + 100, 6, TableHeight - 100, new Color((byte)80, (byte)60, (byte)130, (byte)255));
+
+        // bumpers
+        foreach (var b in Bumpers)
+        {
+            Raylib.DrawCircle((int)b.pos.X, (int)b.pos.Y, b.r, new Color((byte)255, (byte)120, (byte)40, (byte)255));
+            Raylib.DrawCircle((int)b.pos.X, (int)b.pos.Y, b.r - 6, new Color((byte)255, (byte)200, (byte)80, (byte)255));
+            int tw = Raylib.MeasureText(b.pts.ToString(), 12);
+            Raylib.DrawText(b.pts.ToString(), (int)b.pos.X - tw / 2, (int)b.pos.Y - 6, 12, Color.Black);
+        }
+
+        // flippers
+        float flipperY = TableTop + TableHeight - 70;
+        DrawFlipper(TableLeft + 60, (int)flipperY, LeftFlipperAngle, true);
+        DrawFlipper(TableLeft + TableWidth - 60, (int)flipperY, RightFlipperAngle, false);
+
+        // ball
+        Raylib.DrawCircle((int)BallPos.X, (int)BallPos.Y, BallRadius, Color.White);
+        Raylib.DrawCircle((int)BallPos.X - 3, (int)BallPos.Y - 3, 3, Color.LightGray);
+
+        // top deflector ramp (angled wall sending the ball left into play)
+        Raylib.DrawTriangle(
+            new Vector2(TableLeft + TableWidth, TableTop + 10),
+            new Vector2(TableLeft + TableWidth, TableTop + 70),
+            new Vector2(TableLeft + TableWidth - 80, TableTop + 10),
+            new Color((byte)120, (byte)80, (byte)200, (byte)255));
+
+        // launch power meter
+        if (Charging)
+        {
+            Raylib.DrawRectangle(TableLeft + TableWidth + 20, TableTop + 200, 18, 200, new Color((byte)40, (byte)40, (byte)40, (byte)255));
+            Raylib.DrawRectangle(TableLeft + TableWidth + 20, TableTop + 400 - (int)(200 * LaunchPower), 18, (int)(200 * LaunchPower), Color.Red);
+        }
+
+        // HUD
+        Raylib.DrawText("PINBALL", 1280 / 2 - 90, 25, 36, Color.Gold);
+        Raylib.DrawText($"Score: {Score}", 60, 90, 24, Color.White);
+        Raylib.DrawText($"Balls: {Balls}", 60, 125, 24, Color.White);
+        Raylib.DrawText($"Wallet: ${player.Money}", 60, 160, 22, Color.Gold);
+
+        if (MessageTimer > 0)
+        {
+            int mw = Raylib.MeasureText(Message, 24);
+            Raylib.DrawText(Message, 1280 / 2 - mw / 2, TableTop + TableHeight + 30, 24, Color.Yellow);
+        }
+
+        if (GameOver)
+        {
+            Raylib.DrawRectangle(0, 0, 1280, 720, new Color((byte)0, (byte)0, (byte)0, (byte)150));
+            string over = "GAME OVER";
+            int ow = Raylib.MeasureText(over, 50);
+            Raylib.DrawText(over, 1280 / 2 - ow / 2, 250, 50, Color.Gold);
+            string sc = $"Score: {Score}";
+            int sw = Raylib.MeasureText(sc, 30);
+            Raylib.DrawText(sc, 1280 / 2 - sw / 2, 320, 30, Color.White);
+            Raylib.DrawText("SPACE = Play Again", 1280 / 2 - 110, 380, 24, Color.Green);
+            Raylib.DrawText("ESC = Quit", 1280 / 2 - 60, 420, 24, Color.Red);
+        }
+        else
+        {
+            string prompt = BallInPlay ? "LEFT/RIGHT = Flippers  |  ESC = Leave"
+                : "Hold SPACE = Launch Power  |  LEFT/RIGHT = Flippers  |  ESC = Leave";
+            int pw = Raylib.MeasureText(prompt, 18);
+            Raylib.DrawText(prompt, 1280 / 2 - pw / 2, 720 - 34, 18, Color.LightGray);
+        }
+    }
+
+    void DrawFlipper(int pivotX, int pivotY, float angle, bool left)
+    {
+        float len = 56f;
+        float dir = left ? 1f : -1f;
+        Vector2 pivot = new Vector2(pivotX, pivotY);
+        Vector2 tip = pivot + new Vector2(MathF.Cos(angle * dir) * len * dir, MathF.Sin(angle) * len + 4);
+        Raylib.DrawLineEx(pivot, tip, 10, new Color((byte)255, (byte)80, (byte)80, (byte)255));
+        Raylib.DrawCircle(pivotX, pivotY, 6, Color.Gray);
+    }
+}
+class AirHockeyGame
+{
+    public bool IsOpen = false;
+    public bool InputLocked = false;
+
+    public const int TableLeft = 360;
+    public const int TableTop = 120;
+    public const int TableWidth = 560;
+    public const int TableHeight = 440;
+
+    public Vector2 Puck, PuckVel;
+    public Vector2 PlayerMallet;   // bottom half, mouse-controlled
+    public Vector2 AiMallet;       // top half, AI-controlled
+    public const float MalletR = 28f;
+    public const float PuckR = 16f;
+
+    public int PlayerScore = 0;
+    public int AiScore = 0;
+    public const int WinScore = 7;
+    public bool GameOver = false;
+    public string Message = "";
+    public float MessageTimer = 0f;
+
+    int GoalWidth => 160;
+
+    public void Open(int idx)
+    {
+        IsOpen = true;
+        InputLocked = true;
+        PlayerScore = 0; AiScore = 0; GameOver = false;
+        Message = "First to 7 wins!";
+        MessageTimer = 2.5f;
+        AiMallet = new Vector2(TableLeft + TableWidth / 2f, TableTop + 70);
+        PlayerMallet = new Vector2(TableLeft + TableWidth / 2f, TableTop + TableHeight - 70);
+        ResetPuck(true);
+    }
+
+    public void Close() { IsOpen = false; }
+
+    void ResetPuck(bool towardPlayer)
+    {
+        Puck = new Vector2(TableLeft + TableWidth / 2f, TableTop + TableHeight / 2f);
+        PuckVel = new Vector2(Raylib.GetRandomValue(-80, 80), towardPlayer ? 220 : -220);
+    }
+
+    public void Update(float dt, Player player)
+    {
+        if (MessageTimer > 0) MessageTimer -= dt;
+
+        if (InputLocked)
+        {
+            if (!Raylib.IsKeyDown(KeyboardKey.Space)) InputLocked = false;
+            return;
+        }
+
+        if (GameOver)
+        {
+            if (Raylib.IsKeyPressed(KeyboardKey.Space)) Open(0);
+            return;
+        }
+
+        // player mallet follows mouse, clamped to bottom half
+        Vector2 mouse = Raylib.GetMousePosition();
+        Vector2 prevMallet = PlayerMallet;
+        PlayerMallet.X = Math.Clamp(mouse.X, TableLeft + MalletR, TableLeft + TableWidth - MalletR);
+        PlayerMallet.Y = Math.Clamp(mouse.Y, TableTop + TableHeight / 2f + MalletR, TableTop + TableHeight - MalletR);
+        Vector2 malletVel = (PlayerMallet - prevMallet) / dt;
+
+        // AI mallet chases the puck when it's in the top half, else recenters
+        Vector2 aiTarget = Puck.Y < TableTop + TableHeight / 2f
+            ? new Vector2(Puck.X, Puck.Y)
+            : new Vector2(TableLeft + TableWidth / 2f, TableTop + 70);
+        Vector2 aiDir = aiTarget - AiMallet;
+        if (aiDir.Length() > 1f) AiMallet += Vector2.Normalize(aiDir) * Math.Min(aiDir.Length(), 260f * dt);
+        AiMallet.X = Math.Clamp(AiMallet.X, TableLeft + MalletR, TableLeft + TableWidth - MalletR);
+        AiMallet.Y = Math.Clamp(AiMallet.Y, TableTop + MalletR, TableTop + TableHeight / 2f - MalletR);
+
+        // puck physics
+        Puck += PuckVel * dt;
+        PuckVel *= 0.998f;
+
+        // side walls
+        if (Puck.X - PuckR < TableLeft) { Puck.X = TableLeft + PuckR; PuckVel.X *= -1; }
+        if (Puck.X + PuckR > TableLeft + TableWidth) { Puck.X = TableLeft + TableWidth - PuckR; PuckVel.X *= -1; }
+
+        float goalLeft = TableLeft + TableWidth / 2f - GoalWidth / 2f;
+        float goalRight = TableLeft + TableWidth / 2f + GoalWidth / 2f;
+
+        // top wall / AI goal
+        if (Puck.Y - PuckR < TableTop)
+        {
+            if (Puck.X > goalLeft && Puck.X < goalRight)
+            {
+                PlayerScore++;
+                CheckWin(player);
+                if (!GameOver) { Message = "You scored!"; MessageTimer = 1.5f; ResetPuck(false); }
+                return;
+            }
+            Puck.Y = TableTop + PuckR; PuckVel.Y *= -1;
+        }
+        // bottom wall / player goal
+        if (Puck.Y + PuckR > TableTop + TableHeight)
+        {
+            if (Puck.X > goalLeft && Puck.X < goalRight)
+            {
+                AiScore++;
+                CheckWin(player);
+                if (!GameOver) { Message = "AI scored!"; MessageTimer = 1.5f; ResetPuck(true); }
+                return;
+            }
+            Puck.Y = TableTop + TableHeight - PuckR; PuckVel.Y *= -1;
+        }
+
+        // mallet collisions
+        HitPuck(PlayerMallet, malletVel);
+        HitPuck(AiMallet, Vector2.Zero);
+    }
+
+    void HitPuck(Vector2 mallet, Vector2 malletVel)
+    {
+        Vector2 diff = Puck - mallet;
+        float dist = diff.Length();
+        if (dist < MalletR + PuckR && dist > 0.001f)
+        {
+            Vector2 n = diff / dist;
+            Puck = mallet + n * (MalletR + PuckR);
+            float speed = Math.Max(280f, PuckVel.Length());
+            PuckVel = n * speed + malletVel * 0.4f;
+        }
+    }
+
+    void CheckWin(Player player)
+    {
+        if (PlayerScore >= WinScore)
+        {
+            GameOver = true;
+            Message = "YOU WIN! +$8";
+            MessageTimer = 5f;
+            player.Money += 8;
+        }
+        else if (AiScore >= WinScore)
+        {
+            GameOver = true;
+            Message = "You lost!";
+            MessageTimer = 5f;
+        }
+    }
+
+    public void Draw(Player player)
+    {
+        Raylib.ClearBackground(new Color((byte)10, (byte)20, (byte)35, (byte)255));
+
+        // table
+        Raylib.DrawRectangle(TableLeft, TableTop, TableWidth, TableHeight, new Color((byte)220, (byte)235, (byte)250, (byte)255));
+        Raylib.DrawRectangleLinesEx(new Rectangle(TableLeft - 8, TableTop - 8, TableWidth + 16, TableHeight + 16), 8, new Color((byte)60, (byte)90, (byte)140, (byte)255));
+
+        // centre line + circle
+        Raylib.DrawLine(TableLeft, TableTop + TableHeight / 2, TableLeft + TableWidth, TableTop + TableHeight / 2, new Color((byte)150, (byte)170, (byte)200, (byte)255));
+        Raylib.DrawCircleLines(TableLeft + TableWidth / 2, TableTop + TableHeight / 2, 50, new Color((byte)150, (byte)170, (byte)200, (byte)255));
+
+        // goals
+        float goalLeft = TableLeft + TableWidth / 2f - GoalWidth / 2f;
+        Raylib.DrawRectangle((int)goalLeft, TableTop - 4, GoalWidth, 6, Color.Red);
+        Raylib.DrawRectangle((int)goalLeft, TableTop + TableHeight - 2, GoalWidth, 6, Color.Blue);
+
+        // puck + mallets
+        Raylib.DrawCircle((int)Puck.X, (int)Puck.Y, PuckR, Color.Black);
+        Raylib.DrawCircle((int)AiMallet.X, (int)AiMallet.Y, MalletR, Color.Red);
+        Raylib.DrawCircle((int)AiMallet.X, (int)AiMallet.Y, MalletR - 8, new Color((byte)255, (byte)120, (byte)120, (byte)255));
+        Raylib.DrawCircle((int)PlayerMallet.X, (int)PlayerMallet.Y, MalletR, Color.Blue);
+        Raylib.DrawCircle((int)PlayerMallet.X, (int)PlayerMallet.Y, MalletR - 8, new Color((byte)120, (byte)160, (byte)255, (byte)255));
+
+        // HUD
+        Raylib.DrawText("AIR HOCKEY", 1280 / 2 - 110, 25, 36, Color.Gold);
+        Raylib.DrawText($"AI: {AiScore}", TableLeft + TableWidth + 30, TableTop + 40, 28, Color.Red);
+        Raylib.DrawText($"You: {PlayerScore}", TableLeft + TableWidth + 30, TableTop + TableHeight - 60, 28, Color.SkyBlue);
+        Raylib.DrawText($"Wallet: ${player.Money}", 60, 90, 22, Color.Gold);
+
+        if (MessageTimer > 0)
+        {
+            int mw = Raylib.MeasureText(Message, 26);
+            Raylib.DrawText(Message, 1280 / 2 - mw / 2, TableTop + TableHeight + 25, 26, Color.Yellow);
+        }
+
+        if (GameOver)
+        {
+            Raylib.DrawRectangle(0, 0, 1280, 720, new Color((byte)0, (byte)0, (byte)0, (byte)150));
+            string res = PlayerScore >= WinScore ? "YOU WIN!" : "YOU LOSE";
+            int rw = Raylib.MeasureText(res, 50);
+            Raylib.DrawText(res, 1280 / 2 - rw / 2, 250, 50, Color.Gold);
+            Raylib.DrawText("SPACE = Play Again", 1280 / 2 - 110, 330, 24, Color.Green);
+            Raylib.DrawText("ESC = Quit", 1280 / 2 - 60, 370, 24, Color.Red);
+        }
+        else
+        {
+            string prompt = "MOUSE = Move Mallet  |  ESC = Leave";
+            int pw = Raylib.MeasureText(prompt, 18);
+            Raylib.DrawText(prompt, 1280 / 2 - pw / 2, 720 - 34, 18, Color.LightGray);
+        }
+    }
+}
+class PianoTilesGame
+{
+    public bool IsOpen = false;
+    public bool InputLocked = false;
+
+    public const int BoardLeft = 490;
+    public const int BoardTop = 60;
+    public const int Cols = 4;
+    public const int ColWidth = 75;
+    public const int BoardHeight = 560;
+    public const float TileHeight = 110f;
+
+    // each tile: column + Y position (top edge)
+    public List<(int col, float y, bool hit)> Tiles = new();
+    public float Speed = 220f;
+    public float SpawnTimer = 0f;
+    public float SpawnInterval = 0.7f;
+
+    public int Score = 0;
+    public int Lives = 3;
+    public bool GameOver = false;
+    public string Message = "";
+    public float MessageTimer = 0f;
+    public int LastTickets = 0;
+
+    readonly KeyboardKey[] keys = { KeyboardKey.D, KeyboardKey.F, KeyboardKey.J, KeyboardKey.K };
+
+    public void Open(int idx)
+    {
+        IsOpen = true;
+        InputLocked = true;
+        Score = 0; Lives = 3; GameOver = false;
+        Speed = 220f; SpawnInterval = 0.7f; SpawnTimer = 0f;
+        Tiles.Clear();
+        Message = "Hit D F J K as tiles reach the line!";
+        MessageTimer = 3f;
+    }
+
+    public void Close() { IsOpen = false; }
+
+    public void Update(float dt, Player player)
+    {
+        if (MessageTimer > 0) MessageTimer -= dt;
+
+        if (InputLocked)
+        {
+            if (!Raylib.IsKeyDown(KeyboardKey.Space)) InputLocked = false;
+            return;
+        }
+
+        if (GameOver)
+        {
+            if (Raylib.IsKeyPressed(KeyboardKey.Space)) Open(0);
+            return;
+        }
+
+        // spawn tiles
+        SpawnTimer += dt;
+        if (SpawnTimer >= SpawnInterval)
+        {
+            SpawnTimer = 0f;
+            int col = Raylib.GetRandomValue(0, Cols - 1);
+            Tiles.Add((col, BoardTop - TileHeight, false));
+        }
+
+        // move tiles down
+        float hitLineY = BoardTop + BoardHeight - TileHeight;
+        for (int i = 0; i < Tiles.Count; i++)
+        {
+            var t = Tiles[i];
+            t.y += Speed * dt;
+            Tiles[i] = t;
+        }
+
+        // key presses — check the lowest unhit tile in that column near the hit line
+        for (int k = 0; k < Cols; k++)
+        {
+            if (Raylib.IsKeyPressed(keys[k]))
+            {
+                int target = -1;
+                float lowest = -9999f;
+                for (int i = 0; i < Tiles.Count; i++)
+                {
+                    if (Tiles[i].col == k && !Tiles[i].hit && Tiles[i].y > lowest)
+                    {
+                        // must be within the hit zone
+                        if (Tiles[i].y + TileHeight > hitLineY - 40 && Tiles[i].y < hitLineY + TileHeight)
+                        {
+                            lowest = Tiles[i].y;
+                            target = i;
+                        }
+                    }
+                }
+                if (target != -1)
+                {
+                    var t = Tiles[target];
+                    t.hit = true;
+                    Tiles[target] = t;
+                    Score += 10;
+                    // speed up gradually
+                    Speed += 3f;
+                    if (SpawnInterval > 0.32f) SpawnInterval -= 0.005f;
+                }
+                else
+                {
+                    // pressed with no tile — penalty
+                    Lives--;
+                    Message = "Miss!";
+                    MessageTimer = 0.8f;
+                    if (Lives <= 0) EndGame(player);
+                }
+            }
+        }
+
+        // tiles that fell past the bottom unhit cost a life
+        for (int i = Tiles.Count - 1; i >= 0; i--)
+        {
+            if (Tiles[i].y > BoardTop + BoardHeight)
+            {
+                if (!Tiles[i].hit)
+                {
+                    Lives--;
+                    Message = "Missed a tile!";
+                    MessageTimer = 0.8f;
+                    if (Lives <= 0) { EndGame(player); return; }
+                }
+                Tiles.RemoveAt(i);
+            }
+        }
+    }
+
+    void EndGame(Player player)
+{
+    GameOver = true;
+    Message = $"Game Over! Score: {Score}";
+    MessageTimer = 6f;
+    int tickets = Score / 10;          // 1 ticket per 10 points
+    player.Tickets += tickets;
+    LastTickets = tickets;
+}
+
+    public void Draw(Player player)
+    {
+        Raylib.ClearBackground(new Color((byte)12, (byte)12, (byte)20, (byte)255));
+
+        // board
+        Raylib.DrawRectangle(BoardLeft, BoardTop, Cols * ColWidth, BoardHeight, new Color((byte)30, (byte)30, (byte)45, (byte)255));
+
+        // column dividers
+        for (int c = 1; c < Cols; c++)
+            Raylib.DrawLine(BoardLeft + c * ColWidth, BoardTop, BoardLeft + c * ColWidth, BoardTop + BoardHeight, new Color((byte)60, (byte)60, (byte)80, (byte)255));
+
+        // hit line
+        float hitLineY = BoardTop + BoardHeight - TileHeight;
+        Raylib.DrawRectangle(BoardLeft, (int)hitLineY, Cols * ColWidth, 4, new Color((byte)255, (byte)220, (byte)80, (byte)255));
+
+        // tiles
+        foreach (var t in Tiles)
+        {
+            int x = BoardLeft + t.col * ColWidth;
+            Color col = t.hit ? new Color((byte)80, (byte)200, (byte)120, (byte)255) : new Color((byte)40, (byte)120, (byte)255, (byte)255);
+            Raylib.DrawRectangle(x + 4, (int)t.y, ColWidth - 8, (int)TileHeight - 6, col);
+        }
+
+        // key labels at the bottom
+        string[] labels = { "D", "F", "J", "K" };
+        for (int c = 0; c < Cols; c++)
+        {
+            int x = BoardLeft + c * ColWidth + ColWidth / 2 - 8;
+            Raylib.DrawText(labels[c], x, BoardTop + BoardHeight + 8, 28, Color.White);
+        }
+
+        // HUD
+        Raylib.DrawText("PIANO TILES", 1280 / 2 - 120, 15, 32, Color.Gold);
+        Raylib.DrawText($"Score: {Score}", 60, 90, 24, Color.White);
+        Raylib.DrawText($"Lives: {Lives}", 60, 125, 24, Color.Red);
+        Raylib.DrawText($"Wallet: ${player.Money}", 60, 160, 22, Color.Gold);
+
+        if (MessageTimer > 0)
+        {
+            int mw = Raylib.MeasureText(Message, 24);
+            Raylib.DrawText(Message, 1280 / 2 - mw / 2, BoardTop + BoardHeight + 50, 24, Color.Yellow);
+        }
+
+        if (GameOver)
+        {
+            Raylib.DrawRectangle(0, 0, 1280, 720, new Color((byte)0, (byte)0, (byte)0, (byte)150));
+            string over = "GAME OVER";
+            int ow = Raylib.MeasureText(over, 50);
+            Raylib.DrawText(over, 1280 / 2 - ow / 2, 250, 50, Color.Gold);
+            string sc = $"Score: {Score} Tickets: + {LastTickets}";;
+            int sw = Raylib.MeasureText(sc, 30);
+            Raylib.DrawText(sc, 1280 / 2 - sw / 2, 320, 30, Color.White);
+            Raylib.DrawText("SPACE = Play Again", 1280 / 2 - 110, 380, 24, Color.Green);
+            Raylib.DrawText("ESC = Quit", 1280 / 2 - 60, 420, 24, Color.Red);
+        }
+        else
+        {
+            string prompt = "D F J K = Hit Tiles  |  ESC = Leave";
+            int pw = Raylib.MeasureText(prompt, 18);
+            Raylib.DrawText(prompt, 1280 / 2 - pw / 2, 720 - 34, 18, Color.LightGray);
+        }
+    }
+}
+class FlappyBirdGame
+{
+    public bool IsOpen = false;
+    public bool InputLocked = false;
+
+    public const int AreaLeft = 440;
+    public const int AreaTop = 80;
+    public const int AreaWidth = 400;
+    public const int AreaHeight = 540;
+
+    public float BirdY;
+    public float BirdVel;
+    public const float BirdX = 560;
+    public const float Gravity = 1300f;
+    public const float FlapStrength = -430f;
+    public const float BirdRadius = 14f;
+
+    // pipes: x position, gap centre Y
+    public List<(float x, float gapY, bool scored)> Pipes = new();
+    public const float PipeWidth = 60f;
+    public const float PipeGap = 150f;
+    public float PipeSpeed = 170f;
+    public float SpawnTimer = 0f;
+    public float SpawnInterval = 1.6f;
+
+    public int Score = 0;
+    public bool Started = false;
+    public bool GameOver = false;
+    public int TicketsEarned = 0;
+    public string Message = "";
+    public float MessageTimer = 0f;
+
+    public void Open(int idx)
+    {
+        IsOpen = true;
+        InputLocked = true;
+        Score = 0; TicketsEarned = 0;
+        Started = false; GameOver = false;
+        BirdY = AreaTop + AreaHeight / 2f;
+        BirdVel = 0f;
+        Pipes.Clear();
+        SpawnTimer = 0f;
+        PipeSpeed = 170f;
+        SpawnInterval = 1.6f;
+        Message = "Press SPACE to flap!";
+        MessageTimer = 3f;
+    }
+
+    public void Close() { IsOpen = false; }
+
+    public void Update(float dt, Player player)
+    {
+        if (MessageTimer > 0) MessageTimer -= dt;
+
+        if (InputLocked)
+        {
+            if (!Raylib.IsKeyDown(KeyboardKey.Space)) InputLocked = false;
+            return;
+        }
+
+        if (GameOver)
+        {
+            if (Raylib.IsKeyPressed(KeyboardKey.Space)) Open(0);
+            return;
+        }
+
+        // wait for first flap to start
+        if (!Started)
+        {
+            if (Raylib.IsKeyPressed(KeyboardKey.Space))
+            {
+                Started = true;
+                BirdVel = FlapStrength;
+            }
+            return;
+        }
+
+        // flap
+        if (Raylib.IsKeyPressed(KeyboardKey.Space))
+            BirdVel = FlapStrength;
+
+        // gravity
+        BirdVel += Gravity * dt;
+        BirdY += BirdVel * dt;
+
+        // spawn pipes
+        SpawnTimer += dt;
+        if (SpawnTimer >= SpawnInterval)
+        {
+            SpawnTimer = 0f;
+            float gapY = Raylib.GetRandomValue(AreaTop + 90, AreaTop + AreaHeight - 90);
+            Pipes.Add((AreaLeft + AreaWidth, gapY, false));
+        }
+
+        // move pipes + score + collision
+        for (int i = 0; i < Pipes.Count; i++)
+        {
+            var p = Pipes[i];
+            p.x -= PipeSpeed * dt;
+
+            // score when passing the bird
+            if (!p.scored && p.x + PipeWidth < BirdX)
+            {
+                p.scored = true;
+                Score++;
+                // every point = 1 ticket, bonus every 5
+                TicketsEarned++;
+                if (Score % 5 == 0) { TicketsEarned += 2; PipeSpeed += 12f; }
+            }
+            Pipes[i] = p;
+
+            // collision with this pipe
+            if (BirdX + BirdRadius > p.x && BirdX - BirdRadius < p.x + PipeWidth)
+            {
+                if (BirdY - BirdRadius < p.gapY - PipeGap / 2f || BirdY + BirdRadius > p.gapY + PipeGap / 2f)
+                    EndGame(player);
+            }
+        }
+
+        // remove off-screen pipes
+        Pipes.RemoveAll(p => p.x + PipeWidth < AreaLeft);
+
+        // floor / ceiling
+        if (BirdY + BirdRadius > AreaTop + AreaHeight || BirdY - BirdRadius < AreaTop)
+            EndGame(player);
+    }
+
+    void EndGame(Player player)
+    {
+        if (GameOver) return;
+        GameOver = true;
+        player.Tickets += TicketsEarned;
+        Message = $"Game Over! +{TicketsEarned} tickets";
+        MessageTimer = 6f;
+    }
+
+    public void Draw(Player player)
+    {
+        Raylib.ClearBackground(new Color((byte)110, (byte)200, (byte)235, (byte)255)); // sky
+
+        // play area
+        Raylib.DrawRectangle(AreaLeft, AreaTop, AreaWidth, AreaHeight, new Color((byte)135, (byte)206, (byte)235, (byte)255));
+        Raylib.DrawRectangleLinesEx(new Rectangle(AreaLeft, AreaTop, AreaWidth, AreaHeight), 4, new Color((byte)60, (byte)120, (byte)160, (byte)255));
+
+        // pipes
+        foreach (var p in Pipes)
+        {
+            int px = (int)p.x;
+            int gapTop = (int)(p.gapY - PipeGap / 2f);
+            int gapBot = (int)(p.gapY + PipeGap / 2f);
+            // top pipe
+            Raylib.DrawRectangle(px, AreaTop, (int)PipeWidth, gapTop - AreaTop, new Color((byte)70, (byte)180, (byte)70, (byte)255));
+            Raylib.DrawRectangle(px - 4, gapTop - 20, (int)PipeWidth + 8, 20, new Color((byte)60, (byte)160, (byte)60, (byte)255));
+            // bottom pipe
+            Raylib.DrawRectangle(px, gapBot, (int)PipeWidth, AreaTop + AreaHeight - gapBot, new Color((byte)70, (byte)180, (byte)70, (byte)255));
+            Raylib.DrawRectangle(px - 4, gapBot, (int)PipeWidth + 8, 20, new Color((byte)60, (byte)160, (byte)60, (byte)255));
+        }
+
+        // bird
+        Raylib.DrawCircle((int)BirdX, (int)BirdY, BirdRadius, Color.Gold);
+        Raylib.DrawCircle((int)BirdX + 4, (int)BirdY - 4, 4, Color.White);     // eye white
+        Raylib.DrawCircle((int)BirdX + 5, (int)BirdY - 4, 2, Color.Black);     // pupil
+        Raylib.DrawTriangle(                                                    // beak
+            new Vector2(BirdX + BirdRadius, BirdY - 3),
+            new Vector2(BirdX + BirdRadius, BirdY + 3),
+            new Vector2(BirdX + BirdRadius + 8, BirdY),
+            Color.Orange);
+
+        // HUD
+        Raylib.DrawText("FLAPPY BIRD", 1280 / 2 - 120, 25, 34, Color.DarkBlue);
+        Raylib.DrawText($"Score: {Score}", 60, 90, 24, Color.White);
+        Raylib.DrawText($"Tickets this run: {TicketsEarned}", 60, 125, 22, new Color((byte)255,(byte)180,(byte)40,(byte)255));
+        Raylib.DrawText($"Total tickets: {player.Tickets}", 60, 158, 22, new Color((byte)255,(byte)180,(byte)40,(byte)255));
+
+        if (MessageTimer > 0)
+        {
+            int mw = Raylib.MeasureText(Message, 24);
+            Raylib.DrawText(Message, 1280 / 2 - mw / 2, AreaTop + AreaHeight + 25, 24, Color.Yellow);
+        }
+
+        if (GameOver)
+        {
+            Raylib.DrawRectangle(0, 0, 1280, 720, new Color((byte)0, (byte)0, (byte)0, (byte)150));
+            string over = "GAME OVER";
+            int ow = Raylib.MeasureText(over, 50);
+            Raylib.DrawText(over, 1280 / 2 - ow / 2, 250, 50, Color.Gold);
+            string sc = $"Score: {Score}   Tickets: +{TicketsEarned}";
+            int sw = Raylib.MeasureText(sc, 28);
+            Raylib.DrawText(sc, 1280 / 2 - sw / 2, 320, 28, Color.White);
+            Raylib.DrawText("SPACE = Play Again", 1280 / 2 - 110, 380, 24, Color.Green);
+            Raylib.DrawText("ESC = Quit", 1280 / 2 - 60, 420, 24, Color.Red);
+        }
+        else
+        {
+            string prompt = Started ? "SPACE = Flap  |  ESC = Leave" : "Press SPACE to start  |  ESC = Leave";
+            int pw = Raylib.MeasureText(prompt, 18);
+            Raylib.DrawText(prompt, 1280 / 2 - pw / 2, 720 - 34, 18, Color.LightGray);
+        }
+    }
+}
+
+class MiniGolfGame
+{
+    public bool IsOpen = false;
+    public bool InputLocked = false;
+
+    public const int CourseLeft = 240;
+    public const int CourseTop = 120;
+    public const int CourseWidth = 800;
+    public const int CourseHeight = 480;
+    public const float BallRadius = 9f;
+    public const float Friction = 0.978f;
+    public const float MinSpeed = 6f;
+
+    public Vector2 BallPos;
+    public Vector2 BallVel;
+    public bool BallMoving = false;
+
+    public float AimAngle = 0f;
+    public float Power = 0f;
+    public bool Charging = false;
+
+    public int CurrentHole = 0;     // 0-8
+    public int[] Strokes = new int[9];
+    public int TotalStrokes = 0;
+    public bool GameOver = false;
+    public string Message = "";
+    public float MessageTimer = 0f;
+
+    // per-hole layout
+    public Vector2 TeePos;
+    public Vector2 HolePos;
+    public List<Rectangle> Walls = new();
+    public int[] Par = { 2, 3, 2, 3, 4, 3, 2, 4, 3 };
+
+    public void Open(int idx)
+    {
+        IsOpen = true;
+        InputLocked = true;
+        CurrentHole = 0;
+        TotalStrokes = 0;
+        for (int i = 0; i < 9; i++) Strokes[i] = 0;
+        GameOver = false;
+        LoadHole(0);
+        Message = "Hole 1 - aim and putt!";
+        MessageTimer = 3f;
+    }
+
+    public void Close() { IsOpen = false; }
+
+    void LoadHole(int h)
+    {
+        Walls.Clear();
+        int l = CourseLeft, t = CourseTop, w = CourseWidth, hgt = CourseHeight;
+
+        // outer boundary walls (always present)
+        Walls.Add(new Rectangle(l, t, w, 16));                       // top
+        Walls.Add(new Rectangle(l, t + hgt - 16, w, 16));            // bottom
+        Walls.Add(new Rectangle(l, t, 16, hgt));                     // left
+        Walls.Add(new Rectangle(l + w - 16, t, 16, hgt));            // right
+
+        // each hole has its own internal obstacles + tee/hole positions
+        switch (h)
+        {
+            case 0: // straight shot
+                TeePos = new Vector2(l + 100, t + hgt / 2);
+                HolePos = new Vector2(l + w - 120, t + hgt / 2);
+                break;
+            case 1: // single centre block
+                TeePos = new Vector2(l + 100, t + hgt / 2);
+                HolePos = new Vector2(l + w - 120, t + hgt / 2);
+                Walls.Add(new Rectangle(l + w / 2 - 20, t + hgt / 2 - 80, 40, 160));
+                break;
+            case 2: // diagonal funnel
+                TeePos = new Vector2(l + 100, t + 100);
+                HolePos = new Vector2(l + w - 120, t + hgt - 120);
+                Walls.Add(new Rectangle(l + w / 2, t, 16, hgt - 140));
+                break;
+            case 3: // L-shape
+                TeePos = new Vector2(l + 100, t + hgt - 100);
+                HolePos = new Vector2(l + w - 120, t + 100);
+                Walls.Add(new Rectangle(l + 200, t, 16, hgt - 160));
+                Walls.Add(new Rectangle(l + 400, t + 160, 16, hgt - 160));
+                break;
+            case 4: // double gate
+                TeePos = new Vector2(l + 90, t + hgt / 2);
+                HolePos = new Vector2(l + w - 110, t + hgt / 2);
+                Walls.Add(new Rectangle(l + 280, t, 16, 150));
+                Walls.Add(new Rectangle(l + 280, t + hgt - 150, 16, 150));
+                Walls.Add(new Rectangle(l + 520, t, 16, 150));
+                Walls.Add(new Rectangle(l + 520, t + hgt - 150, 16, 150));
+                break;
+            case 5: // zigzag
+                TeePos = new Vector2(l + 90, t + 90);
+                HolePos = new Vector2(l + w - 110, t + hgt - 110);
+                Walls.Add(new Rectangle(l + 200, t, 16, hgt - 140));
+                Walls.Add(new Rectangle(l + 420, t + 140, 16, hgt - 140));
+                Walls.Add(new Rectangle(l + 620, t, 16, hgt - 140));
+                break;
+            case 6: // open with corner pocket
+                TeePos = new Vector2(l + 100, t + hgt - 100);
+                HolePos = new Vector2(l + w - 120, t + 100);
+                Walls.Add(new Rectangle(l + w / 2 - 100, t + hgt / 2 - 8, 200, 16));
+                break;
+            case 7: // box maze
+                TeePos = new Vector2(l + 90, t + hgt / 2);
+                HolePos = new Vector2(l + w - 110, t + hgt / 2);
+                Walls.Add(new Rectangle(l + 250, t + 90, 16, hgt - 180));
+                Walls.Add(new Rectangle(l + 250, t + 90, 200, 16));
+                Walls.Add(new Rectangle(l + 450, t + 90, 16, 140));
+                Walls.Add(new Rectangle(l + 450, t + hgt - 110, 16, 20));
+                break;
+            case 8: // final - centre island
+                TeePos = new Vector2(l + 100, t + hgt / 2);
+                HolePos = new Vector2(l + w - 120, t + hgt / 2);
+                Walls.Add(new Rectangle(l + w / 2 - 60, t + hgt / 2 - 60, 120, 120));
+                break;
+        }
+
+        BallPos = TeePos;
+        BallVel = Vector2.Zero;
+        BallMoving = false;
+        AimAngle = 0f;
+        Power = 0f;
+        Charging = false;
+    }
+
+    public void Update(float dt, Player player)
+    {
+        if (MessageTimer > 0) MessageTimer -= dt;
+
+        if (InputLocked)
+        {
+            if (!Raylib.IsKeyDown(KeyboardKey.Space)) InputLocked = false;
+            return;
+        }
+
+        if (GameOver)
+        {
+            if (Raylib.IsKeyPressed(KeyboardKey.Space)) Open(0);
+            return;
+        }
+
+        if (BallMoving)
+        {
+            UpdatePhysics(dt, player);
+            return;
+        }
+
+        // aim
+        if (Raylib.IsKeyDown(KeyboardKey.Left))  AimAngle -= 1.8f * dt;
+        if (Raylib.IsKeyDown(KeyboardKey.Right)) AimAngle += 1.8f * dt;
+
+        // power charge
+        if (Raylib.IsKeyDown(KeyboardKey.Space))
+        {
+            Charging = true;
+            Power = Math.Min(1f, Power + dt * 0.7f);
+        }
+        else if (Charging)
+        {
+            Charging = false;
+            BallVel = new Vector2(MathF.Cos(AimAngle), MathF.Sin(AimAngle)) * (250f + Power * 750f);
+            BallMoving = true;
+            Strokes[CurrentHole]++;
+            TotalStrokes++;
+            Power = 0f;
+        }
+    }
+
+    void UpdatePhysics(float dt, Player player)
+    {
+        BallPos += BallVel * dt;
+        BallVel *= Friction;
+        if (BallVel.Length() < MinSpeed) BallVel = Vector2.Zero;
+
+        // wall collisions
+        foreach (var wall in Walls)
+        {
+            if (BallPos.X + BallRadius > wall.X && BallPos.X - BallRadius < wall.X + wall.Width &&
+                BallPos.Y + BallRadius > wall.Y && BallPos.Y - BallRadius < wall.Y + wall.Height)
+            {
+                // figure out which side was hit by smallest overlap
+                float overlapLeft   = (BallPos.X + BallRadius) - wall.X;
+                float overlapRight  = (wall.X + wall.Width) - (BallPos.X - BallRadius);
+                float overlapTop    = (BallPos.Y + BallRadius) - wall.Y;
+                float overlapBottom = (wall.Y + wall.Height) - (BallPos.Y - BallRadius);
+                float minOverlap = Math.Min(Math.Min(overlapLeft, overlapRight), Math.Min(overlapTop, overlapBottom));
+
+                if (minOverlap == overlapLeft)        { BallPos.X = wall.X - BallRadius; BallVel.X *= -0.7f; }
+                else if (minOverlap == overlapRight)  { BallPos.X = wall.X + wall.Width + BallRadius; BallVel.X *= -0.7f; }
+                else if (minOverlap == overlapTop)    { BallPos.Y = wall.Y - BallRadius; BallVel.Y *= -0.7f; }
+                else                                  { BallPos.Y = wall.Y + wall.Height + BallRadius; BallVel.Y *= -0.7f; }
+            }
+        }
+
+        // sink in hole — must be slow enough
+        if (Vector2.Distance(BallPos, HolePos) < 14f && BallVel.Length() < 220f)
+        {
+            BallVel = Vector2.Zero;
+            BallMoving = false;
+            SinkHole(player);
+            return;
+        }
+
+        // stopped
+        if (BallVel == Vector2.Zero)
+            BallMoving = false;
+    }
+
+    void SinkHole(Player player)
+    {
+        int strokes = Strokes[CurrentHole];
+        int par = Par[CurrentHole];
+        string result =
+            strokes == 1 ? "HOLE IN ONE!" :
+            strokes < par ? "Under par!" :
+            strokes == par ? "Par!" :
+            "Over par.";
+
+        if (CurrentHole == 8)
+        {
+            GameOver = true;
+            // payout based on total vs total par
+            int totalPar = Par.Sum();
+            int reward = Math.Max(5, (totalPar - TotalStrokes) * 3 + 15);
+            player.Money += reward;
+            Message = $"Course complete! {TotalStrokes} strokes. +${reward}";
+            MessageTimer = 6f;
+        }
+        else
+        {
+            Message = $"{result}  Hole {CurrentHole + 1}: {strokes} strokes";
+            MessageTimer = 2.5f;
+            CurrentHole++;
+            LoadHole(CurrentHole);
+        }
+    }
+
+    public void Draw(Player player)
+    {
+        Raylib.ClearBackground(new Color((byte)20, (byte)50, (byte)25, (byte)255));
+
+        // course green
+        Raylib.DrawRectangle(CourseLeft, CourseTop, CourseWidth, CourseHeight, new Color((byte)60, (byte)150, (byte)70, (byte)255));
+        // subtle mow stripes
+        for (int s = 0; s < CourseWidth; s += 40)
+            Raylib.DrawRectangle(CourseLeft + s, CourseTop, 20, CourseHeight, new Color((byte)55, (byte)140, (byte)65, (byte)90));
+
+        // walls
+        foreach (var wall in Walls)
+        {
+            Raylib.DrawRectangleRec(wall, new Color((byte)120, (byte)75, (byte)35, (byte)255));
+            Raylib.DrawRectangleLinesEx(wall, 2, new Color((byte)90, (byte)55, (byte)25, (byte)255));
+        }
+
+        // hole
+        Raylib.DrawCircle((int)HolePos.X, (int)HolePos.Y, 13, Color.Black);
+        // flag
+        Raylib.DrawLine((int)HolePos.X, (int)HolePos.Y, (int)HolePos.X, (int)HolePos.Y - 40, Color.White);
+        Raylib.DrawTriangle(
+            new Vector2(HolePos.X, HolePos.Y - 40),
+            new Vector2(HolePos.X, HolePos.Y - 26),
+            new Vector2(HolePos.X + 22, HolePos.Y - 33),
+            Color.Red);
+
+        // tee marker
+        Raylib.DrawCircleLines((int)TeePos.X, (int)TeePos.Y, 12, new Color((byte)255, (byte)255, (byte)255, (byte)120));
+
+        // ball
+        Raylib.DrawCircle((int)BallPos.X, (int)BallPos.Y, BallRadius, Color.White);
+        Raylib.DrawCircle((int)BallPos.X - 2, (int)BallPos.Y - 2, 3, new Color((byte)220, (byte)220, (byte)220, (byte)255));
+
+        // aim guide + power
+        if (!BallMoving && !GameOver)
+        {
+            Vector2 dir = new Vector2(MathF.Cos(AimAngle), MathF.Sin(AimAngle));
+            for (float d = BallRadius + 6; d < 70 + Power * 120; d += 12)
+            {
+                Vector2 pt = BallPos + dir * d;
+                Raylib.DrawCircle((int)pt.X, (int)pt.Y, 2, new Color((byte)255, (byte)255, (byte)255, (byte)170));
+            }
+            // arrowhead
+            Vector2 tip = BallPos + dir * (70 + Power * 120);
+            Raylib.DrawCircle((int)tip.X, (int)tip.Y, 4, Color.Yellow);
+        }
+
+        if (Charging)
+        {
+            Raylib.DrawRectangle(CourseLeft, CourseTop + CourseHeight + 16, 200, 16, new Color((byte)40, (byte)40, (byte)40, (byte)255));
+            Raylib.DrawRectangle(CourseLeft, CourseTop + CourseHeight + 16, (int)(200 * Power), 16, Color.Red);
+            Raylib.DrawRectangleLines(CourseLeft, CourseTop + CourseHeight + 16, 200, 16, Color.White);
+            Raylib.DrawText("POWER", CourseLeft, CourseTop + CourseHeight + 36, 14, Color.White);
+        }
+
+        // HUD
+        Raylib.DrawText("MINI GOLF", 1280 / 2 - 100, 20, 36, Color.Gold);
+        Raylib.DrawText($"Hole: {CurrentHole + 1}/9   Par: {Par[CurrentHole]}", CourseLeft + 240, CourseTop - 36, 22, Color.White);
+        Raylib.DrawText($"Strokes this hole: {Strokes[CurrentHole]}", CourseLeft + 520, CourseTop - 36, 20, Color.White);
+        Raylib.DrawText($"Total: {TotalStrokes}", CourseLeft, CourseTop - 36, 22, Color.Gold);
+
+        if (MessageTimer > 0)
+        {
+            int mw = Raylib.MeasureText(Message, 24);
+            Raylib.DrawText(Message, 1280 / 2 - mw / 2, CourseTop + CourseHeight + 60, 24, Color.Yellow);
+        }
+
+        if (GameOver)
+        {
+            Raylib.DrawRectangle(0, 0, 1280, 720, new Color((byte)0, (byte)0, (byte)0, (byte)150));
+            string done = "COURSE COMPLETE!";
+            int dw = Raylib.MeasureText(done, 44);
+            Raylib.DrawText(done, 1280 / 2 - dw / 2, 250, 44, Color.Gold);
+            string sc = $"Total Strokes: {TotalStrokes}  (Par {Par.Sum()})";
+            int sw = Raylib.MeasureText(sc, 28);
+            Raylib.DrawText(sc, 1280 / 2 - sw / 2, 320, 28, Color.White);
+            Raylib.DrawText("SPACE = Play Again", 1280 / 2 - 110, 380, 24, Color.Green);
+            Raylib.DrawText("ESC = Quit", 1280 / 2 - 60, 420, 24, Color.Red);
+        }
+        else
+        {
+            string prompt = BallMoving ? "Ball rolling..."
+                : "LEFT/RIGHT = Aim  |  Hold SPACE = Power  |  Release = Putt  |  ESC = Leave";
+            int pw = Raylib.MeasureText(prompt, 18);
+            Raylib.DrawText(prompt, 1280 / 2 - pw / 2, 720 - 34, 18, Color.LightGray);
+        }
+    }
+}
+class DungeonEnemy
+{
+    public Vector2 Position;
+    public float Health, MaxHealth;
+    public Vector2 Knockback = Vector2.Zero;
+    public string Type;
+    public Color EnemyColor;
+    public bool Dead = false;
+    public float AttackCooldown = 0f;
+    public int Damage;
+    public float Speed;
+    public string LootType;
+    public int XPReward;
+    public int MoneyDrop;
+
+    public Rectangle Bounds => new Rectangle(Position.X - 20, Position.Y - 20, 40, 40);
+
+    public DungeonEnemy(Vector2 pos, string type, float hp, int dmg, float spd, Color col, string loot, int xp, int money = 0)
+    {
+        Position = pos; Type = type; Health = MaxHealth = hp;
+        Damage = dmg; Speed = spd; EnemyColor = col;
+        LootType = loot; XPReward = xp; MoneyDrop = money;
+    }
+
+    public void Update(float dt, Vector2 playerPos)
+{
+    if (Dead) return;
+    if (AttackCooldown > 0) AttackCooldown -= dt;
+
+    // apply knockback and decay it
+    if (Knockback.Length() > 0.1f)
+    {
+        Position += Knockback * dt;
+        Knockback *= 0.85f; // friction
+    }
+    else
+    {
+        Knockback = Vector2.Zero;
+        Vector2 dir = playerPos - Position;
+        float dist = dir.Length();
+        if (dist > 5f)
+            Position += Vector2.Normalize(dir) * Speed * dt;
+    }
+}
+
+    public void Draw()
+    {
+        if (Dead) return;
+        int x = (int)Position.X, y = (int)Position.Y;
+        Raylib.DrawCircle(x, y, 22, EnemyColor);
+        Raylib.DrawCircle(x, y, 18, new Color(
+            (byte)Math.Min(255, EnemyColor.R + 30),
+            (byte)Math.Min(255, EnemyColor.G + 30),
+            (byte)Math.Min(255, EnemyColor.B + 30), (byte)255));
+        // health bar
+        Raylib.DrawRectangle(x - 22, y - 34, 44, 6, Color.DarkGray);
+        Raylib.DrawRectangle(x - 22, y - 34, (int)(44 * (Health / MaxHealth)), 6, Color.Red);
+        // name
+        int tw = Raylib.MeasureText(Type, 12);
+        Raylib.DrawText(Type, x - tw / 2, y - 48, 12, Color.White);
+    }
+}
+
+class DungeonLoot
+{
+    public Vector2 Position;
+    public string ItemType;
+    public bool Collected = false;
+
+    public DungeonLoot(Vector2 pos, string item) { Position = pos; ItemType = item; }
+}
+
+class DungeonRoom
+{
+    public List<DungeonEnemy> Enemies = new();
+    public List<DungeonLoot> Loot = new();
+    public bool IsBoss = false;
+    public bool ChestOpened = false;
+    public bool AllEnemiesDead => Enemies.All(e => e.Dead);
+}
+
+class Dungeon
+{
+    public bool IsOpen = false;
+    public string Name = "";
+    public string Type = "";
+    public int CurrentRoom = 0;
+    public int TotalRooms = 5;
+    public DungeonRoom[] Rooms;
+    public bool Complete = false;
+    public string Message = "";
+    public float MessageTimer = 0f;
+    public Vector2 PlayerPos;
+    public Vector2 WorldReturnPos;
+
+    public const int WallThick = 22;
+    public const int RoomX = 60;
+    public const int RoomY = 80;
+    public const int RoomW = 1160;
+    public const int RoomH = 520;
+    public const int InnerX = RoomX + WallThick;
+    public const int InnerY = RoomY + WallThick;
+    public const int InnerW = RoomW - WallThick * 2;
+    public const int InnerH = RoomH - WallThick * 2;
+
+    public bool IsLastRoom => CurrentRoom == TotalRooms - 1;
+    public bool CollidesWithEnemy(Vector2 pos, float radius, DungeonEnemy ignore = null)
+{
+    var room = Rooms[CurrentRoom];
+    foreach (var enemy in room.Enemies)
+    {
+        if (enemy.Dead) continue;
+        if (enemy == ignore) continue;
+        if (Vector2.Distance(pos, enemy.Position) < radius + 22f)
+            return true;
+    }
+    return false;
+}
+
+    public void Open(string type, string name, Vector2 worldPos)
+    {
+        IsOpen = true; Type = type; Name = name;
+        CurrentRoom = 0; Complete = false;
+        WorldReturnPos = worldPos;
+        PlayerPos = new Vector2(InnerX + 80, InnerY + InnerH / 2f);
+        Message = "Clear the room to advance!";
+        MessageTimer = 2.5f;
+
+        Rooms = new DungeonRoom[TotalRooms];
+        for (int i = 0; i < TotalRooms; i++)
+        {
+            Rooms[i] = new DungeonRoom { IsBoss = (i == TotalRooms - 1) };
+            GenerateRoom(i);
+        }
+    }
+
+    public void Close() { IsOpen = false; }
+
+    void GenerateRoom(int idx)
+    {
+        var room = Rooms[idx];
+        int count = room.IsBoss ? 1 : Math.Min(2 + idx, 6);
+        for (int i = 0; i < count; i++)
+        {
+            float ex = InnerX + 300 + Raylib.GetRandomValue(0, InnerW - 420);
+            float ey = InnerY + 50  + Raylib.GetRandomValue(0, InnerH - 100);
+            room.Enemies.Add(SpawnEnemy(new Vector2(ex, ey), room.IsBoss));
+        }
+    }
+
+    DungeonEnemy SpawnEnemy(Vector2 pos, bool boss)
+    {
+        float hm = boss ? 4f : 1f;
+        float sm = boss ? 0.65f : 1f;
+        int roll = Raylib.GetRandomValue(0, 1);
+
+        return Type switch
+        {
+            "Forest" => boss
+                ? new DungeonEnemy(pos, "Ancient Bear",   150*hm, 20, 65*sm, new Color((byte)80,(byte)40,(byte)100,(byte)255), "Bear Pelt", 120, 40)
+                : roll == 0
+                    ? new DungeonEnemy(pos, "Wolf",       35, 10, 90,  Color.DarkGray, "Fur",  35, 6)
+                    : new DungeonEnemy(pos, "Wild Dog",   22,  6, 100, Color.Brown,    "Bone", 20, 4),
+
+            "Snow" => boss
+                ? new DungeonEnemy(pos, "Frost Titan",   180*hm, 22, 55*sm, new Color((byte)160,(byte)200,(byte)255,(byte)255), "Bear Pelt", 140, 50)
+                : roll == 0
+                    ? new DungeonEnemy(pos, "Ice Wolf",  40, 12, 85, new Color((byte)180,(byte)210,(byte)240,(byte)255), "Fur",       40, 8)
+                    : new DungeonEnemy(pos, "Snow Bear",  55, 15, 65, new Color((byte)100,(byte)100,(byte)130,(byte)255), "Bear Pelt", 55, 10),
+
+            "Desert" => boss
+                ? new DungeonEnemy(pos, "Dune Warlord",  160*hm, 20, 60*sm, new Color((byte)220,(byte)150,(byte)0,(byte)255),  "Stinger", 130, 45)
+                : roll == 0
+                    ? new DungeonEnemy(pos, "Scorpion",  28,  8, 80, new Color((byte)180,(byte)120,(byte)0,(byte)255),  "Stinger", 30, 5)
+                    : new DungeonEnemy(pos, "Sand Snake", 22, 10, 95, new Color((byte)200,(byte)160,(byte)40,(byte)255), "Stinger", 25, 4),
+
+            "Volcano" => boss
+                ? new DungeonEnemy(pos, "Magma Colossus", 200*hm, 25, 50*sm, new Color((byte)255,(byte)60,(byte)0,(byte)255),  "Bear Pelt", 150, 60)
+                : roll == 0
+                    ? new DungeonEnemy(pos, "Fire Lizard",  32, 12, 85, new Color((byte)180,(byte)60,(byte)10,(byte)255),  "Stinger", 35, 7)
+                    : new DungeonEnemy(pos, "Magma Beetle", 42, 15, 70, new Color((byte)120,(byte)30,(byte)0,(byte)255),   "Stinger", 40, 8),
+
+            _ => boss  // Crypt
+                ? new DungeonEnemy(pos, "Skeleton King",  120*hm, 16, 55*sm, new Color((byte)220,(byte)210,(byte)180,(byte)255), "Bone", 100, 30)
+                : roll == 0
+                    ? new DungeonEnemy(pos, "Skeleton", 22,  7, 80, new Color((byte)220,(byte)215,(byte)195,(byte)255), "Bone", 20, 3)
+                    : new DungeonEnemy(pos, "Ghoul",    18,  9, 90, new Color((byte)80,(byte)120,(byte)80,(byte)255),   "Bone", 18, 2)
+        };
+    }
+}
 
 
     class Building
