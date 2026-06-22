@@ -16,6 +16,78 @@ namespace OpenWorldRPG
         Minigame
     }
 
+              public enum SlotSymbol
+{
+    Cherry,
+    Lemon,
+    Bell,
+    Star,
+    Seven
+}
+
+public static class SlotData
+{
+    // Higher weight = more common. Seven is rare = jackpot symbol.
+    public static readonly (SlotSymbol symbol, int weight)[] SymbolWeights =
+    {
+        (SlotSymbol.Cherry, 40),
+        (SlotSymbol.Lemon, 30),
+        (SlotSymbol.Bell, 18),
+        (SlotSymbol.Star, 9),
+        (SlotSymbol.Seven, 3)
+    };
+
+    // Multiplier applied to the bet when you land 3-in-a-row of a symbol
+    public static readonly Dictionary<SlotSymbol, int> ThreeMatchMultiplier = new()
+    {
+        { SlotSymbol.Cherry, 2 },
+        { SlotSymbol.Lemon, 3 },
+        { SlotSymbol.Bell, 5 },
+        { SlotSymbol.Star, 10 },
+        { SlotSymbol.Seven, 25 } // jackpot
+    };
+
+    // Multiplier for 2-in-a-row (any symbol, smaller payout)
+    public const float TwoMatchMultiplier = 1.0f;
+
+    public static SlotSymbol GetRandomSymbol()
+    {
+        int totalWeight = 0;
+        foreach (var (_, weight) in SymbolWeights) totalWeight += weight;
+
+        int roll = Raylib.GetRandomValue(1, totalWeight);
+        int cumulative = 0;
+
+        foreach (var (symbol, weight) in SymbolWeights)
+        {
+            cumulative += weight;
+            if (roll <= cumulative) return symbol;
+        }
+
+        return SlotSymbol.Cherry; // fallback, shouldn't hit
+    }
+
+    public static Color GetSymbolColor(SlotSymbol s) => s switch
+    {
+        SlotSymbol.Cherry => Color.Red,
+        SlotSymbol.Lemon => Color.Yellow,
+        SlotSymbol.Bell => Color.Gold,
+        SlotSymbol.Star => Color.SkyBlue,
+        SlotSymbol.Seven => Color.Magenta,
+        _ => Color.White
+    };
+
+    public static string GetSymbolText(SlotSymbol s) => s switch
+    {
+        SlotSymbol.Cherry => "CHERRY",
+        SlotSymbol.Lemon => "LEMON",
+        SlotSymbol.Bell => "BELL",
+        SlotSymbol.Star => "STAR",
+        SlotSymbol.Seven => "7",
+        _ => "?"
+    };
+}
+
     class Program
     {
         const int ScreenWidth = 1280;
@@ -45,6 +117,10 @@ namespace OpenWorldRPG
         static string[] toolbarSlots = new string[8]; // null = empty
         static bool torchActive = false;
         static List<NPC> dbarTableNPCs = new();
+        public static PokieMachine activePokieMachine = new PokieMachine();
+        enum MinigameType { None, Pokie, Pool }
+        static MinigameType activeMinigameType = MinigameType.None;
+        static PoolGame activePoolGame = new PoolGame();
         static NPC dbarPokieNPC = null;
         // Dealer UI state
         enum DealerType { None, Bike, Barn, Car }
@@ -346,6 +422,7 @@ namespace OpenWorldRPG
           static string burgerKingMessage = "";
           static float burgerKingMessageTimer = 0f;
           static int burgerKingSelectedItem = -1;
+
         static (bool exists, string name, string info) GetSlotInfo(int slot)
         {
             string path = savePaths[slot];
@@ -3831,8 +3908,211 @@ Raylib.DrawText(priceText, px, by + slotH - 22, 16, Color.Gold);
     Raylib.DrawText("Q = Close", panelX + panelW / 2 - 40, panelY + panelH - 28, 20, Color.LightGray);
 }
 
+static void UpdateMinigameScreen(float dt)
+{
+    if (activeMinigameType == MinigameType.Pokie)
+    {
+        activePokieMachine.Update(dt, player);
 
+        if (!activePokieMachine.IsSpinning)
+        {
+            if (Raylib.IsKeyPressed(KeyboardKey.Space))
+                activePokieMachine.StartSpin(player);
 
+            if (Raylib.IsKeyPressed(KeyboardKey.Up))
+            {
+                int idx = Array.IndexOf(activePokieMachine.BetOptions, activePokieMachine.BetAmount);
+                idx = Math.Min(idx + 1, activePokieMachine.BetOptions.Length - 1);
+                activePokieMachine.BetAmount = activePokieMachine.BetOptions[idx];
+            }
+            if (Raylib.IsKeyPressed(KeyboardKey.Down))
+            {
+                int idx = Array.IndexOf(activePokieMachine.BetOptions, activePokieMachine.BetAmount);
+                idx = Math.Max(idx - 1, 0);
+                activePokieMachine.BetAmount = activePokieMachine.BetOptions[idx];
+            }
+        }
+
+        if (Raylib.IsKeyPressed(KeyboardKey.Escape))
+        {
+            activePokieMachine.Close();
+            activeMinigameType = MinigameType.None;
+            currentScene = SceneState.Building;
+        }
+    }
+    else if (activeMinigameType == MinigameType.Pool)
+    {
+        activePoolGame.Update(dt, player);
+
+        if (Raylib.IsKeyPressed(KeyboardKey.Escape))
+        {
+            activePoolGame.Close();
+            activeMinigameType = MinigameType.None;
+            currentScene = SceneState.Building;
+        }
+    }
+}
+
+static void DrawMinigameScreen()
+{
+    if (activeMinigameType == MinigameType.Pokie)
+    {
+        Raylib.ClearBackground(Color.White);
+
+        Raylib.DrawRectangle(0, 0, ScreenWidth, 110, new Color((byte)230, (byte)40, (byte)40, (byte)255));
+        int titleWidth = Raylib.MeasureText("POKIE MACHINE", 50);
+        Raylib.DrawText("POKIE MACHINE", ScreenWidth / 2 - titleWidth / 2, 30, 50, Color.White);
+
+        int reelWidth = 150;
+        int reelHeight = 150;
+        int startX = ScreenWidth / 2 - (reelWidth * 3 + 40) / 2;
+        int y = 220;
+
+        Raylib.DrawRectangle(startX - 30, y - 30, reelWidth * 3 + 40 + 60, reelHeight + 60,
+            new Color((byte)40, (byte)40, (byte)45, (byte)255));
+        Raylib.DrawRectangleLines(startX - 30, y - 30, reelWidth * 3 + 40 + 60, reelHeight + 60, Color.Gold);
+
+        for (int i = 0; i < activePokieMachine.Reels.Length; i++)
+        {
+            int x = startX + i * (reelWidth + 20);
+
+            Raylib.DrawRectangle(x, y, reelWidth, reelHeight, Color.White);
+            Raylib.DrawRectangleLines(x, y, reelWidth, reelHeight, new Color((byte)40, (byte)40, (byte)45, (byte)255));
+
+            DrawSlotSymbolIcon(activePokieMachine.Reels[i], x, y, reelWidth);
+        }
+
+        Raylib.DrawText($"Bet: ${activePokieMachine.BetAmount}  (Up/Down to change)", startX, 420, 24,
+            new Color((byte)30, (byte)30, (byte)35, (byte)255));
+        Raylib.DrawText($"Wallet: ${player.Money}", startX, 460, 24,
+            new Color((byte)30, (byte)30, (byte)35, (byte)255));
+
+        if (activePokieMachine.ResultTimer > 0f)
+        {
+            int msgWidth = Raylib.MeasureText(activePokieMachine.ResultMessage, 26);
+            Raylib.DrawText(activePokieMachine.ResultMessage, ScreenWidth / 2 - msgWidth / 2, 500, 26,
+                new Color((byte)0, (byte)140, (byte)0, (byte)255));
+        }
+
+        string prompt = activePokieMachine.IsSpinning ? "Spinning..."
+            : activePokieMachine.HasSpunOnce ? "SPACE = Spin Again | ESC = Leave"
+            : "SPACE = Spin | ESC = Leave";
+        int promptWidth = Raylib.MeasureText(prompt, 22);
+        Raylib.DrawText(prompt, ScreenWidth / 2 - promptWidth / 2, 560, 22,
+            new Color((byte)90, (byte)90, (byte)95, (byte)255));
+    }
+    else if (activeMinigameType == MinigameType.Pool)
+    {
+        activePoolGame.Draw(player);
+    }
+}
+
+static void DrawSlotSymbolIcon(SlotSymbol symbol, int x, int y, int size)
+{
+    int cx = x + size / 2;
+    int cy = y + size / 2;
+
+    switch (symbol)
+    {
+        case SlotSymbol.Cherry:
+        {
+            Color stem = new Color((byte)40, (byte)110, (byte)40, (byte)255);
+            Color leaf = new Color((byte)60, (byte)160, (byte)60, (byte)255);
+            Color fruit = new Color((byte)200, (byte)30, (byte)30, (byte)255);
+            Color shine = new Color((byte)255, (byte)160, (byte)160, (byte)255);
+
+            Raylib.DrawLineEx(new Vector2(cx, cy - 4), new Vector2(cx - 8, cy - 28), 3, stem);
+            Raylib.DrawLineEx(new Vector2(cx, cy - 4), new Vector2(cx + 10, cy - 30), 3, stem);
+            Raylib.DrawEllipse(cx + 16, cy - 32, 9, 5, leaf);
+
+            Raylib.DrawCircle(cx - 10, cy + 12, 13, fruit);
+            Raylib.DrawCircle(cx - 14, cy + 8, 4, shine);
+            Raylib.DrawCircle(cx + 12, cy + 18, 13, fruit);
+            Raylib.DrawCircle(cx + 8, cy + 14, 4, shine);
+            break;
+        }
+
+        case SlotSymbol.Lemon:
+        {
+            Color lemon = new Color((byte)240, (byte)210, (byte)40, (byte)255);
+            Color shade = new Color((byte)210, (byte)180, (byte)20, (byte)255);
+
+            Raylib.DrawEllipse(cx, cy, 20, 26, lemon);
+            Raylib.DrawTriangle(
+                new Vector2(cx, cy - 26),
+                new Vector2(cx - 5, cy - 32),
+                new Vector2(cx + 5, cy - 32),
+                shade);
+            Raylib.DrawTriangle(
+                new Vector2(cx, cy + 26),
+                new Vector2(cx - 5, cy + 32),
+                new Vector2(cx + 5, cy + 32),
+                shade);
+            Raylib.DrawEllipse(cx - 6, cy - 6, 6, 9, new Color((byte)255,(byte)235,(byte)140,(byte)180));
+            break;
+        }
+
+        case SlotSymbol.Bell:
+        {
+            Color gold = new Color((byte)220, (byte)175, (byte)30, (byte)255);
+            Color goldDark = new Color((byte)170, (byte)130, (byte)10, (byte)255);
+
+            Raylib.DrawCircle(cx, cy - 18, 5, gold);
+            Raylib.DrawCircleLines(cx, cy - 18, 5, goldDark);
+            Raylib.DrawTriangle(
+                new Vector2(cx - 22, cy + 14),
+                new Vector2(cx + 22, cy + 14),
+                new Vector2(cx, cy - 14),
+                gold);
+            Raylib.DrawRectangle(cx - 24, cy + 12, 48, 8, goldDark);
+            Raylib.DrawCircle(cx, cy + 26, 5, goldDark);
+            break;
+        }
+
+        case SlotSymbol.Star:
+            DrawStarShape(cx, cy, 26, new Color((byte)80, (byte)170, (byte)255, (byte)255));
+            break;
+
+        case SlotSymbol.Seven:
+        {
+            string text = "7";
+            int fontSize = 56;
+            int tw = Raylib.MeasureText(text, fontSize);
+            Raylib.DrawText(text, cx - tw / 2 + 2, cy - fontSize / 2 + 2, fontSize, new Color((byte)120,(byte)0,(byte)90,(byte)120));
+            Raylib.DrawText(text, cx - tw / 2, cy - fontSize / 2, fontSize, new Color((byte)220,(byte)20,(byte)160,(byte)255));
+            Raylib.DrawCircle(cx - 28, cy - 22, 3, Color.Gold);
+            Raylib.DrawCircle(cx + 30, cy + 20, 3, Color.Gold);
+            Raylib.DrawCircle(cx + 26, cy - 26, 2, Color.Gold);
+            break;
+        }
+    }
+}
+
+static void DrawStarShape(int cx, int cy, int radius, Color color)
+{
+    const int points = 5;
+    float innerRadius = radius * 0.45f;
+    Vector2[] outer = new Vector2[points];
+    Vector2[] inner = new Vector2[points];
+
+    for (int i = 0; i < points; i++)
+    {
+        float angleOuter = -MathF.PI / 2 + i * (2 * MathF.PI / points);
+        float angleInner = angleOuter + MathF.PI / points;
+        outer[i] = new Vector2(cx + MathF.Cos(angleOuter) * radius, cy + MathF.Sin(angleOuter) * radius);
+        inner[i] = new Vector2(cx + MathF.Cos(angleInner) * innerRadius, cy + MathF.Sin(angleInner) * innerRadius);
+    }
+
+    for (int i = 0; i < points; i++)
+        Raylib.DrawTriangle(new Vector2(cx, cy), inner[i], inner[(i + 1) % points], color);
+
+    for (int i = 0; i < points; i++)
+    {
+        int next = (i + 1) % points;
+        Raylib.DrawTriangle(outer[i], inner[i], new Vector2(cx, cy), color);
+        Raylib.DrawTriangle(outer[i], new Vector2(cx, cy), inner[next], color);
+    }
+}
         static string GetTimeString()
             {
                 float totalHours = timeOfDay * 24f;
@@ -6308,83 +6588,48 @@ if (Raylib.IsKeyPressed(KeyboardKey.E) && !barMenuOpen && Vector2.Distance(playe
         new Vector2(910, 245)
     };
 
-    foreach (Vector2 pokiePos in pokiePositions)
+    for (int i = 0; i < pokiePositions.Length; i++)
     {
-        if (Vector2.Distance(player.Position, pokiePos) < 80)
+        if (i == 1) continue; // machine 2 (index 1) is the occupied one — handled below
+
+        if (Vector2.Distance(player.Position, pokiePositions[i]) < 80)
         {
             if (Raylib.IsKeyPressed(KeyboardKey.Space))
             {
-                if (player.Money >= 5)
-                {
-                    player.Money -= 5;
-                    int roll = Raylib.GetRandomValue(1, 10);
-
-                    if (roll <= 2)
-                    {
-                        int winnings = Raylib.GetRandomValue(10, 50);
-                        player.Money += winnings;
-                        shopMessage = $"JACKPOT! You won ${winnings}!";
-                    }
-                    else if (roll <= 5)
-                    {
-                        int winnings = Raylib.GetRandomValue(1, 9);
-                        player.Money += winnings;
-                        shopMessage = $"Small win! You got ${winnings} back.";
-                    }
-                    else
-                    {
-                        shopMessage = "No luck this time. Lost $5.";
-                    }
-
-                    shopMessageTimer = 2f;
-                }
-                else
-                {
-                    shopMessage = "Need at least $5 to play!";
-                    shopMessageTimer = 1.5f;
-                }
+                activePokieMachine.Open(i);
+                activeMinigameType = MinigameType.Pokie;
+                currentScene = SceneState.Minigame;
             }
         }
-        // pokie machine 4 - occupied by NPC
-if (Vector2.Distance(player.Position, new Vector2(910, 365)) < 80)
-{
-    if (Raylib.IsKeyPressed(KeyboardKey.Space))
+    }
+
+    // occupied pokie machine (index 1)
+    if (Vector2.Distance(player.Position, pokiePositions[1]) < 80)
     {
-        shopMessage = "Oi back off! That bloke is on a winning streak bro!";
-        shopMessageTimer = 2f;
+        if (Raylib.IsKeyPressed(KeyboardKey.Space))
+        {
+            shopMessage = "Oi back off! That bloke is on a winning streak bro!";
+            shopMessageTimer = 2f;
+        }
     }
-}
-    }
+    
     Vector2[] poolTablePositions = {
     new Vector2(240, 330),
     new Vector2(540, 330)
 };
 
-foreach (Vector2 tablePos in poolTablePositions)
+for (int i = 0; i < poolTablePositions.Length; i++)
 {
-    if (Vector2.Distance(player.Position, tablePos) < 100)
+    if (Vector2.Distance(player.Position, poolTablePositions[i]) < 100)
     {
         if (Raylib.IsKeyPressed(KeyboardKey.Space))
         {
             if (player.Money >= 2)
             {
                 player.Money -= 2;
-                int roll = Raylib.GetRandomValue(1, 10);
-
-                if (roll <= 3)
-                {
-                    shopMessage = "Nice shot! You won the round.";
-                }
-                else if (roll <= 6)
-                {
-                    shopMessage = "Close game, but you lost.";
-                }
-                else
-                {
-                    shopMessage = "Scratched on the 8 ball. Unlucky!";
-                }
-
-                shopMessageTimer = 2f;
+                activePoolGame.Open(i);
+                activeMinigameType = MinigameType.Pool;
+                currentScene = SceneState.Minigame;
             }
             else
             {
@@ -6544,7 +6789,11 @@ if (currentBuilding.BuildingName == "POLICE STATION")
     camera.Target = player.Position;
 
     break;
+    case SceneState.Minigame:
+                    UpdateMinigameScreen(dt);
+                    break;
             }
+
         }       
         
 
@@ -6568,6 +6817,9 @@ if (currentBuilding.BuildingName == "POLICE STATION")
                 case SceneState.Building:
                     DrawInterior();
                     break;
+                case SceneState.Minigame:
+                DrawMinigameScreen();
+                break;
             }
             
             UpdateSkillsUI();
@@ -6911,7 +7163,7 @@ Raylib.DrawRectangle(hx + 55, hy, 8, 20, Color.DarkBrown);
     Raylib.DrawRectangle(0, 0, ScreenWidth, ScreenHeight, new Color((byte)0, (byte)0, (byte)0, (byte)150));
 
     // panel
-    Raylib.DrawRectangle(ScreenWidth / 2 - 200, ScreenHeight / 2 - 250, 400, 500, new Color((byte)20, (byte)20, (byte)30, (byte)240));
+    Raylib.DrawRectangle(ScreenWidth / 2 - 200, ScreenHeight / 2 - 250, 400, 600, new Color((byte)20, (byte)20, (byte)30, (byte)240));
     Raylib.DrawRectangleLines(ScreenWidth / 2 - 200, ScreenHeight / 2 - 250, 400, 500, Color.Gold);
     Raylib.DrawText("PAUSED", ScreenWidth / 2 - 70, ScreenHeight / 2 - 230, 40, Color.Gold);
 
@@ -13191,7 +13443,7 @@ private void DrawMountainGoat(int x, int y)
         Completed = false;
     }
 }
-    class Player
+     class Player
     {
         public Vector2 Position;
         public enum FacingDirection { Down, Up, Left, Right }
@@ -13242,6 +13494,40 @@ private void DrawMountainGoat(int x, int y)
         public int DrivingXP = 0;
         public int AthleticsLevel = 1;
         public int AthleticsXP = 0;
+        public int CyclingLevel = 1;
+        public int CyclingXP = 0;
+        public int RidingLevel = 1;
+        public int RidingXP = 0;
+        public int DefenceLevel = 1;
+        public int DefenceXP = 0;
+        public int HitpointsLevel = 1;
+        public int HitpointsXP = 0;
+        public int StaminaLevel = 1;
+        public int StaminaXP = 0;
+        public int SwimmingLevel = 1;
+        public int SwimmingXP = 0;
+        public int RangeLevel = 1;
+        public int RangeXP = 0;
+        public int FarmingLevel = 1;
+        public int FarmingXP = 0;
+        public int SportsLevel = 1;
+        public int SportsXP = 0;
+        public int SpiritualLevel = 1;
+        public int SpiritualXP = 0;
+        public int CookingLevel = 1;
+        public int CookingXP = 0;
+        public int DivingLevel = 1;
+        public int DivingXP = 0;
+        public int ElementalLevel = 1;
+        public int ElementalXP = 0;
+        public int AlchemistLevel = 1;
+        public int AlchemistXP = 0;
+        public int DarkArtsLevel = 1;
+        public int DarkArtsXP = 0;
+        public int EnchantmentLevel = 1;
+        public int EnchanmenttXP = 0;
+        public int MysticalLevel = 1;
+        public int MysticalXP = 0;   
         public int StrengthLevel = 1;
         public int StrengthXP = 0;
         public bool HasTrolley = false;
@@ -13268,6 +13554,7 @@ private void DrawMountainGoat(int x, int y)
         {
             Position = position;
         }
+        
      void DrawPickaxeSwingLeft(int x, int y)
 {
     float swingAngle = chopAnimAngle * MathF.PI / 180f;
@@ -16357,6 +16644,457 @@ switch (Facing)
 }
 
 
+    }
+}
+     class PoolGame
+{
+    public bool IsOpen = false;
+    public int TableIndex = -1;
+
+    public const int TableLeft = 140;
+    public const int TableTop = 160;
+    public const int TableWidth = 1000;
+    public const int TableHeight = 460;
+    public const float BallRadius = 14f;
+    public const float Friction = 0.985f;
+    public const float MinSpeed = 8f;
+
+    public Vector2[] BallPos = new Vector2[16];
+    public Vector2[] BallVel = new Vector2[16];
+    public bool[] Potted = new bool[16];
+    public Vector2[] Pockets;
+
+    public bool Aiming = true;
+    public bool BallsMoving = false;
+    public float AimAngle = 0f;
+    public float Power = 0f;
+    public bool ChargingPower = false;
+    public bool Scratched = false;
+    public bool inputLocked = true;
+
+    public int BallsPotted = 0;
+    public bool GameOver = false;
+    public string Message = "";
+    public float MessageTimer = 0f;
+
+    public void Open(int tableIndex)
+    {
+        IsOpen = true;
+        TableIndex = tableIndex;
+        GameOver = false;
+        BallsPotted = 0;
+        Message = "";
+        MessageTimer = 0;
+        inputLocked = true;
+        SetupPockets();
+        RackBalls();
+    }
+
+    public void Close()
+    {
+        IsOpen = false;
+        TableIndex = -1;
+    }
+
+    void SetupPockets()
+    {
+        int l = TableLeft, t = TableTop, w = TableWidth, h = TableHeight;
+        Pockets = new Vector2[]
+        {
+            new Vector2(l, t),
+            new Vector2(l + w / 2, t - 6),
+            new Vector2(l + w, t),
+            new Vector2(l, t + h),
+            new Vector2(l + w / 2, t + h + 6),
+            new Vector2(l + w, t + h),
+        };
+    }
+
+    void RackBalls()
+    {
+        for (int i = 0; i < 16; i++) { Potted[i] = false; BallVel[i] = Vector2.Zero; }
+
+        BallPos[0] = new Vector2(TableLeft + TableWidth * 0.25f, TableTop + TableHeight / 2f);
+
+        float startX = TableLeft + TableWidth * 0.65f;
+        float startY = TableTop + TableHeight / 2f;
+        float spacing = BallRadius * 2.1f;
+
+        int[] order = { 1, 9, 2, 10, 8, 3, 11, 4, 12, 5, 13, 6, 14, 7, 15 };
+        int idx = 0;
+        for (int row = 0; row < 5; row++)
+        {
+            for (int col = 0; col <= row; col++)
+            {
+                float x = startX + row * spacing * 0.87f;
+                float y = startY - row * spacing / 2f + col * spacing;
+                BallPos[order[idx]] = new Vector2(x, y);
+                idx++;
+            }
+        }
+
+        AimAngle = 0f;
+        Power = 0f;
+        Aiming = true;
+        BallsMoving = false;
+        Scratched = false;
+    }
+
+    public void Update(float dt, Player player)
+    {
+        if (MessageTimer > 0) MessageTimer -= dt;
+
+        if (BallsMoving)
+        {
+            UpdatePhysics(dt, player);
+            return;
+        }
+
+        if (GameOver) return;
+        if (inputLocked)
+   {
+        if (Raylib.IsKeyUp(KeyboardKey.Space))
+            inputLocked = false;
+        return;
+}
+
+        if (Raylib.IsKeyDown(KeyboardKey.Left))  AimAngle -= 1.6f * dt;
+        if (Raylib.IsKeyDown(KeyboardKey.Right)) AimAngle += 1.6f * dt;
+
+        if (Raylib.IsKeyDown(KeyboardKey.Space))
+        {
+            ChargingPower = true;
+            Power = Math.Min(1f, Power + dt * 0.8f);
+        }
+        else if (ChargingPower)
+        {
+            ChargingPower = false;
+            Shoot();
+        }
+    }
+
+    void Shoot()
+    {
+        float speed = 200f + Power * 1400f;
+        BallVel[0] = new Vector2(MathF.Cos(AimAngle), MathF.Sin(AimAngle)) * speed;
+        Power = 0f;
+        BallsMoving = true;
+        Aiming = false;
+    }
+
+    void UpdatePhysics(float dt, Player player)
+    {
+        for (int i = 0; i < 16; i++)
+        {
+            if (Potted[i]) continue;
+            BallPos[i] += BallVel[i] * dt;
+            BallVel[i] *= Friction;
+            if (BallVel[i].Length() < MinSpeed) BallVel[i] = Vector2.Zero;
+
+            if (BallPos[i].X - BallRadius < TableLeft) { BallPos[i].X = TableLeft + BallRadius; BallVel[i].X *= -0.85f; }
+            if (BallPos[i].X + BallRadius > TableLeft + TableWidth) { BallPos[i].X = TableLeft + TableWidth - BallRadius; BallVel[i].X *= -0.85f; }
+            if (BallPos[i].Y - BallRadius < TableTop) { BallPos[i].Y = TableTop + BallRadius; BallVel[i].Y *= -0.85f; }
+            if (BallPos[i].Y + BallRadius > TableTop + TableHeight) { BallPos[i].Y = TableTop + TableHeight - BallRadius; BallVel[i].Y *= -0.85f; }
+        }
+
+        for (int i = 0; i < 16; i++)
+        {
+            if (Potted[i]) continue;
+            for (int j = i + 1; j < 16; j++)
+            {
+                if (Potted[j]) continue;
+                Vector2 diff = BallPos[j] - BallPos[i];
+                float dist = diff.Length();
+                if (dist < BallRadius * 2 && dist > 0.001f)
+                {
+                    Vector2 normal = diff / dist;
+                    float overlap = BallRadius * 2 - dist;
+                    BallPos[i] -= normal * (overlap / 2f);
+                    BallPos[j] += normal * (overlap / 2f);
+
+                    Vector2 relVel = BallVel[i] - BallVel[j];
+                    float speedAlongNormal = Vector2.Dot(relVel, normal);
+                    if (speedAlongNormal > 0)
+                    {
+                        Vector2 impulse = normal * speedAlongNormal;
+                        BallVel[i] -= impulse;
+                        BallVel[j] += impulse;
+                    }
+                }
+            }
+        }
+
+        for (int i = 0; i < 16; i++)
+        {
+            if (Potted[i]) continue;
+            foreach (var pocket in Pockets)
+            {
+                if (Vector2.Distance(BallPos[i], pocket) < 22f)
+                {
+                    Potted[i] = true;
+                    BallVel[i] = Vector2.Zero;
+
+                    if (i == 0)
+                    {
+                        Scratched = true;
+                        Message = "Scratch! Cue ball potted.";
+                        MessageTimer = 2f;
+                    }
+                    else
+                    {
+                        BallsPotted++;
+                        player.Money += 3;
+                        Message = i == 8 ? "8-Ball potted! You win!" : "Ball potted! +$3";
+                        MessageTimer = 1.5f;
+                        if (i == 8) GameOver = true;
+                    }
+                    break;
+                }
+            }
+        }
+
+        bool anyMoving = false;
+        for (int i = 0; i < 16; i++)
+            if (!Potted[i] && BallVel[i].Length() > 0.1f) anyMoving = true;
+
+        if (!anyMoving)
+        {
+            BallsMoving = false;
+            Aiming = true;
+
+            if (Scratched)
+            {
+                BallPos[0] = new Vector2(TableLeft + TableWidth * 0.25f, TableTop + TableHeight / 2f);
+                BallVel[0] = Vector2.Zero;
+                Potted[0] = false;
+                Scratched = false;
+            }
+        }
+    }
+
+    public void Draw(Player player)
+    {
+        Raylib.DrawRectangle(0, 0, 1280, 720, new Color((byte)20, (byte)60, (byte)20, (byte)255));
+
+        Raylib.DrawRectangle(TableLeft, TableTop, TableWidth, TableHeight, new Color((byte)10, (byte)110, (byte)40, (byte)255));
+        Raylib.DrawRectangleLinesEx(new Rectangle(TableLeft - 12, TableTop - 12, TableWidth + 24, TableHeight + 24), 12,
+            new Color((byte)90, (byte)55, (byte)25, (byte)255));
+
+        foreach (var p in Pockets)
+            Raylib.DrawCircle((int)p.X, (int)p.Y, 18, Color.Black);
+
+        for (int i = 0; i < 16; i++)
+            if (!Potted[i]) DrawBall(i);
+
+        if (Aiming && !BallsMoving && !Potted[0])
+        {
+            Vector2 dir = new Vector2(MathF.Cos(AimAngle), MathF.Sin(AimAngle));
+            Vector2 cueBallPos = BallPos[0];
+
+            for (float t = BallRadius + 6; t < 300; t += 14)
+            {
+                Vector2 pt = cueBallPos + dir * t;
+                Raylib.DrawCircle((int)pt.X, (int)pt.Y, 2, new Color((byte)255, (byte)255, (byte)255, (byte)150));
+            }
+
+            float pullback = 20 + Power * 60;
+            Vector2 stickStart = cueBallPos - dir * (BallRadius + pullback);
+            Vector2 stickEnd = cueBallPos - dir * (BallRadius + pullback + 140);
+            Raylib.DrawLineEx(stickStart, stickEnd, 5, new Color((byte)180, (byte)140, (byte)80, (byte)255));
+        }
+
+        if (ChargingPower)
+        {
+            Raylib.DrawRectangle(TableLeft, TableTop + TableHeight + 30, 200, 20, new Color((byte)40, (byte)40, (byte)40, (byte)255));
+            Raylib.DrawRectangle(TableLeft, TableTop + TableHeight + 30, (int)(200 * Power), 20, Color.Red);
+            Raylib.DrawRectangleLines(TableLeft, TableTop + TableHeight + 30, 200, 20, Color.White);
+            Raylib.DrawText("POWER", TableLeft, TableTop + TableHeight + 54, 16, Color.White);
+        }
+
+        Raylib.DrawText("8-BALL POOL", 1280 / 2 - 110, 30, 40, Color.Gold);
+        Raylib.DrawText($"Balls Potted: {BallsPotted}", TableLeft, TableTop - 40, 22, Color.White);
+        Raylib.DrawText($"Wallet: ${player.Money}", TableLeft + TableWidth - 200, TableTop - 40, 22, Color.White);
+
+        if (MessageTimer > 0)
+        {
+            int mw = Raylib.MeasureText(Message, 26);
+            Raylib.DrawText(Message, 1280 / 2 - mw / 2, TableTop + TableHeight + 80, 26, Color.Yellow);
+        }
+
+        if (GameOver)
+        {
+            string winText = "YOU WIN! 8-Ball potted!";
+            int ww = Raylib.MeasureText(winText, 34);
+            Raylib.DrawText(winText, 1280 / 2 - ww / 2, TableTop + TableHeight / 2 - 20, 34, Color.Gold);
+            Raylib.DrawText("ESC = Leave Table", 1280 / 2 - 90, TableTop + TableHeight / 2 + 30, 20, Color.LightGray);
+        }
+        else
+        {
+            string prompt = BallsMoving ? "Balls rolling..." : "LEFT/RIGHT = Aim | Hold SPACE = Power | Release = Shoot | ESC = Leave";
+            int pw = Raylib.MeasureText(prompt, 18);
+            Raylib.DrawText(prompt, 1280 / 2 - pw / 2, 720 - 40, 18, Color.LightGray);
+        }
+    }
+
+    void DrawBall(int i)
+    {
+        Vector2 pos = BallPos[i];
+
+        if (i == 0)
+        {
+            Raylib.DrawCircle((int)pos.X, (int)pos.Y, BallRadius, Color.White);
+            Raylib.DrawCircleLines((int)pos.X, (int)pos.Y, BallRadius, Color.LightGray);
+            return;
+        }
+
+        Color color = GetBallColor(i);
+        bool stripe = i >= 9;
+
+        Raylib.DrawCircle((int)pos.X, (int)pos.Y, BallRadius, stripe ? Color.White : color);
+        if (stripe)
+            Raylib.DrawRectangle((int)(pos.X - BallRadius), (int)(pos.Y - 5), (int)(BallRadius * 2), 10, color);
+
+        Raylib.DrawCircle((int)(pos.X - 4), (int)(pos.Y - 4), 4, new Color((byte)255, (byte)255, (byte)255, (byte)160));
+
+        Raylib.DrawCircle((int)pos.X, (int)pos.Y, 7, Color.White);
+        string numText = i.ToString();
+        int tw = Raylib.MeasureText(numText, 12);
+        Raylib.DrawText(numText, (int)pos.X - tw / 2, (int)pos.Y - 6, 12, Color.Black);
+    }
+
+    Color GetBallColor(int i)
+    {
+        int n = i > 8 ? i - 8 : i;
+        return n switch
+        {
+            1 => Color.Yellow,
+            2 => Color.Blue,
+            3 => Color.Red,
+            4 => Color.Purple,
+            5 => Color.Orange,
+            6 => Color.DarkGreen,
+            7 => new Color((byte)120, (byte)40, (byte)20, (byte)255),
+            8 => Color.Black,
+            _ => Color.Gray
+        };
+    }
+}
+ class PokieMachine
+{
+    public bool IsOpen = false;          // are we currently in the minigame screen for this machine?
+    public int MachineIndex = -1;        // which machine in the array (for returning to the right spot)
+
+    public int BetAmount = 5;
+    public int[] BetOptions = { 5, 10, 25, 50 };
+
+    public SlotSymbol[] Reels = new SlotSymbol[3];
+
+    public bool IsSpinning = false;
+    public float[] ReelStopTimers = new float[3]; // staggered stop times per reel
+    public float SpinElapsed = 0f;
+    public float SymbolCycleTimer = 0f;
+    public const float SymbolCycleSpeed = 0.07f; // how fast symbols flick by while spinning
+
+    public string ResultMessage = "";
+    public float ResultTimer = 0f;
+    public bool HasSpunOnce = false;
+
+    public void Open(int machineIndex)
+    {
+        IsOpen = true;
+        MachineIndex = machineIndex;
+        HasSpunOnce = false;
+        ResultMessage = "";
+        ResultTimer = 0f;
+        // give it some default symbols to display before first spin
+        for (int i = 0; i < Reels.Length; i++)
+            Reels[i] = SlotData.GetRandomSymbol();
+    }
+
+    public void Close()
+    {
+        IsOpen = false;
+        IsSpinning = false;
+        MachineIndex = -1;
+    }
+
+    public void StartSpin(Player player)
+    {
+        if (IsSpinning) return;
+        if (player.Money < BetAmount)
+        {
+            ResultMessage = "Not enough cash for that bet!";
+            ResultTimer = 1.5f;
+            return;
+        }
+
+        player.Money -= BetAmount;
+        IsSpinning = true;
+        HasSpunOnce = true;
+        SpinElapsed = 0f;
+        SymbolCycleTimer = 0f;
+        ResultMessage = "";
+
+        // each reel stops a little after the previous one
+        ReelStopTimers[0] = 1.0f;
+        ReelStopTimers[1] = 1.5f;
+        ReelStopTimers[2] = 2.0f;
+    }
+
+    public void Update(float dt, Player player)
+    {
+        if (ResultTimer > 0f) ResultTimer -= dt;
+
+        if (!IsSpinning) return;
+
+        SpinElapsed += dt;
+        SymbolCycleTimer += dt;
+
+        // flick the symbols rapidly while any reel is still "spinning"
+        if (SymbolCycleTimer >= SymbolCycleSpeed)
+        {
+            SymbolCycleTimer = 0f;
+            for (int i = 0; i < Reels.Length; i++)
+            {
+                if (SpinElapsed < ReelStopTimers[i])
+                    Reels[i] = SlotData.GetRandomSymbol();
+            }
+        }
+
+        // once the last reel passes its stop time, spin is done -> evaluate
+        if (SpinElapsed >= ReelStopTimers[^1])
+        {
+            IsSpinning = false;
+            EvaluateResult(player);
+        }
+    }
+
+    private void EvaluateResult(Player player)
+    {
+        bool allMatch = Reels[0] == Reels[1] && Reels[1] == Reels[2];
+        bool twoMatch = !allMatch && (Reels[0] == Reels[1] || Reels[1] == Reels[2] || Reels[0] == Reels[2]);
+
+        if (allMatch)
+        {
+            int multiplier = SlotData.ThreeMatchMultiplier[Reels[0]];
+            int winnings = BetAmount * multiplier;
+            player.Money += winnings;
+            ResultMessage = Reels[0] == SlotSymbol.Seven
+                ? $"JACKPOT!!! Triple 7s — you won ${winnings}!"
+                : $"Triple match! You won ${winnings}!";
+        }
+        else if (twoMatch)
+        {
+            int winnings = (int)(BetAmount * SlotData.TwoMatchMultiplier);
+            player.Money += winnings;
+            ResultMessage = $"Two in a row! You got ${winnings} back.";
+        }
+        else
+        {
+            ResultMessage = $"No match. Lost ${BetAmount}.";
+        }
+
+        ResultTimer = 2.5f;
     }
 }
 
