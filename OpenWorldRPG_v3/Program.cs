@@ -14,7 +14,10 @@ namespace OpenWorldRPG
         World,
         Building,
         Minigame,
-        Dungeon
+        Dungeon,
+        DrivingTest,
+        Space,
+        Underwater
     }
 
               public enum SlotSymbol
@@ -103,6 +106,7 @@ public static readonly Dictionary<SlotSymbol, float> TwoMatchMultiplier = new()
         static SceneState currentScene = SceneState.MainMenu;
         static Camera2D camera = new Camera2D();
         public static Player player = new Player(new Vector2(-1917, -9720));
+        static float GetCurrentHour() => timeOfDay * 24f;
 
         // COMBAT
         enum HandPhase { Tools, Combat }
@@ -120,25 +124,321 @@ public static readonly Dictionary<SlotSymbol, float> TwoMatchMultiplier = new()
         static float cRideAnimTimer = 0f;
         static Vector2 cRidePos = new Vector2(640, 320);   // standing at the claw machines
         static bool cRideMessageActive = false;
-        
+
+        // DRIVER'S LICENCE SYSTEM
+        enum LicenceClass { None, D, C, B, A, S }
+
+        static bool hasTheoryD = false, hasTheoryC = false, hasTheoryB = false, hasTheoryA = false, hasTheoryS = false;
+        static bool hasPracticalD = false, hasPracticalC = false, hasPracticalB = false, hasPracticalA = false, hasPracticalS = false;
+
+        static LicenceClass CurrentLicenceClass => player.DrivingLevel switch {
+            >= 1  and <= 19  => LicenceClass.D,
+            >= 20 and <= 39  => LicenceClass.C,
+            >= 40 and <= 59  => LicenceClass.B,
+            >= 60 and <= 79  => LicenceClass.A,
+            >= 80 and <= 100 => LicenceClass.S,
+            _ => LicenceClass.None
+        };
+
+        static bool HasTheoryForCurrentClass => CurrentLicenceClass switch {
+            LicenceClass.D => hasTheoryD,
+            LicenceClass.C => hasTheoryC,
+            LicenceClass.B => hasTheoryB,
+            LicenceClass.A => hasTheoryA,
+            LicenceClass.S => hasTheoryS,
+            _ => false
+        };
+
+        static bool HasPracticalForCurrentClass => CurrentLicenceClass switch {
+            LicenceClass.D => hasPracticalD,
+            LicenceClass.C => hasPracticalC,
+            LicenceClass.B => hasPracticalB,
+            LicenceClass.A => hasPracticalA,
+            LicenceClass.S => hasPracticalS,
+            _ => false
+        };
+
+        static bool CanDriveNow()
+        {
+            if (!HasTheoryForCurrentClass) return false;
+            if (HasPracticalForCurrentClass) return true;
+            float hour = GetCurrentHour();
+            return hour >= 6f && hour < 22f;
+        }
+
+        static bool PracticalAvailable => player.DrivingLevel switch {
+            >= 10 and <= 19  => !hasPracticalD,
+            >= 30 and <= 39  => !hasPracticalC,
+            >= 50 and <= 59  => !hasPracticalB,
+            >= 70 and <= 79  => !hasPracticalA,
+            >= 90 and <= 100 => !hasPracticalS,
+            _ => false
+        };
+
+        // AA Building state
+        static bool aaMenuOpen       = false;
+        static bool aaTheoryOpen     = false;
+        static int  aaTheoryQuestion = 0;
+        static int  aaTheoryScore    = 0;
+        static int  aaTheorySelected = -1;
+        static bool aaTheoryFinished = false;
+        static bool aaTheoryPassed   = false;
+
+        // Driving test scene
+        static Vehicle testVehicle   = null;
+        static Vector2[] testCheckpoints;
+        static int   testCurrentCheckpoint = 0;
+        static float testTimer         = 0f;
+        static float testTimeLimit     = 0f;
+        static bool  testComplete      = false;
+        static bool  testFailed        = false;
+        static string testMessage      = "";
+        static float testMessageTimer  = 0f;
+        static int   testLap           = 0;
+        static int   testLapsRequired  = 1;
+        static LicenceClass testingForClass = LicenceClass.D;
+        static Vector2 testReturnPos;
+        record TheoryQ(string Question, string[] Options, int Correct);
+
+        static TheoryQ[][] theoryTests = {
+            // D Licence (1-19) — basic rules
+            new TheoryQ[] {
+                new("What does a red traffic light mean?",
+                    new[]{"Speed up","Stop","Slow down","Honk"}, 1),
+                new("What side of the road do you drive on in New Zealand?",
+                    new[]{"Left","Right","Middle","Either"}, 0),
+                new("What is the default urban speed limit in NZ?",
+                    new[]{"80 km/h","100 km/h","50 km/h","60 km/h"}, 2),
+                new("When must you give way?",
+                    new[]{"Never","Only at roundabouts","When turning right","When you feel like it"}, 2),
+                new("What does a yellow line on the road mean?",
+                    new[]{"Parking allowed","No passing","Bus lane","Cycle lane"}, 1),
+                new("At a give way sign you must?",
+                    new[]{"Stop completely","Give way to traffic on the main road","Flash your lights","Beep your horn"}, 1),
+                new("Blood alcohol limit for drivers under 20?",
+                    new[]{"80mg/100ml","Zero","50mg/100ml","30mg/100ml"}, 1),
+                new("How far before a turn should you signal?",
+                    new[]{"3 seconds","At the turn","30 metres","As far in advance as possible"}, 3),
+                new("What must you do when an emergency vehicle approaches?",
+                    new[]{"Speed up","Pull over and stop","Flash your lights","Ignore it"}, 1),
+                new("A solid yellow centre line means?",
+                    new[]{"You may overtake","No overtaking","Slow down","Parking here"}, 1),
+            },
+            // C Licence (20-39) — intermediate
+            new TheoryQ[] {
+                new("Open road speed limit in NZ?",
+                    new[]{"100 km/h","110 km/h","90 km/h","80 km/h"}, 0),
+                new("Minimum following distance at 100km/h?",
+                    new[]{"1 second","2 seconds","3 seconds","4 seconds"}, 2),
+                new("When can you use your horn?",
+                    new[]{"To greet friends","When angry","To warn others of danger","Never"}, 2),
+                new("Fatigue: what should you do if tired?",
+                    new[]{"Open window","Turn up music","Take a break","Speed up to finish faster"}, 2),
+                new("What is aquaplaning?",
+                    new[]{"Driving on ice","Tyre loss of contact with wet road","Braking too hard","Driving in fog"}, 1),
+                new("Tyre tread minimum depth in NZ?",
+                    new[]{"1.5mm","2mm","3mm","1mm"}, 0),
+                new("When can you overtake on the left?",
+                    new[]{"Never","When the vehicle ahead is turning right","Always","On highways only"}, 1),
+                new("What does ABS stand for?",
+                    new[]{"Auto Brake System","Anti-lock Braking System","Advanced Brake Safety","Automatic Brake Support"}, 1),
+                new("How far from a fire hydrant must you not park?",
+                    new[]{"1 metre","3 metres","5 metres","6 metres"}, 0),
+                new("Dipped headlights required from?",
+                    new[]{"Sunrise only","30 min after sunset to 30 min before sunrise","Only in rain","Midnight to 5am"}, 1),
+            },
+            // B Licence (40-59) — advanced
+            new TheoryQ[] {
+                new("Maximum towing speed in NZ?",
+                    new[]{"80 km/h","90 km/h","100 km/h","70 km/h"}, 0),
+                new("Right of way at an uncontrolled intersection?",
+                    new[]{"Biggest vehicle","Vehicle on the right","Vehicle on the left","Fastest vehicle"}, 1),
+                new("When is it legal to use a mobile phone while driving?",
+                    new[]{"At traffic lights","Never unless hands-free","Only for calls","Whenever"}, 1),
+                new("Safe gap to merge at 100km/h?",
+                    new[]{"2 seconds","4 seconds","6 seconds","1 second"}, 1),
+                new("Brake fade is caused by?",
+                    new[]{"Cold brakes","Overheated brakes","Wet brakes","New brake pads"}, 1),
+                new("What is the purpose of ESC?",
+                    new[]{"Improve fuel economy","Prevent skidding","Increase speed","Reduce tyre wear"}, 1),
+                new("Double white centre lines mean?",
+                    new[]{"You can cross if clear","No crossing at all","Cross only to turn","Cross only going uphill"}, 1),
+                new("Heavy vehicle max speed on open road?",
+                    new[]{"90 km/h","100 km/h","80 km/h","70 km/h"}, 0),
+                new("When must headlights be on?",
+                    new[]{"Only at night","Whenever visibility is less than 100m","Only in rain","Never required"}, 1),
+                new("Correct hand position on steering wheel?",
+                    new[]{"10 and 2","9 and 3","8 and 4","Both hands on top"}, 1),
+            },
+            // A Licence (60-79) — expert
+            new TheoryQ[] {
+                new("Understeer is when?",
+                    new[]{"Rear slides out","Front wheels lose grip and car goes straight","Car spins","Brakes lock"}, 1),
+                new("Oversteer is when?",
+                    new[]{"Front pushes wide","Rear breaks away","Car goes straight","Brakes fade"}, 1),
+                new("Trail braking is used for?",
+                    new[]{"Motorway driving","Rotating the car into a corner","Parking","Emergency stops"}, 1),
+                new("What is the racing line?",
+                    new[]{"A motorway lane","The fastest path through a corner","The centre of the road","The inside lane"}, 1),
+                new("Heel-toe technique involves?",
+                    new[]{"Braking and steering","Simultaneous brake, throttle blip and clutch","Gear change only","Handbrake use"}, 1),
+                new("Lift-off oversteer occurs when?",
+                    new[]{"Accelerating in a corner","Lifting throttle mid-corner","Braking in a straight","Changing gear"}, 1),
+                new("Correct apex technique?",
+                    new[]{"Turn in early, apex early","Late turn in, late apex","Turn in at the cone","Always hit the inside"}, 1),
+                new("Tyre slip angle is?",
+                    new[]{"Tyre pressure loss","Difference between wheel direction and travel direction","Tread wear","Puncture angle"}, 1),
+                new("Weight transfer under braking moves weight?",
+                    new[]{"To the rear","To the front","Equally","To the outside"}, 1),
+                new("Launch control is used for?",
+                    new[]{"Cruise control","Optimising acceleration from standstill","Parking assist","Motorway merging"}, 1),
+            },
+            // S Licence (80-100) — professional
+            new TheoryQ[] {
+                new("Scandinavian flick technique purpose?",
+                    new[]{"Emergency braking","Rotate car before a rally corner","Parallel parking","Fuel saving"}, 1),
+                new("Threshold braking is?",
+                    new[]{"Full ABS engagement","Braking just below lockup point for maximum deceleration","Light braking","Cadence braking"}, 1),
+                new("What is power oversteer?",
+                    new[]{"Using brakes to rotate","Using excess throttle to break rear traction","Steering with weight","Drifting by braking"}, 1),
+                new("Counter-steering means?",
+                    new[]{"Steering opposite to corner","Steering into a slide to correct it","Braking while turning","Steering with throttle"}, 1),
+                new("G-force in a 2G corner means?",
+                    new[]{"Twice earth gravity laterally","Twice speed","Double fuel use","Twice braking distance"}, 0),
+                new("What is cadence braking?",
+                    new[]{"Full brake hold","Pumping brakes repeatedly to prevent lockup","One-foot braking","ABS simulation"}, 1),
+                new("Polar moment of inertia affects?",
+                    new[]{"Engine power","How quickly a car rotates","Fuel consumption","Tyre grip"}, 1),
+                new("Limited slip differential purpose?",
+                    new[]{"Reduce understeer","Allow wheels to spin at different speeds while limiting slip","Save fuel","Improve steering"}, 1),
+                new("What is the fastest cornering technique?",
+                    new[]{"Early turn in","Late apex with late braking","Always stay wide","Brake in the corner"}, 1),
+                new("Yaw moment is?",
+                    new[]{"Vertical rotation","Horizontal rotation around the car's vertical axis","Forward tilt","Sideways weight shift"}, 1),
+            }
+        };
+                
 
         // CALENDAR AND TIME
         static int dayOfWeek = 0; // 0-6, Monday to Sunday
         static string[] dayNames = { "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday" };
         static float dayCounter = 0f; // tracks full day cycles
         static float timeOfDay = 0f; // 0 to 1, full day cycle
-        static float daySpeed = 0.02f; // how fast the day progresses
+        static float daySpeed = 0.01f; // how fast the day progresses
 
         // BIOMES
         static string currentBiome = "SAFE ZONE";
         static string lastBiome = "";
         static float biomeMessageTimer = 0f;
 
+        // COOKING SYSTEM
+        
+
+        // Grocery / shopping bag
+        static int playerGroceryBags = 0;       // Shopping Bag count in inventory
+        static List<string> groceryBagContents = new List<string>();  // what's inside the last bag
+        static bool groceryShopOpen = false;
+        static int groceryAisleFilter = 0;  // 0=all, 1,2,3
+
+        // Fridge storage (MY HOUSE)
+        static List<string> fridgeContents = new List<string>(new string[12]);
+        static bool fridgeOpen = false;
+
+        // Cupboard storage (MY HOUSE)
+        static List<string> cupboardContents = new List<string>(new string[12]);
+        static bool cupboardOpen = false;
+
+        // Campfire
+        static List<Vector2> campfirePositions = new();
+        static float campfireAnimTimer = 0f;
+
+        // Cooking state
+        static bool cookingMenuOpen = false;
+        static string cookingContext = "";   // "campfire" or "kitchen"
+        static float cookingTimer = 0f;
+        static string cookingItem = "";
+        static bool isCooking = false;
+        // Quick-cook (raw food from toolbar at a campfire)
+        static bool quickCooking = false;        // true = cooking a raw toolbar item, not a recipe
+        static float quickCookTimer = 0f;
+        static string quickCookRaw = "";         // the raw item being cooked
+        static string quickCookResult = "";      // what it becomes if not burnt
+        static int quickCookSlot = -1;           // toolbar slot the raw item came from
+        const float QuickCookDuration = 2f;
+
+        record CookingRecipe(string Name, string[] Ingredients, string Result, int XP, bool KitchenOnly, int HpRestore);
+
+        static CookingRecipe[] cookingRecipes = {
+            // campfire + kitchen
+            new("Cook Fish",        new[]{"Fish"},                           "Cooked Fish",    10, false, 20),
+            new("Cook Meat",        new[]{"Raw Meat"},                       "Cooked Meat",    12, false, 30),
+            new("Roast Potato",     new[]{"Potato"},                         "Roast Potato",   8,  false, 15),
+            new("Corn on the Cob",  new[]{"Corn"},                           "Cooked Corn",    6,  false, 12),
+            // kitchen only
+            new("Bacon & Eggs",     new[]{"Bacon","Eggs"},                   "Bacon & Eggs",   20, true,  40),
+            new("Pasta",            new[]{"Pasta","Tomato Sauce"},           "Pasta Meal",     25, true,  45),
+            new("Sandwich",         new[]{"Bread","Cheese","Ham"},           "Sandwich",       15, true,  35),
+            new("Fruit Salad",      new[]{"Apple","Orange","Banana"},        "Fruit Salad",    18, true,  30),
+            new("Steak & Chips",    new[]{"Raw Meat","Potato"},              "Steak & Chips",  30, true,  60),
+            new("Soup",             new[]{"Carrot","Potato","Onion"},        "Vegetable Soup", 22, true,  50),
+            new("Pancakes",         new[]{"Flour","Eggs","Milk"},            "Pancakes",       18, true,  35),
+            new("Pizza",            new[]{"Flour","Tomato Sauce","Cheese"},  "Homemade Pizza", 35, true,  70),
+        };
+
+        // Supermarket grocery shopping
+        static Dictionary<string,int> groceryCart = new Dictionary<string,int>(); // name->qty in trolley/basket
+        record GroceryItem(string Name, int Price, int Aisle);
+
+        static GroceryItem[] groceryItems = {
+            // Aisle 1 — Produce & Meat
+            new("Apple",        2,  1),
+            new("Orange",       2,  1),
+            new("Banana",       1,  1),
+            new("Carrot",       1,  1),
+            new("Potato",       1,  1),
+            new("Onion",        1,  1),
+            new("Corn",         2,  1),
+            new("Raw Meat",     5,  1),
+            new("Bacon",        4,  1),
+            new("Eggs",         3,  1),
+            // Aisle 2 — Dairy & Bread
+            new("Milk",         3,  2),
+            new("Cheese",       4,  2),
+            new("Butter",       3,  2),
+            new("Bread",        3,  2),
+            new("Flour",        2,  2),
+            new("Pasta",        2,  2),
+            // Aisle 3 — Pantry
+            new("Tomato Sauce", 3,  3),
+            new("Ham",          4,  3),
+            new("Cereal",       4,  3),
+            new("Juice",        3,  3),
+        };
+
         //Toolbelt
         static int toolbarSelectedSlot = 0;
         static string[] toolbarSlots = new string[8]; // null = empty
         static int[] toolbarCounts = new int[8];
         static bool torchActive = false;
+
+        // BACKPACK
+        // General backpack — holds any named item (cooked food, groceries, ashes, etc.)
+        static Dictionary<string,int> backpack = new Dictionary<string,int>();
+
+        static int BackpackCount(string item) => backpack.TryGetValue(item, out int c) ? c : 0;
+
+        static void BackpackAdd(string item, int count)
+        {
+            if (count <= 0) return;
+            backpack[item] = BackpackCount(item) + count;
+        }
+
+        static void BackpackRemoveOne(string item)
+        {
+            if (!backpack.ContainsKey(item)) return;
+            backpack[item]--;
+            if (backpack[item] <= 0) backpack.Remove(item);
+        }
         // Dungeon
         static Dungeon activeDungeon = new Dungeon();
         static bool dungeonQuitConfirm = false;
@@ -194,13 +494,17 @@ public static readonly Dictionary<SlotSymbol, float> TwoMatchMultiplier = new()
             IsToolItem(item) || GetItemSlot(item) != null || item == "Money";
         static bool IsUsable(string item) => item switch
         {
-            "Cooked Fish" or "Apple" or "Bread" or "Bandage" or "Health Potion" or "Cooked Meat" => true,
+            "Cooked Fish" or "Apple" or "Bread" or "Bandage" or "Health Potion" or "Cooked Meat"  or "Shopping Bag" or "Roast Potato" or "Cooked Corn" or "Bacon & Eggs" or "Pasta Meal"
+            or "Sandwich" or "Fruit Salad" or "Steak & Chips" or "Vegetable Soup"
+            or "Pancakes" or "Homemade Pizza" => true,
             _ => false
         };
 
-        static bool IsEquippable(string item) => IsToolItem(item) || GetItemSlot(item) != null;
+        static bool IsEquippable(string item) =>
+            IsToolItem(item) || GetItemSlot(item) != null || item == "Arrows" || item == "Bolts";
         // IsToolItem covers Axe/Pickaxe/Rod/Net/Sword/Stick/Bow/Crossbow
-        // GetItemSlot != null covers armor & weapons (helmet, body, weapon, shield, etc.)
+        // GetItemSlot != null covers armor & weapons
+        // Arrows/Bolts are ammo, equipped into the ammo slot
 
         static bool IsToolItem(string item) => item switch
         {
@@ -216,14 +520,37 @@ static void DoInventoryAction(string action, string item)
             UseItem(item);
             break;
         case "Equip":
-            if (item == "Sword" || item == "Stick")
+            if (item == "Arrows" || item == "Bolts")
             {
+                equippedAmmo = item;
+                ShowNotification($"{item} equipped as ammo.");
+            }
+            else if (item == "Sword" || item == "Stick")
+            {
+                // return the currently-equipped 2H weapon to inventory before clearing
+                if (equipped2H == "Bow") player.HasBow = true;
+                else if (equipped2H == "Crossbow") player.HasCrossbow = true;
+
                 equipped1H = item;
                 equipped2H = null;
                 armorWeapon = item;
                 if (item == "Sword") swordPickedUp = true;
                 else stickPickedUp = true;
                 ShowNotification($"{item} set as 1H weapon. Press T to draw it.");
+            }
+                        else if (item == "Bow" || item == "Crossbow")
+            {
+                // return the currently-equipped 1H weapon to inventory before clearing
+                if (equipped1H == "Sword") swordPickedUp = true;
+                else if (equipped1H == "Stick") stickPickedUp = true;
+
+                equipped2H = item;
+                equipped1H = null;
+                armorShield = null;
+                armorWeapon = item;
+                if (item == "Bow") player.HasBow = true;
+                else player.HasCrossbow = true;
+                ShowNotification($"{item} set as 2H weapon. Press T to draw it.");
             }
             else if (IsToolItem(item))
                 AddToToolbar(item);
@@ -233,6 +560,8 @@ static void DoInventoryAction(string action, string item)
         case "Move to Toolbar":
             if (item == "Sword" || item == "Stick" || item == "Bow" || item == "Crossbow")
                 ShowNotification($"{item} is a weapon — use Equip instead.");
+            else if (item == "Arrows" || item == "Bolts")
+                ShowNotification($"{item} is ammo — use Equip to load it.");
             else
                 AddToToolbar(item);
             break;
@@ -256,14 +585,32 @@ static void UseItem(string item)
 {
     switch (item)
     {
-        case "Apple":         player.Health = Math.Min(player.MaxHealth, player.Health + 10); RemoveOneItem(item); break;
-        case "Bread":         player.Health = Math.Min(player.MaxHealth, player.Health + 20); RemoveOneItem(item); break;
-        case "Cooked Fish":   player.Health = Math.Min(player.MaxHealth, player.Health + 15); RemoveOneItem(item); break;
-        case "Cooked Meat":   player.Health = Math.Min(player.MaxHealth, player.Health + 25); RemoveOneItem(item); break;
-        case "Bandage":       player.Health = Math.Min(player.MaxHealth, player.Health + 40); RemoveOneItem(item); break;
-        case "Health Potion": player.Health = player.MaxHealth; RemoveOneItem(item); break;
-    }
-    ShowNotification($"Used {item}");
+        case "Apple":         player.Health = Math.Min(player.MaxHealth, player.Health + 10); RemoveOneItem(item); ShowNotification("+10 HP"); break;
+        case "Bread":         player.Health = Math.Min(player.MaxHealth, player.Health + 20); RemoveOneItem(item); ShowNotification("+20 HP"); break;
+        case "Cooked Fish":   player.Health = Math.Min(player.MaxHealth, player.Health + 15); RemoveOneItem(item); ShowNotification("+15 HP"); break;
+        case "Cooked Meat":   player.Health = Math.Min(player.MaxHealth, player.Health + 25); RemoveOneItem(item); ShowNotification("+25 HP"); break;
+        case "Bandage":       player.Health = Math.Min(player.MaxHealth, player.Health + 40); RemoveOneItem(item); ShowNotification("+40 HP"); break;
+        case "Health Potion": player.Health = player.MaxHealth; RemoveOneItem(item); ShowNotification("Fully healed!"); break;
+        case "Roast Potato":      player.Health = Math.Min(player.MaxHealth, player.Health + 15); RemoveOneItem(item); ShowNotification("+15 HP"); break;
+        case "Cooked Corn":       player.Health = Math.Min(player.MaxHealth, player.Health + 12); RemoveOneItem(item); ShowNotification("+12 HP"); break;
+        case "Bacon & Eggs":      player.Health = Math.Min(player.MaxHealth, player.Health + 40); RemoveOneItem(item); ShowNotification("+40 HP"); break;
+        case "Pasta Meal":        player.Health = Math.Min(player.MaxHealth, player.Health + 45); RemoveOneItem(item); ShowNotification("+45 HP"); break;
+        case "Sandwich":          player.Health = Math.Min(player.MaxHealth, player.Health + 35); RemoveOneItem(item); ShowNotification("+35 HP"); break;
+        case "Fruit Salad":       player.Health = Math.Min(player.MaxHealth, player.Health + 30); RemoveOneItem(item); ShowNotification("+30 HP"); break;
+        case "Steak & Chips":     player.Health = Math.Min(player.MaxHealth, player.Health + 60); RemoveOneItem(item); ShowNotification("+60 HP"); break;
+        case "Vegetable Soup":    player.Health = Math.Min(player.MaxHealth, player.Health + 50); RemoveOneItem(item); ShowNotification("+50 HP"); break;
+        case "Pancakes":          player.Health = Math.Min(player.MaxHealth, player.Health + 35); RemoveOneItem(item); ShowNotification("+35 HP"); break;
+        case "Homemade Pizza":    player.Health = Math.Min(player.MaxHealth, player.Health + 70); RemoveOneItem(item); ShowNotification("+70 HP"); break;
+        case "Shopping Bag":
+        foreach (string groceryItem in groceryBagContents)
+            if (!AddOneItemToToolbar(groceryItem))
+                ShowNotification($"Toolbar full — {groceryItem} lost!");
+        groceryBagContents.Clear();
+        RemoveOneItem("Shopping Bag");
+        ShowNotification("Unpacked your shopping!");
+        return; // early return to avoid "Used Shopping Bag" message
+        }
+        ShowNotification($"Used {item}");
 }
 public static string GetActiveItem()
 {
@@ -301,17 +648,88 @@ static void RemoveFromToolbar(int slot)
     string item = toolbarSlots[slot];
     if (item == null) return;
 
-    // weapons that ended up on the toolbar go back via their flags
-    if (item == "Sword") swordPickedUp = true;
-    else if (item == "Stick") stickPickedUp = true;
-    else if (!IsToolItem(item))
-        GiveItemBack(item, toolbarCounts[slot]);   // stackables
-    // other tools (axe, rod, etc.) just clear — their flags already keep them in inventory
+    ShowNotification($"REMOVE: item={item} count={toolbarCounts[slot]} stingersNow={player.Stingers} hasHome={HasOtherHome(item)}");
+
+    if (item == "Sword") { swordPickedUp = true; }
+    else if (item == "Stick") { stickPickedUp = true; }
+    else if (IsToolItem(item))
+    {
+        // tools keep their pickup flags, so clearing the slot returns them to inventory
+    }
+    else if (HasOtherHome(item))
+    {
+        GiveItemBack(item, toolbarCounts[slot]);   // stat-backed stackables go to their counter
+    }
+    else
+    {
+        // toolbar-only item (grocery / cooked food / ashes): no other home, don't delete it
+        ShowNotification($"{item} can only be kept on the toolbar — use Drop to discard it.");
+        return;
+    }
 
     ShowNotification($"Removed {item} from toolbar");
     toolbarSlots[slot] = null;
     toolbarCounts[slot] = 0;
 }
+static void UseToolbarItem(int slot)
+{
+    if (slot < 0 || slot >= toolbarSlots.Length) return;
+    string item = toolbarSlots[slot];
+    if (item == null || !IsUsable(item)) return;
+
+    // figure out the heal amount
+    int heal = item switch
+    {
+        "Apple"        => 10,
+        "Bread"        => 20,
+        "Cooked Fish"  => 15,
+        "Cooked Meat"  => 25,
+        "Roast Potato" => 18,
+        "Cooked Corn"  => 12,
+        "Bandage"      => 40,
+        "Health Potion" => player.MaxHealth,   // full heal
+        _ => 0
+    };
+
+    // recipe meals fall back to their HpRestore value
+    if (heal == 0)
+    {
+        var recipe = cookingRecipes.FirstOrDefault(r => r.Result == item);
+        if (recipe != null) heal = recipe.HpRestore;
+    }
+
+    // Shopping Bag is "usable" but unpacks rather than heals — let UseItem handle it
+    if (item == "Shopping Bag")
+    {
+        UseItem(item);            // unpacks groceries
+        // UseItem doesn't know about the slot, so clear one from the slot here
+        toolbarCounts[slot]--;
+        if (toolbarCounts[slot] <= 0) toolbarSlots[slot] = null;
+        return;
+    }
+
+    if (item == "Health Potion") player.Health = player.MaxHealth;
+    else player.Health = Math.Min(player.MaxHealth, player.Health + heal);
+
+    // consume one from the slot
+    toolbarCounts[slot]--;
+    if (toolbarCounts[slot] <= 0) toolbarSlots[slot] = null;
+
+    ShowNotification(item == "Health Potion" ? "Fully healed!" : $"+{heal} HP");
+}
+
+// True only for items that have a destination OTHER than the toolbar.
+static bool HasOtherHome(string item) => item switch
+{
+    "Logs" or "Birch Logs" or "Oak Logs" or "Pine Logs" or "Arctic Logs"
+        or "Dead Wood" or "Fish" or "Bones" or "Fur" or "Stingers" or "Pelts"
+        or "Dog Fangs" or "Wolf Claw" or "Venom Sac" or "Crab Claw" or "Bear Claw"
+        or "Crab Shell" or "Shark Fin" or "Shark Tooth" or "Snake Skin" or "Snake Fang"
+        or "Croc Scale" or "Croc Tooth" or "Lizard Scale" or "Ember Stone" or "Magma Shard"
+        or "Lava Core" or "Feather" or "Eagle Talon" or "Horn" or "Goat Hoof"
+        or "Arrows" or "Bolts" or "Money" => true,
+    _ => true 
+};
 
 static void RemoveOneItem(string item)
 {
@@ -334,6 +752,9 @@ static void RemoveOneItem(string item)
         case "Axe": player.HasAxe = false; break;
         case "Bow": player.HasBow = false; break;
         case "Crossbow": player.HasCrossbow = false; break;
+        case "Sword": swordPickedUp = false; break;
+        case "Stick": stickPickedUp = false; break;
+        default: BackpackRemoveOne(item); break;
     }
 }
 
@@ -348,6 +769,9 @@ static void RemoveOneItem(string item)
         static bool fishingNetPickedUp = false;
         static Vector2 torchPosition = new Vector2(-900, 500);
         static bool torchPickedUp = false;
+        
+        // WEAPONS
+
         static Vector2 stickPosition = new Vector2(-284, -6179);
         static bool stickPickedUp = false;
         static Vector2 swordPosition = new Vector2(-1170, -7740);
@@ -357,6 +781,71 @@ static void RemoveOneItem(string item)
         static Vector2 bowSpawnPos = new Vector2(800, -400);
         static Vector2 crossbowSpawnPos = new Vector2(1000, -400);
 
+        // Cheats
+        static readonly (string name, Func<int> get, Action<int> set)[] cheatSkills = new (string, Func<int>, Action<int>)[]
+        {
+            ("Woodcutting", () => player.WoodcuttingLevel, v => player.WoodcuttingLevel = v),
+            ("Mining",      () => player.MiningLevel,      v => player.MiningLevel = v),
+            ("Fishing",     () => player.FishingLevel,     v => player.FishingLevel = v),
+            ("Combat",      () => player.CombatLevel,      v => player.CombatLevel = v),
+            ("Ranged",      () => player.RangedLevel,      v => player.RangedLevel = v),
+            ("Strength",    () => player.StrengthLevel,    v => player.StrengthLevel = v),
+            ("Cooking",     () => player.CookingLevel,     v => player.CookingLevel = v),
+            ("Athletics",   () => player.AthleticsLevel,   v => player.AthleticsLevel = v),
+            ("Driving",     () => player.DrivingLevel,     v => player.DrivingLevel = v),
+            ("Cycling",     () => player.CyclingLevel,     v => player.CyclingLevel = v),
+            ("Riding",      () => player.RidingLevel,      v => player.RidingLevel = v),
+            ("Swimming",    () => player.SwimmingLevel,    v => player.SwimmingLevel = v),
+            ("Diving",      () => player.DivingLevel,      v => player.DivingLevel = v),
+            ("Sports",      () => player.SportsLevel,      v => player.SportsLevel = v),
+            ("Gambling",    () => player.GamblingLevel,    v => player.GamblingLevel = v),
+        };
+
+        static void DrawSkillCheatPanel()
+        {
+            if (!skillCheatOpen) return;
+
+            int rowH = 30;
+            int pw = 300;
+            int ph = cheatSkills.Length * rowH + 50;
+            int px = ScreenWidth - pw - 20;
+            int py = 60;
+
+            Raylib.DrawRectangle(px, py, pw, ph, new Color((byte)10,(byte)10,(byte)20,(byte)240));
+            Raylib.DrawRectangleLines(px, py, pw, ph, Color.Lime);
+            Raylib.DrawText("SKILL CHEATS (F8)", px + 10, py + 8, 18, Color.Lime);
+
+            Vector2 mouse = Raylib.GetMousePosition();
+
+            for (int i = 0; i < cheatSkills.Length; i++)
+            {
+                var s = cheatSkills[i];
+                int ry = py + 40 + i * rowH;
+
+                Raylib.DrawText($"{s.name}", px + 12, ry + 4, 16, Color.White);
+                Raylib.DrawText($"{s.get()}", px + 150, ry + 4, 16, Color.Gold);
+
+                // minus button
+                Rectangle minus = new Rectangle(px + 200, ry, 26, 24);
+                bool hMinus = Raylib.CheckCollisionPointRec(mouse, minus);
+                Raylib.DrawRectangleRec(minus, hMinus ? new Color((byte)120,(byte)40,(byte)40,(byte)255) : new Color((byte)60,(byte)30,(byte)30,(byte)255));
+                Raylib.DrawText("-", (int)minus.X + 9, (int)minus.Y + 3, 18, Color.White);
+
+                // plus button
+                Rectangle plus = new Rectangle(px + 234, ry, 26, 24);
+                bool hPlus = Raylib.CheckCollisionPointRec(mouse, plus);
+                Raylib.DrawRectangleRec(plus, hPlus ? new Color((byte)40,(byte)120,(byte)40,(byte)255) : new Color((byte)30,(byte)60,(byte)30,(byte)255));
+                Raylib.DrawText("+", (int)plus.X + 7, (int)plus.Y + 3, 18, Color.White);
+
+                if (Raylib.IsMouseButtonPressed(MouseButton.Left))
+                {
+                    if (hMinus && s.get() > 1) s.set(s.get() - 1);
+                    if (hPlus) s.set(s.get() + 1);
+                }
+            }
+        }
+        static bool skillCheatOpen = false;
+
         // Weapons menu
         static string equipped1H = null;     // one-handed weapon
         static string equipped2H = null;     // two-handed weapon
@@ -365,6 +854,52 @@ static void RemoveOneItem(string item)
         // Armor Menu
         static bool armorMenuOpen = false;
         static bool gearTestMode = false;   // false = OWNED, true = TEST catalog
+        public static string[] armorMaterials = { "Leather", "Iron", "Steel", "Gold", "Diamond", "Ruby", "Sapphire", "Emerald", "Infernal", "Magic", "Mystical" };
+        static int[] weaponMaterialIndex = new int[5];   // sword, greatsword, axe, bow, crossbow
+        static string[] weaponPieceNames = { "Sword", "Great Sword", "War Axe", "Bow", "Crossbow" };
+
+        // returns the color for a material, with infernal animated
+        public static Color MaterialColor(string material)
+        {
+            switch (material)
+            {
+                case "Leather":  return new Color((byte)120,(byte)80,(byte)30,(byte)255);
+                case "Iron":     return new Color((byte)120,(byte)120,(byte)130,(byte)255);
+                case "Steel":    return new Color((byte)160,(byte)165,(byte)175,(byte)255);
+                case "Gold":     return new Color((byte)220,(byte)180,(byte)40,(byte)255);
+                case "Diamond":  return new Color((byte)120,(byte)220,(byte)230,(byte)255);
+                case "Ruby":     return new Color((byte)200,(byte)40,(byte)60,(byte)255);
+                case "Sapphire": return new Color((byte)50,(byte)90,(byte)220,(byte)255);
+                case "Emerald":  return new Color((byte)40,(byte)180,(byte)80,(byte)255);
+                case "Infernal":
+                {
+                    // dark charcoal base with a faint ember flicker
+                    float t = (float)Raylib.GetTime() * 4f;
+                    float flicker = (MathF.Sin(t) + 1f) / 2f;
+                    byte v = (byte)(20 + flicker * 15);   // 20..35, very dark
+                    return new Color(v, (byte)(v - 5), (byte)(v - 5), (byte)255);
+                }
+                case "Magic":
+                {
+                    // smoothly cycle through purple → blue → cyan → pink
+                    float t = (float)Raylib.GetTime() * 1.5f;
+                    byte r = (byte)(140 + MathF.Sin(t) * 100);            // 40..240
+                    byte g = (byte)(60 + MathF.Sin(t + 2f) * 60);         // 0..120
+                    byte b = (byte)(180 + MathF.Sin(t + 4f) * 70);        // 110..250
+                    return new Color(r, g, b, (byte)255);
+                }
+                case "Mystical":
+                {
+                    
+                    float t = (float)Raylib.GetTime() * 2f;
+                    float shimmer = (MathF.Sin(t) + 1f) / 2f;
+                    byte v = (byte)(230 + shimmer * 25);   // 230..255, near white
+                    return new Color(v, v, (byte)255, (byte)255);
+                }
+                default:
+            return new Color((byte)120,(byte)80,(byte)30,(byte)255);
+            }
+        }
 
 
         // Armor slots — null = empty
@@ -376,6 +911,8 @@ static void RemoveOneItem(string item)
         public static string armorCape   = null;
         public static string armorWeapon = null;
         public static string armorShield = null;
+        static int[] slotMaterialIndex = new int[7];   // helmet, body, legs, boots, gloves, cape, shield
+        static string[] slotPieceNames = { "Helmet", "Chestplate", "Leggings", "Boots", "Gauntlets", "Cape", "Shield" };
 
         // shared
         static bool strengthMinigameActive = false;
@@ -429,6 +966,7 @@ static void RemoveOneItem(string item)
         static bool hoverDiving = false;
         static bool hoverSports = false;
         static bool hoverRanged = false;
+        static bool hoverCooking = false;
 
         // TUTORIAL
         public static bool tutorialActive = true;        // on for a new game, off after finishing/loading
@@ -437,6 +975,7 @@ static void RemoveOneItem(string item)
         static float tutorialNpcBob = 0f;
         static string tutorialMessage = "";
         static float tutorialMessageTimer = 0f;
+        static bool tutorialCompleted = false;
 
         // each task: instruction text, the gate it unlocks when done
         class TutorialTask
@@ -459,14 +998,71 @@ static void RemoveOneItem(string item)
         static List<Quest> quests = new();
         static string playerName = "";
         static bool nameEntered = false;
+
+        // STORE
         static bool showControlsHud = true;   // on by default
         static bool shopOpen = false;
         static bool shopUIOpen = false;
         static bool shopBuyMode = false;   
-        static bool barMenuOpen = false;
-        static int barSelectedDrink = -1;
         static int shopSelectedItem = -1;
         static string shopSelectedItemName = "";
+        static string shopMessage = "";
+        static float shopMessageTimer = 0f;
+
+        // DBAR
+        static bool barMenuOpen = false;
+        static int barSelectedDrink = -1;
+
+        // KIWI CUTS
+        static NPC kiwiCutsBarber = new NPC(new Vector2(160, 200), "Barber", "Take a seat mate, won't be long.");
+        static List<NPC> kiwiCutsWaitingNPCs = new();
+        static bool hairMenuOpen = false;
+        static int  barberMenuTab = 0;
+        public static string playerHairStyle = "None";  // current hairstyle
+        public static Color playerHairColor  = new Color((byte)80,(byte)50,(byte)20,(byte)255);
+        public static string playerFacialHair = "None";   // "None","Stubble","Moustache","Goatee","Full Beard"
+        public static Color playerFacialHairColor = new Color((byte)80,(byte)50,(byte)20,(byte)255);
+        public static bool HasHeadItemEquipped => armorHelmet != null;
+        // ... add future head items here (hats, crowns, etc.) with ||
+
+        // HALLENSTEINS
+        static bool hallensteinShopOpen = false;
+        static int  hallensteinCategory = 0;   // 0=Tops 1=Bottoms 2=Outerwear 3=Accessories
+        static int  hallensteinScroll   = 0;
+        record HallItem(string Name, string Category, int Price, Color Primary, Color Secondary, string Style);
+        static HallItem[] hallItems = {
+            // Tops
+            new("Black Tee",      "Tops",       25, new Color((byte)20,(byte)20,(byte)20,(byte)255),   Color.Blank,                                         "tee"),
+            new("White Tee",      "Tops",       25, new Color((byte)230,(byte)230,(byte)230,(byte)255), Color.Blank,                                         "tee"),
+            new("Navy Tee",       "Tops",       25, new Color((byte)20,(byte)40,(byte)100,(byte)255),   Color.Blank,                                         "tee"),
+            new("Red Tee",        "Tops",       25, new Color((byte)180,(byte)20,(byte)20,(byte)255),   Color.Blank,                                         "tee"),
+            new("Black Singlet",  "Tops",       20, new Color((byte)20,(byte)20,(byte)20,(byte)255),   Color.Blank,                                         "singlet"),
+            new("White Singlet",  "Tops",       20, new Color((byte)230,(byte)230,(byte)230,(byte)255), Color.Blank,                                         "singlet"),
+            new("Stripe Tee",     "Tops",       30, new Color((byte)20,(byte)20,(byte)20,(byte)255),   new Color((byte)230,(byte)230,(byte)230,(byte)255),  "stripe"),
+            new("Rugby Polo",     "Tops",       45, new Color((byte)0,(byte)60,(byte)20,(byte)255),    new Color((byte)220,(byte)220,(byte)220,(byte)255),  "polo"),
+            // Bottoms
+            new("Black Jeans",    "Bottoms",    60, new Color((byte)20,(byte)20,(byte)30,(byte)255),   Color.Blank,                                         "jeans"),
+            new("Blue Jeans",     "Bottoms",    60, new Color((byte)40,(byte)60,(byte)140,(byte)255),  Color.Blank,                                         "jeans"),
+            new("Khaki Chinos",   "Bottoms",    55, new Color((byte)160,(byte)140,(byte)90,(byte)255), Color.Blank,                                         "chinos"),
+            new("Grey Chinos",    "Bottoms",    55, new Color((byte)110,(byte)110,(byte)110,(byte)255), Color.Blank,                                        "chinos"),
+            new("Black Shorts",   "Bottoms",    35, new Color((byte)20,(byte)20,(byte)20,(byte)255),   Color.Blank,                                         "shorts"),
+            new("Navy Shorts",    "Bottoms",    35, new Color((byte)20,(byte)40,(byte)100,(byte)255),  Color.Blank,                                         "shorts"),
+            new("Camo Shorts",    "Bottoms",    40, new Color((byte)60,(byte)80,(byte)40,(byte)255),   new Color((byte)40,(byte)55,(byte)25,(byte)255),     "camo"),
+            // Outerwear
+            new("Black Hoodie",   "Outerwear",  80, new Color((byte)25,(byte)25,(byte)25,(byte)255),   Color.Blank,                                         "hoodie"),
+            new("Grey Hoodie",    "Outerwear",  80, new Color((byte)120,(byte)120,(byte)120,(byte)255), Color.Blank,                                        "hoodie"),
+            new("Navy Hoodie",    "Outerwear",  80, new Color((byte)20,(byte)30,(byte)90,(byte)255),   Color.Blank,                                         "hoodie"),
+            new("Black Jacket",   "Outerwear", 120, new Color((byte)15,(byte)15,(byte)15,(byte)255),   new Color((byte)60,(byte)60,(byte)60,(byte)255),     "jacket"),
+            new("Puffer Jacket",  "Outerwear", 110, new Color((byte)20,(byte)40,(byte)100,(byte)255),  new Color((byte)15,(byte)30,(byte)75,(byte)255),     "puffer"),
+            // Accessories
+            new("Black Cap",      "Accessories",30, new Color((byte)20,(byte)20,(byte)20,(byte)255),   Color.Blank,                                         "cap"),
+            new("White Cap",      "Accessories",30, new Color((byte)230,(byte)230,(byte)230,(byte)255), Color.Blank,                                        "cap"),
+            new("Beanie",         "Accessories",25, new Color((byte)60,(byte)20,(byte)20,(byte)255),   Color.Blank,                                         "beanie"),
+            new("Sunglasses",     "Accessories",40, new Color((byte)10,(byte)10,(byte)10,(byte)255),   Color.Blank,                                         "sunnies"),
+            new("Gold Chain",     "Accessories",90, new Color((byte)200,(byte)170,(byte)20,(byte)255), Color.Blank,                                         "chain"),
+        };
+
+        // PAUSE MENU
         static bool pauseMenuOpen = false;
         static bool mapOpen = false;
         static int overwriteSlot = -1;
@@ -475,18 +1071,21 @@ static void RemoveOneItem(string item)
         static bool cheatsMenuOpen = false;
         static bool loadMenuOpen = false;
         static int cheatGoldAmount = 100;
-        static string shopMessage = "";
-        static float shopMessageTimer = 0f;
+
+        // WORLD MAP AND MINIMAP
         static int minimapSize = 200;
         static int minimapX = 20;
         static int minimapY = 20;
         static float minimapScale = 0.02f;
         static float worldMapZoom = 1f;
+
+        // RAIN
         static bool isRaining = false;
         static float rainTimer = 0f;
         static float rainInterval = 500f;
         static float rainDuration = 30f;
-        //Sound
+
+        // MUSIC
         static Music musicMainMenu;
         static Music musicForest;
         static Music musicSnow;
@@ -501,6 +1100,8 @@ static void RemoveOneItem(string item)
         static Music currentMusic;
         static Music lastZoneMusic;
         static Music musicBeforeRain = default;
+
+        // SOUND
         static Sound soundTreeChop;
         static Sound soundTreeFall;
         static Sound soundRockHit;
@@ -518,6 +1119,8 @@ static void RemoveOneItem(string item)
         static Sound soundDogHit;
         static Sound soundDogDie;
 
+        // SOUND AND MUSIC
+
         static float musicFadeTimer = 0f;
         static float musicFadeDuration = 2.0f; // seconds to fade out
         static Music pendingMusic = default;
@@ -529,6 +1132,8 @@ static void RemoveOneItem(string item)
         static bool mainMenuChoice = false; // false = showing menu, true = showing name entry
         static bool wardrobeOpen = false;
         static int wardrobeTab = 0; // 0 = shirt, 1 = skin, 2 = pants
+
+        // CHEST ITEMS
         static bool chestOpen = false;
         static int chestLogs = 0;
         static int chestFish = 0;
@@ -537,10 +1142,22 @@ static void RemoveOneItem(string item)
         static int chestStingers = 0;
         static int chestBearPelts = 0;
         static int chestDogFangs = 0;
-
+        static int chestWolfClaws = 0, chestVenomSacs = 0, chestCrabClaws = 0;
+        static int chestBearClaws = 0, chestCrabShells = 0, chestSharkFins = 0;
+        static int chestSharkTeeth = 0, chestSnakeSkins = 0, chestSnakeFangs = 0;
+        static int chestCrocScales = 0, chestCrocTeeth = 0, chestLizardScales = 0;
+        static int chestEmberStones = 0, chestMagmaShards = 0, chestLavaCores = 0;
+        static int chestFeathers = 0, chestEagleTalons = 0, chestHorns = 0;
+        static int chestGoatHooves = 0;
         static int chestSelectedSlot = -1;
+        static string chestFullMessage = "";
+        static float chestFullTimer = 0f;
+
+        // INITIALIZATION
         static bool isLoadingGame = false;
         static bool slotSelected = false;
+
+        // MISC
         static NPC gymCounterNPC = null;
         static bool trolleyPickedUp = false;
         static bool basketPickedUp = false;
@@ -598,6 +1215,7 @@ static void RemoveOneItem(string item)
         static List<NPC> npcs = new();
         static List<Vehicle> vehicles = new();
         static List<Building> buildings = new();
+        static List<DecorativeBuilding> decorativeBuildings = new();
         static List<Rideable> rideables = new();
 
         static List<FloatingText> floatingTexts = new();
@@ -737,31 +1355,133 @@ static void RemoveOneItem(string item)
         static string mcdonaldsOrderName = "";
 
         // DOMINOES
-          static bool dominosMenuOpen = false;
-          static string dominosOrderName = "";
-          static bool dominosOrderReady = false;
-          static float dominosOrderTimer = 0f;
-          static string dominosMessage = "";
-          static float dominosMessageTimer = 0f;
-          static int dominosSelectedItem = -1;
+        static bool dominosMenuOpen = false;
+        static string dominosOrderName = "";
+        static bool dominosOrderReady = false;
+        static float dominosOrderTimer = 0f;
+        static string dominosMessage = "";
+        static float dominosMessageTimer = 0f;
+        static int dominosSelectedItem = -1;
 
-          //KFC
-          static bool kfcMenuOpen = false;
-          static string kfcOrderName = "";
-          static bool kfcOrderReady = false;
-          static float kfcOrderTimer = 0f;
-          static string kfcMessage = "";
-          static float kfcMessageTimer = 0f;
-          static int kfcSelectedItem = -1;
+        //KFC
+        static bool kfcMenuOpen = false;
+        static string kfcOrderName = "";
+        static bool kfcOrderReady = false;
+        static float kfcOrderTimer = 0f;
+        static string kfcMessage = "";
+        static float kfcMessageTimer = 0f;
+        static int kfcSelectedItem = -1;
 
-          //BURGER KING
-          static bool burgerKingMenuOpen = false;
-          static string burgerKingOrderName = "";
-          static bool burgerKingOrderReady = false;
-          static float burgerKingOrderTimer = 0f;
-          static string burgerKingMessage = "";
-          static float burgerKingMessageTimer = 0f;
-          static int burgerKingSelectedItem = -1;
+        //BURGER KING
+        static bool burgerKingMenuOpen = false;
+        static string burgerKingOrderName = "";
+        static bool burgerKingOrderReady = false;
+        static float burgerKingOrderTimer = 0f;
+        static string burgerKingMessage = "";
+        static float burgerKingMessageTimer = 0f;
+        static int burgerKingSelectedItem = -1;
+
+        // Airport
+        static bool airportMenuOpen = false;
+        static string airportDestination = "";
+        static float airportFlightTimer = 0f;
+        static bool airportFlying = false;
+
+        // BUS SYSTEM
+        record BusStop(string Name, Vector2 WorldPos);
+        static BusStop[] busStops = {
+            new("Safe Zone",  new Vector2(440,  640)),
+            new("Supermarket",new Vector2(3790, 640)),
+            new("Desert",     new Vector2(8000, 260)),
+            new("Snow Zone",  new Vector2(-9000,260)),
+            new("Gym",        new Vector2(2890, 640)),
+            new("Hamiltron City", new Vector2(14800, 5660)),
+            new("Rotoaira",       new Vector2(-16200, 4540)),
+        };
+        static int  busCurrentStop  = 0;    
+        static int  busNextStop     = 1;
+        static float busRouteTimer  = 0f;           // counts up to 4 in-game hours between stops
+        static Vector2 busPosition  = new Vector2(300, 580);
+        static bool busMoving       = false;
+        static float busLerpT       = 0f;
+        static bool busOperating    = false;        // true only 6am–12pm
+        static bool busMenuOpen = false;
+
+        // CASINO
+        static int playerChips = 0;
+        static bool casinoChipMenuOpen = false;
+        // Blackjack
+        static bool blackjackOpen = false;
+        static List<int> bjPlayerHand = new();
+        static List<int> bjDealerHand = new();
+        static int bjBet = 10;
+        static string bjMessage = "";
+        static float bjMessageTimer = 0f;
+        static bool bjDealerRevealed = false;
+        static bool bjRoundOver = false;
+        // Roulette
+        static bool rouletteOpen = false;
+        static int rouletteBet = 10;
+        static string rouletteBetType = "Red";  // "Red","Black","Even","Odd","0-12","13-24","25-36"
+        static int rouletteResult = -1;
+        static string rouletteMessage = "";
+        static float rouletteMessageTimer = 0f;
+        static float rouletteSpinTimer = 0f;
+        static bool rouletteSpinning = false;
+        static int BjCardValue(int card)
+        {
+            int v = card % 13;
+            if (v == 0) return 11; // Ace
+            if (v >= 10) return 10; // face cards
+            return v + 1;
+        }
+        static int BjHandValue(List<int> hand)
+        {
+            int total = 0, aces = 0;
+            foreach (int c in hand) { int v = BjCardValue(c); if (v == 11) aces++; total += v; }
+            while (total > 21 && aces > 0) { total -= 10; aces--; }
+            return total;
+        }
+        static string BjCardName(int card)
+        {
+            string[] ranks = { "A","2","3","4","5","6","7","8","9","10","J","Q","K" };
+            string[] suits = { "♠","♥","♦","♣" };
+            return ranks[card % 13] + suits[card / 13];
+        }
+        static void BjStartRound()
+        {
+            if (playerChips < bjBet) { bjMessage = "Not enough chips!"; bjMessageTimer = 2f; return; }
+            playerChips -= bjBet;
+            bjPlayerHand = new List<int>{ Raylib.GetRandomValue(0,51), Raylib.GetRandomValue(0,51) };
+            bjDealerHand = new List<int>{ Raylib.GetRandomValue(0,51), Raylib.GetRandomValue(0,51) };
+            bjDealerRevealed = false;
+            bjRoundOver = false;
+            bjMessage = "";
+            // instant blackjack check
+            if (BjHandValue(bjPlayerHand) == 21)
+            { bjDealerRevealed = true; bjRoundOver = true; playerChips += (int)(bjBet * 2.5f); bjMessage = "BLACKJACK! You win 2.5x!"; bjMessageTimer = 3f; }
+        }
+        static void BjHit()
+        {
+            if (bjRoundOver) return;
+            bjPlayerHand.Add(Raylib.GetRandomValue(0, 51));
+            if (BjHandValue(bjPlayerHand) > 21)
+            { bjDealerRevealed = true; bjRoundOver = true; bjMessage = "Bust! Dealer wins."; bjMessageTimer = 2f; }
+        }
+        static void BjStand()
+        {
+            if (bjRoundOver) return;
+            bjDealerRevealed = true;
+            while (BjHandValue(bjDealerHand) < 17)
+                bjDealerHand.Add(Raylib.GetRandomValue(0, 51));
+            int p = BjHandValue(bjPlayerHand), d = BjHandValue(bjDealerHand);
+            bjRoundOver = true;
+            if (d > 21 || p > d)       { playerChips += bjBet * 2; bjMessage = $"You win! {p} vs {d}"; }
+            else if (p == d)            { playerChips += bjBet;     bjMessage = $"Push! {p} vs {d}"; }
+            else                        {                           bjMessage = $"Dealer wins. {p} vs {d}"; }
+            bjMessageTimer = 3f;
+        }
+
 
         //fish species: name, value, rarity weight (higher = more common), water type, tool
         record FishSpecies(string Name, int Value, int Weight, string Water, string Tool);
@@ -917,16 +1637,288 @@ static FishSpecies RollFish(string water, string tool)
     }
     return pool[0];
 }
+static int GetGroceryCount(string name)
+{
+    // check trolley + basket combined
+    int count = 0;
+    foreach (var s in trolleyInventory) if (s == name) count++;
+    foreach (var s in basketInventory)  if (s == name) count++;
+    return count;
+}
+
+static bool AddToCart(string name)
+{
+    var inv = player.HasTrolley ? trolleyInventory : basketInventory;
+    int cap  = player.HasTrolley ? 20 : 10;
+    int used = inv.Count(s => s != null);
+    if (used >= cap) return false;
+    for (int i = 0; i < inv.Count; i++)
+        if (inv[i] == null) { inv[i] = name; return true; }
+    return false;
+}
+
+static int GetTotalCartCost()
+{
+    int total = 0;
+    var inv = player.HasTrolley ? trolleyInventory : basketInventory;
+    foreach (string s in inv)
+    {
+        if (s == null) continue;
+        var item = groceryItems.FirstOrDefault(g => g.Name == s);
+        if (item != null) total += item.Price;
+    }
+    return total;
+}
+
+static int CountInventorySlotsFree()
+{
+    // counts free toolbar slots as inventory space
+    int free = 0;
+    foreach (var s in toolbarSlots) if (s == null) free++;
+    return free;
+}
+static void DrawGroceryShopPanel()
+{
+    if (!groceryShopOpen) return;
+    if (currentBuilding?.BuildingName != "SUPERMARKET") return;
+
+    bool hasBag = player.HasTrolley || player.HasBasket;
+    if (!hasBag)
+    {
+        int iw = Raylib.MeasureText("Grab a trolley or basket first bro!", 22);
+        Raylib.DrawRectangle(ScreenWidth/2 - iw/2 - 12, 320, iw + 24, 40, new Color((byte)0,(byte)0,(byte)0,(byte)200));
+        Raylib.DrawText("Grab a trolley or basket first bro!", ScreenWidth/2 - iw/2, 328, 22, Color.Orange);
+        return;
+    }
+
+    int capacity = player.HasTrolley ? 20 : 10;
+    var cartInv   = player.HasTrolley ? trolleyInventory : basketInventory;
+    int used = cartInv.Count(s => s != null);
+
+    int px = 20, py = 60, pw = 500, ph = 580;
+    Raylib.DrawRectangle(px, py, pw, ph, new Color((byte)10,(byte)25,(byte)10,(byte)245));
+    Raylib.DrawRectangleLines(px, py, pw, ph, new Color((byte)60,(byte)130,(byte)60,(byte)255));
+    Raylib.DrawText("GROCERY SHOP", px + 130, py + 8, 24, new Color((byte)80,(byte)200,(byte)80,(byte)255));
+    Raylib.DrawText($"Cart: {used}/{capacity}  |  Total: ${GetTotalCartCost()}", px + 10, py + 40, 16, Color.LightGray);
+
+    // aisle filter tabs
+    string[] aisleNames = { "All", "Aisle 1", "Aisle 2", "Aisle 3" };
+    for (int t = 0; t < 4; t++)
+    {
+        Rectangle tab = new Rectangle(px + 8 + t * 122, py + 62, 116, 26);
+        bool active = groceryAisleFilter == t;
+        Raylib.DrawRectangleRec(tab, active ? new Color((byte)40,(byte)100,(byte)40,(byte)255) : new Color((byte)20,(byte)40,(byte)20,(byte)255));
+        Raylib.DrawRectangleLinesEx(tab, 1, active ? new Color((byte)80,(byte)200,(byte)80,(byte)255) : Color.DarkGray);
+        Raylib.DrawText(aisleNames[t], (int)tab.X + 8, (int)tab.Y + 6, 14, active ? Color.White : Color.DarkGray);
+        if (Raylib.CheckCollisionPointRec(Raylib.GetMousePosition(), tab) && Raylib.IsMouseButtonPressed(MouseButton.Left))
+            groceryAisleFilter = t;
+    }
+
+    var filtered = groceryAisleFilter == 0
+        ? groceryItems
+        : groceryItems.Where(g => g.Aisle == groceryAisleFilter).ToArray();
+
+    Vector2 mouse = Raylib.GetMousePosition();
+    int rowH = 38, listY = py + 96;
+
+    for (int i = 0; i < filtered.Length && i < 12; i++)
+    {
+        var g = filtered[i];
+        int inCart = cartInv.Count(s => s == g.Name);
+        Rectangle row = new Rectangle(px + 8, listY + i * rowH, pw - 16, rowH - 4);
+        bool hover = Raylib.CheckCollisionPointRec(mouse, row);
+        Raylib.DrawRectangleRec(row, new Color((byte)15,(byte)35,(byte)15,(byte)255));
+        Raylib.DrawRectangleLinesEx(row, 1, hover ? new Color((byte)80,(byte)200,(byte)80,(byte)255) : new Color((byte)30,(byte)60,(byte)30,(byte)255));
+        Raylib.DrawText(g.Name, px + 18, listY + i * rowH + 10, 18, Color.White);
+        Raylib.DrawText($"${g.Price}", px + 280, listY + i * rowH + 10, 18, Color.Gold);
+
+        // qty in cart
+        if (inCart > 0)
+            Raylib.DrawText($"x{inCart}", px + 340, listY + i * rowH + 10, 16, new Color((byte)80,(byte)220,(byte)80,(byte)255));
+
+        // + / - buttons
+        Rectangle addBtn = new Rectangle(px + pw - 80, listY + i * rowH + 4, 32, 28);
+        Rectangle remBtn = new Rectangle(px + pw - 40, listY + i * rowH + 4, 32, 28);
+        bool hAdd = Raylib.CheckCollisionPointRec(mouse, addBtn);
+        bool hRem = Raylib.CheckCollisionPointRec(mouse, remBtn) && inCart > 0;
+
+        Raylib.DrawRectangleRec(addBtn, new Color((byte)30,(byte)80,(byte)30,(byte)255));
+        Raylib.DrawRectangleRec(remBtn, new Color((byte)80,(byte)30,(byte)30,(byte)255));
+        Raylib.DrawText("+", px + pw - 72, listY + i * rowH + 6, 20, hAdd ? Color.White : Color.LightGray);
+        Raylib.DrawText("-", px + pw - 32, listY + i * rowH + 6, 20, hRem ? Color.White : Color.DarkGray);
+
+        if (hAdd && Raylib.IsMouseButtonPressed(MouseButton.Left))
+        {
+            if (used < capacity) AddToCart(g.Name);
+            else { shopMessage = "Cart is full bro!"; shopMessageTimer = 1.5f; }
+        }
+        if (hRem && Raylib.IsMouseButtonPressed(MouseButton.Left))
+        {
+            int idx = Array.LastIndexOf(cartInv.ToArray(), g.Name);
+            // find last matching slot
+            for (int s = cartInv.Count - 1; s >= 0; s--)
+                if (cartInv[s] == g.Name) { cartInv[s] = null; break; }
+        }
+    }
+
+    Raylib.DrawText("Q = Close  |  Go to checkout to pay", px + 20, py + ph - 22, 14, Color.DarkGray);
+    if (Raylib.IsKeyPressed(KeyboardKey.Q)) groceryShopOpen = false;
+}
+
+static int GetCookingIngredientCount(string ingredient)
+{
+    // check toolbar counts + fridge + cupboard
+    for (int i = 0; i < toolbarSlots.Length; i++)
+        if (toolbarSlots[i] == ingredient) return toolbarCounts[i];
+    if (fridgeContents.Contains(ingredient))   return fridgeContents.Count(s => s == ingredient);
+    if (cupboardContents.Contains(ingredient)) return cupboardContents.Count(s => s == ingredient);
+    return 0;
+}
+
+static bool CanCook(CookingRecipe recipe)
+{
+    foreach (string ing in recipe.Ingredients)
+        if (GetCookingIngredientCount(ing) < 1) return false;
+    return true;
+}
+
+static void ConsumeIngredients(CookingRecipe recipe)
+{
+    foreach (string ing in recipe.Ingredients)
+    {
+        // try toolbar first
+        for (int i = 0; i < toolbarSlots.Length; i++)
+        {
+            if (toolbarSlots[i] == ing && toolbarCounts[i] > 0)
+            { toolbarCounts[i]--; if (toolbarCounts[i] <= 0) toolbarSlots[i] = null; goto next; }
+        }
+        // try fridge
+        int fi = fridgeContents.IndexOf(ing);
+        if (fi >= 0) { fridgeContents[fi] = null; goto next; }
+        // try cupboard
+        int ci = cupboardContents.IndexOf(ing);
+        if (ci >= 0) { cupboardContents[ci] = null; }
+        next:;
+    }
+}
+
+static void DrawFridgeUI()
+{
+    if (!fridgeOpen) return;
+
+    int px = ScreenWidth/2 - 260, py = 80;
+    Color iceBlue = new Color((byte)100,(byte)200,(byte)255,(byte)255);
+    Raylib.DrawRectangle(px, py, 520, 440, new Color((byte)5,(byte)20,(byte)30,(byte)245));
+    Raylib.DrawRectangleLines(px, py, 520, 440, iceBlue);
+    Raylib.DrawText("FRIDGE", px + 190, py + 10, 28, iceBlue);
+
+    int slotSize = 70, pad = 8, cols = 4;
+    Vector2 mouse = Raylib.GetMousePosition();
+
+    for (int i = 0; i < 12; i++)
+    {
+        int col = i % cols, row = i / cols;
+        int sx = px + 20 + col * (slotSize + pad);
+        int sy = py + 50 + row * (slotSize + pad);
+
+        Raylib.DrawRectangle(sx, sy, slotSize, slotSize, new Color((byte)15,(byte)40,(byte)55,(byte)255));
+        Raylib.DrawRectangleLines(sx, sy, slotSize, slotSize, new Color((byte)40,(byte)100,(byte)140,(byte)255));
+
+        if (fridgeContents[i] != null)
+        {
+            DrawInventoryIcon(fridgeContents[i], sx + 8, sy + 8, slotSize - 16);
+            int nw = Raylib.MeasureText(fridgeContents[i], 11);
+            Raylib.DrawText(fridgeContents[i], sx + slotSize/2 - nw/2, sy + slotSize - 16, 11, Color.White);
+
+            bool hover = Raylib.CheckCollisionPointRec(mouse, new Rectangle(sx, sy, slotSize, slotSize));
+            if (hover) Raylib.DrawRectangleLines(sx, sy, slotSize, slotSize, Color.Gold);
+            if (hover && Raylib.IsMouseButtonPressed(MouseButton.Left))
+            {
+                // take item out to toolbar
+                if (AddToToolbar(fridgeContents[i]))
+                { toolbarCounts[Array.IndexOf(toolbarSlots, fridgeContents[i])] = 1; fridgeContents[i] = null; }
+                else ShowNotification("Toolbar full!");
+            }
+        }
+        else
+        {
+            // can put item in — check if holding something
+            bool hover = Raylib.CheckCollisionPointRec(mouse, new Rectangle(sx, sy, slotSize, slotSize));
+            if (hover && invSelectedName != "" && Raylib.IsMouseButtonPressed(MouseButton.Left))
+            {
+                fridgeContents[i] = invSelectedName;
+                RemoveOneItem(invSelectedName);
+                invSelectedName = "";
+            }
+        }
+    }
+
+    Raylib.DrawText("Click item to take out  |  Q = Close", px + 60, py + 408, 16, Color.DarkGray);
+    if (Raylib.IsKeyPressed(KeyboardKey.Q)) fridgeOpen = false;
+}
+
+static void DrawCupboardUI()
+{
+    if (!cupboardOpen) return;
+
+    int px = ScreenWidth/2 - 260, py = 80;
+    Color woodCol = new Color((byte)200,(byte)160,(byte)80,(byte)255);
+    Raylib.DrawRectangle(px, py, 520, 440, new Color((byte)30,(byte)20,(byte)10,(byte)245));
+    Raylib.DrawRectangleLines(px, py, 520, 440, woodCol);
+    Raylib.DrawText("CUPBOARD", px + 170, py + 10, 28, woodCol);
+
+    int slotSize = 70, pad = 8, cols = 4;
+    Vector2 mouse = Raylib.GetMousePosition();
+
+    for (int i = 0; i < 12; i++)
+    {
+        int col = i % cols, row = i / cols;
+        int sx = px + 20 + col * (slotSize + pad);
+        int sy = py + 50 + row * (slotSize + pad);
+
+        Raylib.DrawRectangle(sx, sy, slotSize, slotSize, new Color((byte)50,(byte)35,(byte)15,(byte)255));
+        Raylib.DrawRectangleLines(sx, sy, slotSize, slotSize, new Color((byte)120,(byte)80,(byte)30,(byte)255));
+
+        if (cupboardContents[i] != null)
+        {
+            DrawInventoryIcon(cupboardContents[i], sx + 8, sy + 8, slotSize - 16);
+            int nw = Raylib.MeasureText(cupboardContents[i], 11);
+            Raylib.DrawText(cupboardContents[i], sx + slotSize/2 - nw/2, sy + slotSize - 16, 11, Color.White);
+
+            bool hover = Raylib.CheckCollisionPointRec(mouse, new Rectangle(sx, sy, slotSize, slotSize));
+            if (hover) Raylib.DrawRectangleLines(sx, sy, slotSize, slotSize, Color.Gold);
+            if (hover && Raylib.IsMouseButtonPressed(MouseButton.Left))
+            {
+                if (AddToToolbar(cupboardContents[i]))
+                { toolbarCounts[Array.IndexOf(toolbarSlots, cupboardContents[i])] = 1; cupboardContents[i] = null; }
+                else ShowNotification("Toolbar full!");
+            }
+        }
+    }
+
+    Raylib.DrawText("Click item to take out  |  Q = Close", px + 60, py + 408, 16, Color.DarkGray);
+    if (Raylib.IsKeyPressed(KeyboardKey.Q)) cupboardOpen = false;
+}
+
+static Color IconWeaponColor(string item, Color fallback)
+{
+    if (item == null) return fallback;
+    foreach (string mat in armorMaterials)
+        if (item.Contains(mat)) return MaterialColor(mat);
+    return fallback;
+}
 
 static void UpdateTutorial(float dt)
 {
     if (tutorialMessageTimer > 0) tutorialMessageTimer -= dt;
+    if (tutorialCompleted) { tutorialActive = false; return; }
     if (!tutorialActive) return;
 
-    // all done?
+    
     if (tutorialStep >= tutorialTasks.Count)
     {
         tutorialActive = false;
+        tutorialCompleted = true;
         tutorialMessage = "Training complete! The farm gates are open. Good luck!";
         tutorialMessageTimer = 4f;
         return;
@@ -1108,12 +2100,30 @@ static void Cycle1HSlot()
 static void Cycle2HSlot()
 {
     var owned = OwnedTwoHanded();
-    if (owned.Count == 0) { equipped2H = null; return; }
+    if (owned.Count == 0)
+    {
+        // restore flag so it returns to inventory
+        if (equipped2H == "Bow") player.HasBow = true;
+        else if (equipped2H == "Crossbow") player.HasCrossbow = true;
+        equipped2H = null;
+        armorWeapon = null;
+        return;
+    }
 
     int idx = equipped2H == null ? -1 : owned.IndexOf(equipped2H);
     idx++;
-    if (idx >= owned.Count) { equipped2H = null; }
-    else equipped2H = owned[idx];
+    if (idx >= owned.Count)
+    {
+        // cycled past the last — unequip and return to inventory
+        if (equipped2H == "Bow") player.HasBow = true;
+        else if (equipped2H == "Crossbow") player.HasCrossbow = true;
+        equipped2H = null;
+        armorWeapon = null;
+    }
+    else
+    {
+        equipped2H = owned[idx];
+    }
 
     if (equipped2H != null)
     {
@@ -1138,6 +2148,13 @@ static void CycleAmmoSlot()
     int idx = equippedAmmo == null ? -1 : opts.IndexOf(equippedAmmo);
     idx++;
     equippedAmmo = idx >= opts.Count ? null : opts[idx];
+}
+static int ChestSlotsUsed(int[] chestCounts)
+{
+    int used = 0;
+    foreach (int c in chestCounts)
+        if (c > 0) used++;
+    return used;
 }
 
 static void TryStartFishing(string water)
@@ -1170,6 +2187,49 @@ static void RedeemPrize(string name, int cost)
         shopMessage = $"Need {cost} tickets for {name}";
         shopMessageTimer = 2.5f;
     }
+}
+static void AddCasino(float x, float y)
+{
+    var c = new Building(
+        new Rectangle(x, y, 220, 140),
+        new Color(80, 10, 80, 255),
+        new Color(50, 5, 50, 255),
+        new Vector2(x + 110, y + 280),
+        "Casino",
+        new NPC(new Vector2(700, 140), "Casino Host", "Welcome bro, buy some chips and try your luck!"),
+        entryPos: new Vector2(700, 900)
+    );
+    c.InteriorObjects.Clear();
+    c.InteriorObjects.Add(new Rectangle(500, 80, 400, 40));   // chip desk
+    c.InteriorObjects.Add(new Rectangle(100, 300, 200, 120)); // blackjack table 1
+    c.InteriorObjects.Add(new Rectangle(400, 300, 200, 120)); // blackjack table 2
+    c.InteriorObjects.Add(new Rectangle(800, 280, 200, 140)); // roulette table
+    c.InteriorObjects.Add(new Rectangle(100, 600, 80, 80));   // pokie 1
+    c.InteriorObjects.Add(new Rectangle(220, 600, 80, 80));   // pokie 2
+    c.InteriorObjects.Add(new Rectangle(340, 600, 80, 80));   // pokie 3
+    buildings.Add(c);
+}
+static void AddAirport(float x, float y)
+{
+    var a = new Building(
+        new Rectangle(x, y, 400, 200),
+        new Color(220, 220, 225, 255),
+        new Color(200, 210, 215, 255),
+        new Vector2(x + 200, y + 400),
+        "Airport",
+        new NPC(new Vector2(700, 160), "Check-in Staff", "Welcome to the airport bro, where ya headed?"),
+        entryPos: new Vector2(700, 900)
+    );
+    a.InteriorObjects.Clear();
+    a.InteriorObjects.Add(new Rectangle(400, 100, 400, 40));   // check-in counter
+    a.InteriorObjects.Add(new Rectangle(100, 200, 200, 40));   // security desk
+    a.InteriorObjects.Add(new Rectangle(800, 200, 200, 40));   // departure gate A
+    a.InteriorObjects.Add(new Rectangle(1000, 200, 200, 40));  // departure gate B
+    a.InteriorObjects.Add(new Rectangle(100, 500, 120, 80));   // seating block 1
+    a.InteriorObjects.Add(new Rectangle(300, 500, 120, 80));   // seating block 2
+    a.InteriorObjects.Add(new Rectangle(700, 500, 120, 80));   // seating block 3
+    a.InteriorObjects.Add(new Rectangle(900, 500, 120, 80));   // seating block 4
+    buildings.Add(a);
 }
 static void AddMiniGolf(float x, float y)
 {
@@ -1407,6 +2467,612 @@ static void UpdateTennisPlay(float dt)
         }
     }
 }
+static void CookRawItemFromToolbar(string rawItem)
+{
+    if (isCooking || quickCooking) return;   // already cooking — no spam
+
+    string result = rawItem switch {
+        "Fish"     => "Cooked Fish",
+        "Raw Meat" => "Cooked Meat",
+        "Potato"   => "Roast Potato",
+        "Corn"     => "Cooked Corn",
+        _ => null
+    };
+    if (result == null) return;
+
+    int slot = toolbarSelectedSlot;
+    if (toolbarSlots[slot] != rawItem || toolbarCounts[slot] <= 0) return;
+
+    // need somewhere for the output; the slot frees if this is the last raw one
+    bool slotWillFree = toolbarCounts[slot] == 1;
+    bool hasRoom = slotWillFree
+                || toolbarSlots.Any(s => s == result || s == "Ashes")
+                || !ToolbarFull();
+    if (!hasRoom)
+    {
+        ShowNotification("Your inventory is too full to cook!");
+        return;
+    }
+
+    // start the timed cook
+    quickCooking   = true;
+    quickCookTimer = QuickCookDuration;
+    quickCookRaw   = rawItem;
+    quickCookResult = result;
+    quickCookSlot  = slot;
+}
+static void UpdateQuickCook(float dt)
+{
+    if (!quickCooking) return;
+
+    quickCookTimer -= dt;
+    if (quickCookTimer > 0f) return;
+
+    quickCooking = false;
+
+    // validate the slot still holds the raw item (player may have swapped)
+    if (quickCookSlot < 0 || quickCookSlot >= toolbarSlots.Length
+        || toolbarSlots[quickCookSlot] != quickCookRaw
+        || toolbarCounts[quickCookSlot] <= 0)
+    {
+        ShowNotification("Cooking cancelled.");
+        return;
+    }
+
+    // consume one raw item
+    toolbarCounts[quickCookSlot]--;
+    if (toolbarCounts[quickCookSlot] <= 0) toolbarSlots[quickCookSlot] = null;
+
+    // burn chance: 30% base, -2% per cooking level, floor 5%
+    float burnChance = Math.Max(0.05f, 0.30f - (player.CookingLevel * 0.02f));
+    bool burned = Raylib.GetRandomValue(0, 100) < (int)(burnChance * 100);
+
+    string output = burned ? "Ashes" : quickCookResult;
+    if (!AddOneItemToToolbar(output))
+    {
+        ShowNotification("Your inventory is too full to cook!");
+        return;
+    }
+
+    if (burned)
+    {
+        ShowNotification($"Burnt the {quickCookRaw}! Got Ashes.");
+        player.AddCookingXP(2);
+    }
+    else
+    {
+        int xp = quickCookResult == "Cooked Meat" ? 12 : 10;
+        player.AddCookingXP(xp);
+        ShowNotification($"Cooked {quickCookResult}! +{xp} Cooking XP");
+    }
+}
+static void DrawQuickCookBar()
+{
+    if (!quickCooking) return;
+
+    int bw = 360, bh = 22;
+    int bx = ScreenWidth / 2 - bw / 2;
+    int by = ScreenHeight - 160;
+
+    float prog = Math.Clamp(1f - quickCookTimer / QuickCookDuration, 0f, 1f);
+    Color orange = new Color((byte)220,(byte)120,(byte)20,(byte)255);
+
+    Raylib.DrawRectangle(bx - 4, by - 22, bw + 8, bh + 30, new Color((byte)0,(byte)0,(byte)0,(byte)180));
+    Raylib.DrawText($"Cooking {quickCookRaw}...", bx, by - 20, 16, Color.LightGray);
+    Raylib.DrawRectangle(bx, by, bw, bh, new Color((byte)40,(byte)40,(byte)40,(byte)255));
+    Raylib.DrawRectangle(bx, by, (int)(bw * prog), bh, orange);
+    Raylib.DrawRectangleLines(bx, by, bw, bh, Color.White);
+}
+static void DrawCookingMenu()
+{
+    if (!cookingMenuOpen) return;
+
+    bool isKitchen = cookingContext == "kitchen";
+    var available = cookingRecipes.Where(r => !r.KitchenOnly || isKitchen).ToArray();
+
+    int px = ScreenWidth/2 - 360, py = 50;
+    int pw = 720, ph = 560;
+    Color orange = new Color((byte)220,(byte)120,(byte)20,(byte)255);
+
+    Raylib.DrawRectangle(px, py, pw, ph, new Color((byte)15,(byte)10,(byte)5,(byte)245));
+    Raylib.DrawRectangleLines(px, py, pw, ph, orange);
+    string title = isKitchen ? "KITCHEN — COOK" : "CAMPFIRE — COOK";
+    Raylib.DrawText(title, px + pw/2 - Raylib.MeasureText(title,26)/2, py + 10, 26, orange);
+    Raylib.DrawText($"Cooking Lv {player.CookingLevel}", px + 10, py + 10, 16, Color.LightGray);
+
+    // cooking progress bar
+    if (isCooking)
+    {
+        cookingTimer -= Raylib.GetFrameTime();
+        int bw = pw - 40;
+        float prog = Math.Max(0, 1f - cookingTimer / 2f);
+        Raylib.DrawRectangle(px + 20, py + 46, bw, 14, new Color((byte)40,(byte)40,(byte)40,(byte)255));
+        Raylib.DrawRectangle(px + 20, py + 46, (int)(bw * prog), 14, orange);
+        Raylib.DrawRectangleLines(px + 20, py + 46, bw, 14, Color.White);
+        Raylib.DrawText($"Cooking {cookingItem}...", px + 20, py + 64, 16, Color.LightGray);
+        if (cookingTimer <= 0f)
+        {
+            isCooking = false;
+            AddToToolbar(cookingItem);
+            player.AddCookingXP(cookingRecipes.FirstOrDefault(r => r.Result == cookingItem)?.XP ?? 10);
+            ShowNotification($"Cooked {cookingItem}!");
+        }
+        Raylib.DrawText("Q = Cancel", px + pw/2 - 40, py + ph - 20, 16, Color.DarkGray);
+        if (Raylib.IsKeyPressed(KeyboardKey.Q)) { isCooking = false; cookingMenuOpen = false; }
+        return;
+    }
+
+    Vector2 mouse = Raylib.GetMousePosition();
+    int rowH = 68, startY = py + 86;
+
+    for (int i = 0; i < available.Length; i++)
+    {
+        var r = available[i];
+        bool canCook = CanCook(r);
+        Rectangle row = new Rectangle(px + 12, startY + i * rowH, pw - 24, rowH - 6);
+        bool hover = canCook && Raylib.CheckCollisionPointRec(mouse, row);
+
+        Raylib.DrawRectangleRec(row, new Color((byte)25,(byte)15,(byte)5,(byte)255));
+        Raylib.DrawRectangleLinesEx(row, hover ? 2 : 1, hover ? orange : (canCook ? new Color((byte)80,(byte)50,(byte)10,(byte)255) : new Color((byte)40,(byte)40,(byte)40,(byte)255)));
+
+        // result name
+        Color nameCol = canCook ? Color.White : Color.DarkGray;
+        Raylib.DrawText(r.Result, px + 22, startY + i * rowH + 8, 20, nameCol);
+        // HP restore
+        Raylib.DrawText($"+{r.HpRestore} HP", px + 22, startY + i * rowH + 32, 14, canCook ? new Color((byte)80,(byte)200,(byte)80,(byte)255) : Color.DarkGray);
+        // XP
+        Raylib.DrawText($"+{r.XP} XP", px + 110, startY + i * rowH + 32, 14, canCook ? new Color((byte)200,(byte)160,(byte)20,(byte)255) : Color.DarkGray);
+        // ingredients
+        string ingList = string.Join(" + ", r.Ingredients);
+        Raylib.DrawText(ingList, px + 220, startY + i * rowH + 22, 14, canCook ? Color.LightGray : Color.DarkGray);
+        // kitchen only tag
+        if (r.KitchenOnly)
+            Raylib.DrawText("[Kitchen]", px + pw - 110, startY + i * rowH + 8, 13, new Color((byte)100,(byte)160,(byte)220,(byte)255));
+
+        if (hover && Raylib.IsMouseButtonPressed(MouseButton.Left))
+        {
+            ConsumeIngredients(r);
+            cookingItem = r.Result;
+            isCooking = true;
+            cookingTimer = 2f;
+        }
+    }
+
+    Raylib.DrawText("Q = Close", px + pw/2 - 38, py + ph - 20, 16, Color.DarkGray);
+    if (Raylib.IsKeyPressed(KeyboardKey.Q)) cookingMenuOpen = false;
+}
+
+static void DrawAAMenu()
+{
+    if (!aaMenuOpen || currentBuilding?.BuildingName != "AA") return;
+
+    Color aaBlue = new Color((byte)0,(byte)80,(byte)160,(byte)255);
+    int px = ScreenWidth/2 - 300, py = 60;
+    Raylib.DrawRectangle(px, py, 600, 520, new Color((byte)5,(byte)20,(byte)40,(byte)245));
+    Raylib.DrawRectangleLines(px, py, 600, 520, aaBlue);
+    Raylib.DrawText("AA DRIVING SERVICES", px + 130, py + 12, 26, new Color((byte)0,(byte)200,(byte)255,(byte)255));
+    Raylib.DrawText($"Driving Lv {player.DrivingLevel}  |  Class: {CurrentLicenceClass}  |  ${player.Money}", px + 60, py + 46, 16, Color.LightGray);
+
+    // current licence status
+    Raylib.DrawText($"Theory: {(HasTheoryForCurrentClass ? "PASSED ✓" : "NOT PASSED")}",   px + 20, py + 80, 18, HasTheoryForCurrentClass ? Color.Green : Color.Red);
+    Raylib.DrawText($"Practical: {(HasPracticalForCurrentClass ? "PASSED ✓" : "NOT PASSED")}", px + 20, py + 104, 18, HasPracticalForCurrentClass ? Color.Green : Color.Red);
+    Raylib.DrawText(HasPracticalForCurrentClass ? "Full licence — drive anytime!" : HasTheoryForCurrentClass ? "Restricted — 6am to 10pm only" : "No licence — cannot drive!", px + 20, py + 128, 16, HasPracticalForCurrentClass ? Color.Green : HasTheoryForCurrentClass ? Color.Orange : Color.Red);
+
+    Vector2 mouse = Raylib.GetMousePosition();
+
+    // Theory test button
+    bool theoryAvail = !HasTheoryForCurrentClass;
+    Rectangle theoryBtn = new Rectangle(px + 20, py + 170, 560, 60);
+    bool hT = Raylib.CheckCollisionPointRec(mouse, theoryBtn);
+    Raylib.DrawRectangleRec(theoryBtn, theoryAvail ? new Color((byte)0,(byte)40,(byte)80,(byte)255) : new Color((byte)20,(byte)20,(byte)20,(byte)255));
+    Raylib.DrawRectangleLinesEx(theoryBtn, 2, theoryAvail && hT ? Color.Gold : aaBlue);
+    Raylib.DrawText($"THEORY TEST — Class {CurrentLicenceClass}  ($50)", px + 30, py + 182, 20, theoryAvail ? Color.White : Color.DarkGray);
+    Raylib.DrawText(theoryAvail ? "10 questions, need 8/10 to pass" : "Already passed ✓", px + 30, py + 204, 14, theoryAvail ? Color.LightGray : Color.Green);
+    if (theoryAvail && hT && Raylib.IsMouseButtonPressed(MouseButton.Left))
+    {
+        if (player.Money >= 50)
+        {
+            player.Money -= 50;
+            aaTheoryQuestion = 0;
+            aaTheoryScore = 0;
+            aaTheorySelected = -1;
+            aaTheoryFinished = false;
+            aaTheoryPassed = false;
+            aaTheoryOpen = true;
+            aaMenuOpen = false;
+        }
+        else { shopMessage = "Need $50 for the theory test bro!"; shopMessageTimer = 2f; }
+    }
+
+    // Practical test button
+    bool practAvail = HasTheoryForCurrentClass && PracticalAvailable;
+    Rectangle practBtn = new Rectangle(px + 20, py + 250, 560, 60);
+    bool hP = Raylib.CheckCollisionPointRec(mouse, practBtn);
+    Raylib.DrawRectangleRec(practBtn, practAvail ? new Color((byte)0,(byte)60,(byte)20,(byte)255) : new Color((byte)20,(byte)20,(byte)20,(byte)255));
+    Raylib.DrawRectangleLinesEx(practBtn, 2, practAvail && hP ? Color.Gold : new Color((byte)0,(byte)100,(byte)40,(byte)255));
+
+    string practLabel = !HasTheoryForCurrentClass ? "Pass theory first!" :
+                        !PracticalAvailable       ? $"Reach Lv {PracticalUnlockLevel()} first" :
+                                                    $"PRACTICAL TEST — Class {CurrentLicenceClass}  ($100)";
+    Raylib.DrawText(practLabel, px + 30, py + 262, 20, practAvail ? Color.White : Color.DarkGray);
+    Raylib.DrawText(practAvail ? "Drive a test course within time limit" : "", px + 30, py + 284, 14, Color.LightGray);
+
+    if (practAvail && hP && Raylib.IsMouseButtonPressed(MouseButton.Left))
+    {
+        if (player.Money >= 100)
+        {
+            player.Money -= 100;
+            StartDrivingTest();
+            aaMenuOpen = false;
+        }
+        else { shopMessage = "Need $100 for the practical test bro!"; shopMessageTimer = 2f; }
+    }
+
+    // Licence info panel
+    Raylib.DrawRectangle(px + 20, py + 330, 560, 160, new Color((byte)5,(byte)15,(byte)30,(byte)255));
+    Raylib.DrawRectangleLines(px + 20, py + 330, 560, 160, new Color((byte)0,(byte)60,(byte)100,(byte)255));
+    Raylib.DrawText("LICENCE CLASSES", px + 190, py + 340, 18, new Color((byte)0,(byte)200,(byte)255,(byte)255));
+    string[] info = {
+        "D (Lv 1-19)  — Basic vehicles, 6am-10pm restricted",
+        "C (Lv 20-39) — All standard vehicles",
+        "B (Lv 40-59) — Trucks & large vehicles",
+        "A (Lv 60-79) — High performance vehicles",
+        "S (Lv 80+)   — Unrestricted, all vehicles anytime"
+    };
+    for (int i = 0; i < 5; i++)
+        Raylib.DrawText(info[i], px + 30, py + 362 + i * 22, 13, i == (int)CurrentLicenceClass - 1 ? Color.Gold : Color.LightGray);
+
+    Raylib.DrawText("Q = Close", px + 260, py + 498, 18, Color.DarkGray);
+    if (Raylib.IsKeyPressed(KeyboardKey.Q)) aaMenuOpen = false;
+}
+
+static int PracticalUnlockLevel() => CurrentLicenceClass switch {
+    LicenceClass.D => 10, LicenceClass.C => 30, LicenceClass.B => 50,
+    LicenceClass.A => 70, LicenceClass.S => 90, _ => 999
+};
+
+static void DrawAATheoryTest()
+{
+    if (!aaTheoryOpen || currentBuilding?.BuildingName != "AA") return;
+
+    int testIdx = (int)CurrentLicenceClass - 1;
+    var questions = theoryTests[Math.Clamp(testIdx, 0, 4)];
+
+    Color aaBlue = new Color((byte)0,(byte)80,(byte)160,(byte)255);
+    int px = ScreenWidth/2 - 380, py = 40;
+    Raylib.DrawRectangle(px, py, 760, 620, new Color((byte)5,(byte)15,(byte)30,(byte)245));
+    Raylib.DrawRectangleLines(px, py, 760, 620, aaBlue);
+    Raylib.DrawText($"THEORY TEST — Class {CurrentLicenceClass}", px + 210, py + 12, 26, new Color((byte)0,(byte)200,(byte)255,(byte)255));
+
+    if (aaTheoryFinished)
+    {
+        // results screen
+        Color resCol = aaTheoryPassed ? Color.Green : Color.Red;
+        string resText = aaTheoryPassed ? "PASSED! ✓" : "FAILED ✗";
+        int rw = Raylib.MeasureText(resText, 40);
+        Raylib.DrawText(resText, px + 380 - rw/2, py + 160, 40, resCol);
+        Raylib.DrawText($"Score: {aaTheoryScore} / {questions.Length}", px + 300, py + 220, 26, Color.White);
+        Raylib.DrawText(aaTheoryPassed ? "Your theory licence is now active!" : "Need 8/10 to pass. Try again ($50).", px + 80, py + 270, 20, Color.LightGray);
+
+        Rectangle closeBtn = new Rectangle(px + 280, py + 340, 200, 50);
+        bool hC = Raylib.CheckCollisionPointRec(Raylib.GetMousePosition(), closeBtn);
+        Raylib.DrawRectangleRec(closeBtn, new Color((byte)0,(byte)40,(byte)80,(byte)255));
+        Raylib.DrawRectangleLinesEx(closeBtn, 2, hC ? Color.Gold : aaBlue);
+        Raylib.DrawText("Continue", px + 320, py + 357, 22, hC ? Color.Gold : Color.White);
+        if ((hC && Raylib.IsMouseButtonPressed(MouseButton.Left)) || Raylib.IsKeyPressed(KeyboardKey.Q))
+        {
+            aaTheoryOpen = false;
+            aaMenuOpen = true;
+        }
+        return;
+    }
+
+    var q = questions[aaTheoryQuestion];
+    Raylib.DrawText($"Question {aaTheoryQuestion + 1} of {questions.Length}   Score: {aaTheoryScore}", px + 20, py + 50, 16, Color.LightGray);
+
+    // progress bar
+    float prog = (float)aaTheoryQuestion / questions.Length;
+    Raylib.DrawRectangle(px + 20, py + 72, 720, 10, new Color((byte)20,(byte)20,(byte)40,(byte)255));
+    Raylib.DrawRectangle(px + 20, py + 72, (int)(720 * prog), 10, aaBlue);
+
+    // question
+    Raylib.DrawText(q.Question, px + 20, py + 100, 22, Color.White);
+
+    // options
+    Vector2 mouse = Raylib.GetMousePosition();
+    for (int i = 0; i < q.Options.Length; i++)
+    {
+        Rectangle opt = new Rectangle(px + 20, py + 160 + i * 80, 720, 68);
+        bool hover = Raylib.CheckCollisionPointRec(mouse, opt) && aaTheorySelected < 0;
+        Color bg = aaTheorySelected >= 0
+            ? (i == q.Correct ? new Color((byte)0,(byte)80,(byte)20,(byte)255)
+               : i == aaTheorySelected ? new Color((byte)80,(byte)10,(byte)10,(byte)255)
+               : new Color((byte)20,(byte)20,(byte)30,(byte)255))
+            : hover ? new Color((byte)0,(byte)50,(byte)100,(byte)255) : new Color((byte)15,(byte)25,(byte)45,(byte)255);
+        Color border = aaTheorySelected >= 0
+            ? (i == q.Correct ? Color.Green : i == aaTheorySelected ? Color.Red : new Color((byte)40,(byte)40,(byte)60,(byte)255))
+            : hover ? Color.Gold : aaBlue;
+
+        Raylib.DrawRectangleRec(opt, bg);
+        Raylib.DrawRectangleLinesEx(opt, 2, border);
+        Raylib.DrawText($"{(char)('A' + i)}. {q.Options[i]}", px + 34, py + 175 + i * 80, 20, Color.White);
+
+        if (hover && aaTheorySelected < 0 && Raylib.IsMouseButtonPressed(MouseButton.Left))
+        {
+            aaTheorySelected = i;
+            if (i == q.Correct) aaTheoryScore++;
+        }
+    }
+
+    // next button after selection
+    if (aaTheorySelected >= 0)
+    {
+        Rectangle nextBtn = new Rectangle(px + 560, py + 560, 180, 44);
+        bool hN = Raylib.CheckCollisionPointRec(mouse, nextBtn);
+        Raylib.DrawRectangleRec(nextBtn, new Color((byte)0,(byte)60,(byte)130,(byte)255));
+        Raylib.DrawRectangleLinesEx(nextBtn, 2, hN ? Color.Gold : aaBlue);
+        Raylib.DrawText(aaTheoryQuestion < questions.Length - 1 ? "Next >" : "Finish", px + 590, py + 573, 20, hN ? Color.Gold : Color.White);
+
+        if ((hN && Raylib.IsMouseButtonPressed(MouseButton.Left)) || Raylib.IsKeyPressed(KeyboardKey.Space))
+        {
+            aaTheoryQuestion++;
+            aaTheorySelected = -1;
+            if (aaTheoryQuestion >= questions.Length)
+            {
+                aaTheoryFinished = true;
+                aaTheoryPassed = aaTheoryScore >= 8;
+                if (aaTheoryPassed)
+                {
+                    switch (CurrentLicenceClass) {
+                        case LicenceClass.D: hasTheoryD = true; break;
+                        case LicenceClass.C: hasTheoryC = true; break;
+                        case LicenceClass.B: hasTheoryB = true; break;
+                        case LicenceClass.A: hasTheoryA = true; break;
+                        case LicenceClass.S: hasTheoryS = true; break;
+                    }
+                }
+            }
+        }
+    }
+}
+static void StartDrivingTest()
+{
+    testingForClass = CurrentLicenceClass;
+    testReturnPos = player.Position;
+
+    // spawn test vehicle appropriate for licence class
+    Vehicle.VehicleType vtype = testingForClass switch {
+        LicenceClass.D => Vehicle.VehicleType.Sedan,
+        LicenceClass.C => Vehicle.VehicleType.SUV,
+        LicenceClass.B => Vehicle.VehicleType.Truck,
+        LicenceClass.A => Vehicle.VehicleType.Sedan,
+        LicenceClass.S => Vehicle.VehicleType.PoliceCar,
+        _ => Vehicle.VehicleType.Sedan
+    };
+    Color vCol = testingForClass switch {
+        LicenceClass.D => new Color((byte)60,(byte)120,(byte)200,(byte)255),
+        LicenceClass.C => new Color((byte)60,(byte)160,(byte)60,(byte)255),
+        LicenceClass.B => new Color((byte)160,(byte)100,(byte)40,(byte)255),
+        LicenceClass.A => new Color((byte)180,(byte)20,(byte)20,(byte)255),
+        LicenceClass.S => new Color((byte)20,(byte)20,(byte)20,(byte)255),
+        _ => Color.Gray
+    };
+    float spd = testingForClass switch {
+        LicenceClass.D => 280f, LicenceClass.C => 340f, LicenceClass.B => 260f,
+        LicenceClass.A => 500f, LicenceClass.S => 600f, _ => 300f
+    };
+
+    testVehicle = new Vehicle(new Vector2(400, 600), vCol, spd, vtype);
+    testVehicle.Driving = true;
+    testVehicle.Fuel = 100f;
+    player.Hidden = true;
+
+    // checkpoints scale with licence class — harder routes for higher classes
+    int numCp = testingForClass switch {
+        LicenceClass.D => 5, LicenceClass.C => 7, LicenceClass.B => 8,
+        LicenceClass.A => 10, LicenceClass.S => 12, _ => 5
+    };
+    testTimeLimit = testingForClass switch {
+        LicenceClass.D => 90f, LicenceClass.C => 80f, LicenceClass.B => 100f,
+        LicenceClass.A => 75f, LicenceClass.S => 70f, _ => 90f
+    };
+
+    // generate a circuit of checkpoints
+    testCheckpoints = GenerateTestCourse(numCp, testingForClass);
+    testCurrentCheckpoint = 0;
+    testTimer = testTimeLimit;
+    testComplete = false;
+    testFailed = false;
+    testLap = 0;
+    testLapsRequired = testingForClass switch {
+        LicenceClass.D => 1, LicenceClass.C => 1, LicenceClass.B => 2,
+        LicenceClass.A => 2, LicenceClass.S => 3, _ => 1
+    };
+    testMessage = $"Class {testingForClass} Practical Test! Hit all checkpoints in time!";
+    testMessageTimer = 3f;
+
+    currentScene = SceneState.DrivingTest;
+}
+
+static Vector2[] GenerateTestCourse(int count, LicenceClass cls)
+{
+    // base course is a rough circuit within the test arena (centred around 640,360)
+    var pts = new Vector2[count];
+    float spread = cls switch {
+        LicenceClass.D => 280f, LicenceClass.C => 360f, LicenceClass.B => 420f,
+        LicenceClass.A => 480f, LicenceClass.S => 540f, _ => 280f
+    };
+    for (int i = 0; i < count; i++)
+    {
+        float angle = i * (MathF.PI * 2f / count);
+        // vary radius a bit so it's not a perfect circle — more interesting route
+        float r = spread + MathF.Sin(angle * 2.3f) * spread * 0.35f;
+        pts[i] = new Vector2(640 + MathF.Cos(angle) * r, 360 + MathF.Sin(angle) * r);
+    }
+    return pts;
+}
+static void UpdateDrivingTest(float dt)
+{
+    if (testComplete || testFailed) return;
+    if (testMessageTimer > 0) testMessageTimer -= dt;
+
+    testTimer -= dt;
+    if (testTimer <= 0f)
+    {
+        testFailed = true;
+        testMessage = "Time's up! Test failed. Try again bro.";
+        testMessageTimer = 4f;
+        return;
+    }
+
+    // move test vehicle with arrow keys
+    Vector2 move = Vector2.Zero;
+    if (Raylib.IsKeyDown(KeyboardKey.Up))    move.Y -= 1;
+    if (Raylib.IsKeyDown(KeyboardKey.Down))  move.Y += 1;
+    if (Raylib.IsKeyDown(KeyboardKey.Left))  move.X -= 1;
+    if (Raylib.IsKeyDown(KeyboardKey.Right)) move.X += 1;
+
+    if (move != Vector2.Zero) move = Vector2.Normalize(move);
+    testVehicle.velocity = Vector2.Lerp(testVehicle.velocity, move * testVehicle.TopSpeed, dt * 5f);
+    testVehicle.Position += testVehicle.velocity * dt;
+
+    // clamp to test arena
+    testVehicle.Position.X = Math.Clamp(testVehicle.Position.X, 60, 1210);
+    testVehicle.Position.Y = Math.Clamp(testVehicle.Position.Y, 60, 650);
+
+    // update facing
+    if (testVehicle.velocity.Length() > 20f)
+    {
+        if (MathF.Abs(testVehicle.velocity.X) >= MathF.Abs(testVehicle.velocity.Y))
+            testVehicle.Facing = testVehicle.velocity.X < 0 ? Vehicle.FacingDirection.Left : Vehicle.FacingDirection.Right;
+        else
+            testVehicle.Facing = testVehicle.velocity.Y < 0 ? Vehicle.FacingDirection.Up : Vehicle.FacingDirection.Down;
+    }
+
+    // checkpoint detection
+    if (testCurrentCheckpoint < testCheckpoints.Length)
+    {
+        Vector2 cp = testCheckpoints[testCurrentCheckpoint];
+        if (Vector2.Distance(testVehicle.Position + new Vector2(50, 25), cp) < 50f)
+        {
+            testCurrentCheckpoint++;
+            if (testCurrentCheckpoint >= testCheckpoints.Length)
+            {
+                testLap++;
+                if (testLap >= testLapsRequired)
+                {
+                    testComplete = true;
+                    testMessage = $"Test Passed! Class {testingForClass} practical licence earned!";
+                    testMessageTimer = 4f;
+                    // grant practical licence
+                    switch (testingForClass) {
+                        case LicenceClass.D: hasPracticalD = true; break;
+                        case LicenceClass.C: hasPracticalC = true; break;
+                        case LicenceClass.B: hasPracticalB = true; break;
+                        case LicenceClass.A: hasPracticalA = true; break;
+                        case LicenceClass.S: hasPracticalS = true; break;
+                    }
+                    player.AddDrivingXP(200);
+                }
+                else
+                {
+                    testCurrentCheckpoint = 0;
+                    testMessage = $"Lap {testLap}/{testLapsRequired} complete! Keep going!";
+                    testMessageTimer = 2f;
+                }
+            }
+            else
+            {
+                testMessage = $"Checkpoint {testCurrentCheckpoint}/{testCheckpoints.Length}!";
+                testMessageTimer = 1f;
+            }
+        }
+    }
+
+    if ((testComplete || testFailed) && Raylib.IsKeyPressed(KeyboardKey.Space))
+        ExitDrivingTest();
+}
+
+static void ExitDrivingTest()
+{
+    testVehicle = null;
+    player.Hidden = false;
+    player.Position = testReturnPos;
+    currentScene = SceneState.Building;
+}
+
+static void DrawDrivingTest()
+{
+    Raylib.ClearBackground(new Color((byte)60,(byte)60,(byte)65,(byte)255)); // tarmac
+
+    // draw track surface — filled oval
+    Raylib.DrawEllipse(640, 360, 560, 320, new Color((byte)50,(byte)50,(byte)55,(byte)255));
+    Raylib.DrawEllipseLines(640, 360, 560, 320, new Color((byte)200,(byte)200,(byte)60,(byte)255));
+
+    // track markings
+    for (int i = 0; i < 20; i++)
+    {
+        float a = i * (MathF.PI * 2f / 20f);
+        int mx = (int)(640 + MathF.Cos(a) * 480);
+        int my = (int)(360 + MathF.Sin(a) * 270);
+        Raylib.DrawRectangle(mx - 4, my - 12, 8, 24, new Color((byte)255,(byte)255,(byte)255,(byte)180));
+    }
+
+    // arena boundary
+    Raylib.DrawRectangleLines(60, 60, 1160, 600, new Color((byte)220,(byte)50,(byte)50,(byte)255));
+    Raylib.DrawRectangleLines(58, 58, 1164, 604, new Color((byte)180,(byte)30,(byte)30,(byte)200));
+
+    // checkpoints
+    for (int i = 0; i < testCheckpoints.Length; i++)
+    {
+        Vector2 cp = testCheckpoints[i];
+        bool next = i == testCurrentCheckpoint;
+        bool done = i < testCurrentCheckpoint;
+        Color cpCol = done ? Color.Green : next ? Color.Gold : new Color((byte)60,(byte)80,(byte)120,(byte)255);
+        Raylib.DrawCircle((int)cp.X, (int)cp.Y, next ? 22 : 16, cpCol);
+        Raylib.DrawCircleLines((int)cp.X, (int)cp.Y, next ? 22 : 16, Color.White);
+        Raylib.DrawText($"{i + 1}", (int)cp.X - 5, (int)cp.Y - 9, 18, Color.White);
+        // draw line to next checkpoint
+        if (next && i + 1 < testCheckpoints.Length)
+            Raylib.DrawLineEx(cp, testCheckpoints[i + 1], 2, new Color((byte)255,(byte)200,(byte)0,(byte)80));
+    }
+
+    // test vehicle
+    if (testVehicle != null) testVehicle.Draw();
+
+    // HUD
+    Color aaBlue = new Color((byte)0,(byte)80,(byte)160,(byte)255);
+    Raylib.DrawRectangle(0, 0, 1280, 58, new Color((byte)5,(byte)15,(byte)30,(byte)220));
+
+    // timer bar
+    float timerPct = testTimer / testTimeLimit;
+    Color timerCol = timerPct > 0.5f ? Color.Green : timerPct > 0.25f ? Color.Orange : Color.Red;
+    Raylib.DrawRectangle(200, 10, 880, 20, new Color((byte)30,(byte)30,(byte)40,(byte)255));
+    Raylib.DrawRectangle(200, 10, (int)(880 * timerPct), 20, timerCol);
+    Raylib.DrawRectangleLines(200, 10, 880, 20, Color.White);
+    Raylib.DrawText($"{(int)testTimer}s", 1094, 8, 22, timerCol);
+
+    Raylib.DrawText($"Class {testingForClass} Practical", 10, 8, 22, new Color((byte)0,(byte)200,(byte)255,(byte)255));
+    Raylib.DrawText($"Lap {testLap + 1}/{testLapsRequired}   CP {testCurrentCheckpoint}/{testCheckpoints.Length}", 200, 34, 18, Color.LightGray);
+    Raylib.DrawText("Arrow keys = Drive", 900, 34, 16, Color.DarkGray);
+
+    // message overlay
+    if (testMessageTimer > 0)
+    {
+        int mw = Raylib.MeasureText(testMessage, 28);
+        Raylib.DrawRectangle(640 - mw/2 - 16, 300, mw + 32, 48, new Color((byte)0,(byte)0,(byte)0,(byte)200));
+        Raylib.DrawText(testMessage, 640 - mw/2, 308, 28, Color.Gold);
+    }
+
+    if (testComplete || testFailed)
+    {
+        Raylib.DrawRectangle(390, 400, 500, 80, new Color((byte)0,(byte)0,(byte)0,(byte)220));
+        Raylib.DrawRectangleLines(390, 400, 500, 80, testComplete ? Color.Green : Color.Red);
+        Raylib.DrawText(testComplete ? "PASSED! SPACE = Continue" : "FAILED. SPACE = Try Again", 400, 420, 22, testComplete ? Color.Green : Color.Red);
+    }
+    if ((testComplete || testFailed) && Raylib.IsKeyPressed(KeyboardKey.Space))
+        ExitDrivingTest();
+}
 static void DrawInventoryUI()
 {
 
@@ -1430,7 +3096,7 @@ static void DrawInventoryUI()
         if (player.Fur > 0) items.Add(("Fur", player.Fur));
         if (player.Stingers > 0) items.Add(("Stingers", player.Stingers));
         if (player.BearPelts > 0) items.Add(("Pelts", player.BearPelts));
-        if (player.DogFangs > 0) items.Add(("Bones", player.DogFangs));
+        if (player.DogFangs > 0) items.Add(("Dog Fangs", player.DogFangs));
         if (player.Money > 0) items.Add(("Money", player.Money));
         if (player.HasAxe && !ToolInToolbar("Axe")) items.Add(("Axe", 1));
         if (pickaxePickedUp && !ToolInToolbar("Pickaxe")) items.Add(("Pickaxe", 1));
@@ -1441,8 +3107,10 @@ static void DrawInventoryUI()
         if (swordPickedUp && !ToolInToolbar("Sword") && !WeaponEquipped("Sword")) items.Add(("Sword", 1));
         if (player.HasBow && !ToolInToolbar("Bow") && !WeaponEquipped("Bow")) items.Add(("Bow", 1));
         if (player.HasCrossbow && !ToolInToolbar("Crossbow") && !WeaponEquipped("Crossbow")) items.Add(("Crossbow", 1));
-        if (player.Arrows > 0) items.Add(("Arrows", player.Arrows));
-        if (player.Bolts > 0) items.Add(("Bolts", player.Bolts));
+        if (player.Arrows > 0 && equippedAmmo != "Arrows") items.Add(("Arrows", player.Arrows));
+        if (player.Bolts > 0 && equippedAmmo != "Bolts") items.Add(("Bolts", player.Bolts));
+        foreach (var kv in backpack)
+            if (kv.Value > 0) items.Add((kv.Key, kv.Value));
 
       
 
@@ -1599,6 +3267,14 @@ static void UpdateDungeon(float dt)
         if (Raylib.IsKeyPressed(KeyboardKey.One + k))
             toolbarSelectedSlot = k;
 
+    if (Raylib.IsKeyPressed(KeyboardKey.Space))
+{
+    string held = toolbarSlots[toolbarSelectedSlot];
+    if (held != null && IsUsable(held))
+        UseToolbarItem(toolbarSelectedSlot);
+   
+}
+
     float scroll = Raylib.GetMouseWheelMove();
     if (scroll != 0 && !pauseMenuOpen && !armorMenuOpen)
     {
@@ -1714,7 +3390,7 @@ player.Position = d.PlayerPos;
     if (dist < 65f && (Raylib.IsKeyPressed(KeyboardKey.Space) || Raylib.IsMouseButtonPressed(MouseButton.Left)))
 {
     string equipped = GetActiveWeapon();
-    bool hasWeapon  = equipped == "Sword" || equipped == "Stick";
+    bool hasWeapon  = equipped == "Stick" || equipped == "Sword" || equipped == "Ruby Sword" || equipped == " Sapphire SwordSword";
     if (!hasWeapon)
     {
         d.Message = "Equip a weapon to fight!";
@@ -2075,7 +3751,7 @@ if (dungeonQuitConfirm)
     DrawPauseMenu();
     DrawInventoryUI();
 }
-static bool IsTwoHandedWeapon(string weapon)
+public static bool IsTwoHandedWeapon(string weapon)
 {
     if (weapon == null) return false;
     return weapon == "Great Sword" || weapon == "War Axe" || weapon == "Battle Staff";
@@ -2099,32 +3775,97 @@ static int GetArmorDefense(string item)
     return item switch
     {
         // helmets
-        "Leather Cap"     => 1,
+        "Leather Helmet"     => 1,
         "Iron Helmet"     => 3,
         "Steel Helmet"    => 5,
+        "Gold Helmet"    => 7,
+        "Sapphire Helmet"    => 9,
+        "Ruby Helmet"    => 11,
+        "Emerald Helmet"    => 13,
+        "Diamond Helmet"    => 15,
+        "Magic Helmet"    => 18,
+        "Mystical Helmet"    => 20,
+        "Infernal Helmet"    => 20,
+
         // body
-        "Leather Vest"    => 2,
+        "Leather Chestplate"    => 2,
         "Iron Chestplate" => 5,
         "Steel Chestplate"=> 8,
+        "Gold Chestplate"=> 12,
+        "Sapphire Chestplate"=> 16,
+        "Ruby Chestplate"=> 20,
+        "Emerald Chestplate"=> 25,
+        "Diamond Chestplate"=> 30,
+        "Magic Chestplate"=> 35,
+        "Mystical Chestplate"=> 40,
+        "Infernal Chestplate"=> 40,
+
         // legs
-        "Leather Pants"   => 1,
+        "Leather Leggings"   => 1,
         "Iron Leggings"   => 3,
         "Steel Leggings"  => 5,
+        "Gold Leggings"  => 8,
+        "Sapphire Leggings"  => 12,
+        "Ruby Leggings"  => 16,
+        "Emerald Leggings"  => 20,
+        "Diamond Leggings"  => 24,
+        "Magic Leggings"  => 28,
+        "Mystical Leggings"  => 32,
+        "Infernal Leggings"  => 32,
+
         // boots
         "Leather Boots"   => 1,
         "Iron Boots"      => 2,
         "Steel Boots"     => 3,
+        "Gold Boots"   => 5,
+        "Sapphire Boots"      => 7,
+        "Ruby Boots"     => 9,
+        "Emerald Boots"   => 12,
+        "Diamond Boots"      => 15,
+        "Magic Boots"     => 18,
+        "Mystical Boots"      => 20,
+        "Infernal Boots"     => 20,
+
         // gloves
-        "Leather Gloves"  => 1,
+        "Leather Gauntlets"  => 1,
         "Iron Gauntlets"  => 2,
         "Steel Gauntlets" => 3,
+        "Gold Gauntlets"  => 5,
+        "Sapphire Gauntlets"  => 7,
+        "Ruby Gauntlets" => 9,
+        "Emerald Gauntlets"  => 12,
+        "Diamond Gauntlets"  => 15,
+        "Magic Gauntlets" => 18,
+        "Mystical Gauntlets"  => 20,
+        "Infernal Gauntlets"  => 20,
+     
+
         // cape
-        "Wool Cape"       => 1,
-        "Magic Cape"      => 3,
+        "Leather Cape"       => 1,
+        "Iron Cape"      => 3,
+        "Steel Cape"       => 5,
+        "Gold Cape"      => 8,
+        "Sapphire Cape"       => 12,
+        "Ruby Cape"      => 15,
+        "EmeraldCape"       => 18,
+        "Diamond Cape"      => 20,
+        "Magic Cape"       => 22,
+        "Mystical Cape"      => 25,
+        "Infernal Cape"       => 25,
+
         // shields
-        "Wooden Shield"   => 2,
-        "Iron Shield"     => 4,
-        "Steel Shield"    => 6,
+        "Leather Shield"   => 4,
+        "Iron Shield"     => 8,
+        "Steel Shield"    => 12,
+        "Gold Shield"   => 16,
+        "Sapphire Shield"     => 20,
+        "Ruby Shield"    => 24,
+        "Emerald Shield"   => 28,
+        "Diamond Shield"     => 32,
+        "Magic Shield"    => 35,
+        "Mystical Shield"   => 40,
+        "Infernal Shield"     => 40,
+        
         // weapons (weapon slot armor value = 0, damage handled separately)
         _ => 0
     };
@@ -2140,6 +3881,8 @@ static int GetWeaponDamage(string weapon)
     {
         "Stick"       => 0,
         "Sword"       => 5,
+        "Sapphire Sword"       => 10,
+        "Ruby Sword"       => 15,
         "Great Sword" => 12,
         "War Axe"     => 10,
         "Battle Staff" => 8,
@@ -2148,7 +3891,7 @@ static int GetWeaponDamage(string weapon)
 }
 static void DrawCombatColumn()
 {
-     if (currentPhase != HandPhase.Combat) return;
+     
 
     int box = 52;
     int gap = 6;
@@ -2173,7 +3916,7 @@ static void DrawCombatColumn()
 
         bool hover = Raylib.CheckCollisionPointRec(mouse, new Rectangle(colX, y, box, box));
 
-        Raylib.DrawRectangle(colX, y, box, box, new Color((byte)25,(byte)25,(byte)32,(byte)230));
+        Raylib.DrawRectangle(colX, y, box, box, new Color((byte)25,(byte)25,(byte)32, colAlpha));
         Raylib.DrawRectangleLines(colX, y, box, box, value != null ? Color.Gold : (hover ? Color.White : new Color((byte)90,(byte)90,(byte)110,(byte)255)));
         Raylib.DrawText(label, colX + 3, y + 2, 11, new Color((byte)150,(byte)150,(byte)170,(byte)255));
 
@@ -2198,6 +3941,14 @@ static void DrawCombatColumn()
         if (hover && Raylib.IsMouseButtonPressed(MouseButton.Left))
             onClick();
     }
+    if (currentPhase == HandPhase.Combat)
+{
+    int colHeight = cells.Length * (box + gap) - gap;
+    int colTop = colBaseY - (cells.Length - 1) * (box + gap);
+    Raylib.DrawRectangleLinesEx(
+        new Rectangle(colX - 4, colTop - 4, box + 8, colHeight + 8),
+        3, Color.Gold);
+}
 }
 
 static void EndFishing()
@@ -2217,21 +3968,114 @@ static void DrawPhaseIndicator()
 }
 static bool AddToToolbar(string item)
 {
+    bool isTool = IsToolItem(item);
+    int qty = isTool ? 1 : GetItemCount(item);
+    if (qty <= 0) { ShowNotification($"No {item} to move"); return false; }
+
+    // already on toolbar? stack onto it
+    for (int i = 0; i < toolbarSlots.Length; i++)
+    {
+        if (toolbarSlots[i] == item)
+        {
+            if (!isTool)
+            {
+                toolbarCounts[i] += qty;
+                ZeroOutInventory(item);
+            }
+            ShowNotification($"Moved {item} to toolbar");
+            return true;
+        }
+    }
+
+    // empty slot
     for (int i = 0; i < toolbarSlots.Length; i++)
     {
         if (toolbarSlots[i] == null)
         {
             toolbarSlots[i] = item;
+            toolbarCounts[i] = qty;
+            if (!isTool) ZeroOutInventory(item);
+            ShowNotification($"Moved {qty}x {item} to toolbar");
             return true;
         }
     }
+
     ShowNotification("Toolbar is full!");
     return false;
+}
+// Adds one item directly to toolbar (for grocery/cooked items not tracked in player stats)
+static bool AddOneItemToToolbar(string item)
+{
+    for (int i = 0; i < toolbarSlots.Length; i++)
+        if (toolbarSlots[i] == item) { toolbarCounts[i]++; return true; }
+    for (int i = 0; i < toolbarSlots.Length; i++)
+        if (toolbarSlots[i] == null) { toolbarSlots[i] = item; toolbarCounts[i] = 1; return true; }
+    return false;
+}
+// True if every toolbar slot is occupied.
+static bool ToolbarFull() => toolbarSlots.All(s => s != null);
+
+// Routes an item: toolbar first, then player inventory (stat counter), else fail.
+static bool GiveItemToPlayer(string item)
+{
+    if (AddOneItemToToolbar(item)) return true;
+    // fall back to the stat-based inventory if this item is tracked there
+    switch (item)
+    {
+        case "Cooked Fish": case "Fish":      player.Fish++;       return true;
+        case "Logs":        player.Logs++;    return true;
+        // add any other stat-backed items you want to accept here
+        default:
+            // not stat-backed and toolbar full → can't store it
+            return false;
+    }
+}
+
+static void ZeroOutInventory(string item)
+{
+    switch (item)
+    {
+        case "Logs": player.Logs = 0; break;
+        case "Birch Logs": player.BirchLogs = 0; break;
+        case "Oak Logs": player.OakLogs = 0; break;
+        case "Pine Logs": player.PineLogs = 0; break;
+        case "Arctic Logs": player.ArcticLogs = 0; break;
+        case "Dead Wood": player.DeadWood = 0; break;
+        case "Fish": player.Fish = 0; break;
+        case "Bones": player.Bones = 0; break;
+        case "Fur": player.Fur = 0; break;
+        case "Stingers": player.Stingers = 0; break;
+        case "Pelts": player.BearPelts = 0; break;
+        case "Arrows": player.Arrows = 0; break;
+        case "Bolts": player.Bolts = 0; break;
+        case "Money": player.Money = 0; break;
+        case "Dog Fangs": player.DogFangs = 0; break;
+        case "Wolf Claw": player.WolfClaws = 0; break;
+        case "Venom Sac": player.VenomSacs = 0; break;
+        case "Crab Claw": player.CrabClaws = 0; break;
+        case "Bear Claw": player.BearClaws = 0; break;
+        case "Crab Shell": player.CrabShells = 0; break;
+        case "Shark Fin": player.SharkFins = 0; break;
+        case "Shark Tooth": player.SharkTeeth = 0; break;
+        case "Snake Skin": player.SnakeSkins = 0; break;
+        case "Snake Fang": player.SnakeFangs = 0; break;
+        case "Croc Scale": player.CrocScales = 0; break;
+        case "Croc Tooth": player.CrocTeeth = 0; break;
+        case "Lizard Scale": player.LizardScales = 0; break;
+        case "Ember Stone": player.EmberStones = 0; break;
+        case "Magma Shard": player.MagmaShards = 0; break;
+        case "Lava Core": player.LavaCores = 0; break;
+        case "Feather": player.Feathers = 0; break;
+        case "Eagle Talon": player.EagleTalons = 0; break;
+        case "Horn": player.Horns = 0; break;
+        case "Goat Hoof": player.GoatHooves = 0; break;
+        default: backpack.Remove(item); break;
+    }
 }
 
 static void DrawToolbar()
 {
-    if (currentPhase != HandPhase.Tools && !player.InventoryOpen) return;
+    
 
     int slotSize = 56;
     int padding = 6;
@@ -2249,8 +4093,7 @@ static void DrawToolbar()
         bool selected = i == toolbarSelectedSlot;
 
         // slot background
-        Raylib.DrawRectangle(sx, startY, slotSize, slotSize,
-            new Color((byte)20,(byte)20,(byte)30,(byte)210));
+        Raylib.DrawRectangle(sx, startY, slotSize, slotSize, new Color((byte)20,(byte)20,(byte)30, tbAlpha));
         Raylib.DrawRectangleLines(sx, startY, slotSize, slotSize,
             selected ? Color.Gold : new Color((byte)80,(byte)80,(byte)100,(byte)255));
 
@@ -2268,14 +4111,16 @@ static void DrawToolbar()
             DrawToolbarIcon(toolbarSlots[i], sx, startY, slotSize);
             if (!IsToolItem(toolbarSlots[i]))
             DrawInventoryIcon(toolbarSlots[i], sx + 12, startY + 10, slotSize - 24);
+
+             if (!IsToolItem(toolbarSlots[i]) && toolbarCounts[i] > 1)
+        Raylib.DrawText($"{toolbarCounts[i]}", sx + 4, startY + 3, 14, Color.White);
+
             int nameW = Raylib.MeasureText(toolbarSlots[i], 11);
             Raylib.DrawText(toolbarSlots[i],
                 sx + slotSize / 2 - nameW / 2,
                 startY + slotSize - 14, 11,
                 selected ? Color.Gold : Color.LightGray);
             
-            
-
             // ── click to remove while inventory is open ──
             if (player.InventoryOpen)
             {
@@ -2292,6 +4137,13 @@ static void DrawToolbar()
                 }
             }
         }
+    }
+    // highlight the toolbar when in Tools phase
+    if (currentPhase == HandPhase.Tools)
+    {
+        Raylib.DrawRectangleLinesEx(
+            new Rectangle(startX - 4, startY - 4, totalW + 8, slotSize + 8),
+            3, Color.Gold);
     }
 
     // tooltip — show equipped tool name above toolbar
@@ -2315,10 +4167,7 @@ static void DrawToolbarIcon(string tool, int x, int y, int size)
         case "Axe":
             Raylib.DrawRectangle(cx - 2, cy - 14, 5, 28,
                 new Color((byte)120,(byte)80,(byte)30,(byte)255));
-            Raylib.DrawTriangle(
-                new Vector2(cx + 3, cy - 14),
-                new Vector2(cx + 16, cy - 20),
-                new Vector2(cx + 14, cy - 2),
+            Raylib.DrawRectangle(cx - 15, cy - 12, 16, 10,
                 new Color((byte)160,(byte)160,(byte)170,(byte)255));
             break;
 
@@ -2423,6 +4272,7 @@ static void DrawArmorUI()
         ("CAPE",    armorCape,   panelX + 60,  panelY + 130),
         ("WEAPON",  armorWeapon, panelX + 500, panelY + 130),
         ("SHIELD",  armorShield, panelX + 500, panelY + 200),
+        ("AMMO",    equippedAmmo, panelX + 500, panelY + 270),
     };
 
     foreach (var (label, value, sx, sy) in slots)
@@ -2444,6 +4294,13 @@ static void DrawArmorUI()
         {
             DrawArmorIcon(value, sx + 6, sy + 22, 28);
             Raylib.DrawText(value, sx + 38, sy + 32, 13, Color.Gold);
+
+               if (label == "AMMO")
+                {
+                    int ammoCount = value == "Arrows" ? player.Arrows : value == "Bolts" ? player.Bolts : 0;
+                    Raylib.DrawText($"x{ammoCount}", sx + 38, sy + 16, 14, Color.White);
+                }
+
             if (Raylib.CheckCollisionPointRec(mouse, new Rectangle(sx, sy, 140, 60)) && Raylib.IsMouseButtonPressed(MouseButton.Left))
             {
                 UnequipArmorSlot(label);
@@ -2494,7 +4351,121 @@ static void DrawArmorUI()
         ? testCatalog.ToList()
         : player.OwnedGear;
 
-    if (!gearTestMode && shown.Count == 0)
+if (gearTestMode)
+{
+    int rowY = panelY + 478;
+    for (int s = 0; s < 7; s++)
+    {
+        int ry = rowY + s * 22;
+        string mat = armorMaterials[slotMaterialIndex[s]];
+        string piece = slotPieceNames[s];
+
+        // slot label
+        Raylib.DrawText(piece, panelX + 14, ry, 14, Color.LightGray);
+
+        // left arrow
+        Rectangle lb = new Rectangle(panelX + 120, ry - 2, 20, 18);
+        bool hL = Raylib.CheckCollisionPointRec(mouse, lb);
+        Raylib.DrawRectangleRec(lb, new Color((byte)40,(byte)40,(byte)50,(byte)255));
+        Raylib.DrawText("<", panelX + 125, ry, 14, hL ? Color.Gold : Color.White);
+
+        // material name (colored swatch)
+        Raylib.DrawText(mat, panelX + 148, ry, 14, Program.MaterialColor(mat));
+
+        // right arrow
+        Rectangle rb = new Rectangle(panelX + 250, ry - 2, 20, 18);
+        bool hR = Raylib.CheckCollisionPointRec(mouse, rb);
+        Raylib.DrawRectangleRec(rb, new Color((byte)40,(byte)40,(byte)50,(byte)255));
+        Raylib.DrawText(">", panelX + 255, ry, 14, hR ? Color.Gold : Color.White);
+
+        // equip button
+        Rectangle eb = new Rectangle(panelX + 285, ry - 2, 70, 18);
+        bool hE = Raylib.CheckCollisionPointRec(mouse, eb);
+        Raylib.DrawRectangleRec(eb, new Color((byte)60,(byte)50,(byte)20,(byte)255));
+        Raylib.DrawText("Equip", panelX + 292, ry, 14, hE ? Color.Gold : Color.White);
+
+        if (hL && Raylib.IsMouseButtonPressed(MouseButton.Left))
+            slotMaterialIndex[s] = (slotMaterialIndex[s] + armorMaterials.Length - 1) % armorMaterials.Length;
+        if (hR && Raylib.IsMouseButtonPressed(MouseButton.Left))
+            slotMaterialIndex[s] = (slotMaterialIndex[s] + 1) % armorMaterials.Length;
+        if (hE && Raylib.IsMouseButtonPressed(MouseButton.Left))
+        {
+            string itemName = $"{mat} {piece}";
+            switch (s)
+            {
+                case 0: armorHelmet = itemName; break;
+                case 1: armorBody   = itemName; break;
+                case 2: armorLegs   = itemName; break;
+                case 3: armorBoots  = itemName; break;
+                case 4: armorGloves = itemName; break;
+                case 5: armorCape   = itemName; break;
+                case 6: armorShield = itemName; break;
+            }
+            ShowNotification($"Equipped {itemName}");
+        }
+    }
+    // ── WEAPON cyclers (right side) ──
+    int wRowY = panelY + 478;
+    int wx = panelX + 400;   // start to the right of armor
+    Raylib.DrawText("WEAPONS", wx, wRowY - 20, 16, Color.Gold);
+
+    for (int s = 0; s < weaponPieceNames.Length; s++)
+    {
+        int ry = wRowY + s * 22;
+        string mat = armorMaterials[weaponMaterialIndex[s]];
+        string piece = weaponPieceNames[s];
+
+        // label
+        Raylib.DrawText(piece, wx, ry, 13, Color.LightGray);
+
+        // left arrow
+        Rectangle lb = new Rectangle(wx + 90, ry - 2, 20, 18);
+        bool hL = Raylib.CheckCollisionPointRec(mouse, lb);
+        Raylib.DrawRectangleRec(lb, new Color((byte)40,(byte)40,(byte)50,(byte)255));
+        Raylib.DrawText("<", wx + 95, ry, 14, hL ? Color.Gold : Color.White);
+
+        // material name
+        Raylib.DrawText(mat, wx + 116, ry, 12, Program.MaterialColor(mat));
+
+        // right arrow
+        Rectangle rb = new Rectangle(wx + 200, ry - 2, 20, 18);
+        bool hR = Raylib.CheckCollisionPointRec(mouse, rb);
+        Raylib.DrawRectangleRec(rb, new Color((byte)40,(byte)40,(byte)50,(byte)255));
+        Raylib.DrawText(">", wx + 205, ry, 14, hR ? Color.Gold : Color.White);
+
+        // equip button
+        Rectangle eb = new Rectangle(wx + 230, ry - 2, 60, 18);
+        bool hE = Raylib.CheckCollisionPointRec(mouse, eb);
+        Raylib.DrawRectangleRec(eb, new Color((byte)60,(byte)50,(byte)20,(byte)255));
+        Raylib.DrawText("Equip", wx + 235, ry, 13, hE ? Color.Gold : Color.White);
+
+        if (hL && Raylib.IsMouseButtonPressed(MouseButton.Left))
+            weaponMaterialIndex[s] = (weaponMaterialIndex[s] + armorMaterials.Length - 1) % armorMaterials.Length;
+        if (hR && Raylib.IsMouseButtonPressed(MouseButton.Left))
+            weaponMaterialIndex[s] = (weaponMaterialIndex[s] + 1) % armorMaterials.Length;
+        if (hE && Raylib.IsMouseButtonPressed(MouseButton.Left))
+        {
+            string itemName = $"{mat} {piece}";
+            // route to 1H or 2H slot
+            if (piece == "Sword")
+            {
+                equipped1H = itemName;
+                equipped2H = null;
+            }
+            else
+            {
+                equipped2H = itemName;
+                equipped1H = null;
+                armorShield = null;
+            }
+            armorWeapon = itemName;
+            ShowNotification($"Equipped {itemName}");
+        }
+    }
+}
+
+
+   else if (!gearTestMode && shown.Count == 0)
     {
         Raylib.DrawText("No gear yet — craft, loot, or buy some!", panelX + 20, panelY + 485, 18, Color.Gray);
     }
@@ -2569,6 +4540,7 @@ static void TryEquipItem(string item)
         case "CAPE":   armorCape   = item; break;
         case "WEAPON": armorWeapon = item; break;
         case "SHIELD": armorShield = item; break;
+        
     }
     // sync the combat column with the gear-menu weapon slot
 if (slot == "WEAPON")
@@ -2600,31 +4572,31 @@ static void UnequipArmorSlot(string slot)
         equipped2H = null;
         break;
         case "SHIELD": armorShield = null; break;
+        case "AMMO": equippedAmmo = null; break;
     }
 }
 
 static string GetItemSlot(string item)
 {
-    return item switch
-    {
-        "Leather Cap" or "Iron Helmet" or "Steel Helmet"
-            => "HELMET",
-        "Leather Vest" or "Iron Chestplate" or "Steel Chestplate"
-            => "BODY",
-        "Leather Pants" or "Iron Leggings" or "Steel Leggings"
-            => "LEGS",
-        "Leather Boots" or "Iron Boots" or "Steel Boots"
-            => "BOOTS",
-        "Leather Gloves" or "Iron Gauntlets" or "Steel Gauntlets"
-            => "GLOVES",
-        "Wool Cape" or "Magic Cape"
-            => "CAPE",
-        "Sword" or "Stick" or "Great Sword" or "War Axe" or "Battle Staff"
-            => "WEAPON",
-        "Wooden Shield" or "Iron Shield" or "Steel Shield"
-            => "SHIELD",
-        _ => null
-    };
+    if (item == null) return null;
+
+    // weapons (check specific before general)
+    if (item.Contains("Great Sword") || item.Contains("War Axe")
+        || item.Contains("Sword") || item.Contains("Stick")
+        || item.Contains("Bow") || item.Contains("Crossbow")
+        || item.Contains("Battle Staff"))
+        return "WEAPON";
+
+    // armor by piece suffix
+    if (item.Contains("Helmet") || item.Contains("Cap"))        return "HELMET";
+    if (item.Contains("Chestplate") || item.Contains("Vest") || item.Contains("Body"))  return "BODY";
+    if (item.Contains("Leggings") || item.Contains("Pants") || item.Contains("Legs"))   return "LEGS";
+    if (item.Contains("Boots"))                                  return "BOOTS";
+    if (item.Contains("Gauntlets") || item.Contains("Gloves"))   return "GLOVES";
+    if (item.Contains("Cape"))                                   return "CAPE";
+    if (item.Contains("Shield"))                                 return "SHIELD";
+
+    return null;
 }
 
 static void DrawArmorIcon(string item, int x, int y, int size)
@@ -2632,110 +4604,139 @@ static void DrawArmorIcon(string item, int x, int y, int size)
     int cx = x + size / 2;
     int cy = y + size / 2;
 
+    // inside DrawArmorIcon, add before or after the WEAPON case
+    if (item == "Arrows")
+    {
+        Raylib.DrawLineEx(new Vector2(cx - 8, cy + 8), new Vector2(cx + 8, cy - 8), 2, new Color((byte)160,(byte)120,(byte)70,(byte)255));
+        Raylib.DrawTriangle(new Vector2(cx + 8, cy - 8), new Vector2(cx + 3, cy - 7), new Vector2(cx + 7, cy - 3), Color.Gray);
+        return;
+    }
+    if (item == "Bolts")
+    {
+        Raylib.DrawLineEx(new Vector2(cx - 8, cy + 8), new Vector2(cx + 8, cy - 8), 3, new Color((byte)120,(byte)90,(byte)50,(byte)255));
+        return;
+    }
+
     switch (GetItemSlot(item))
     {
         case "HELMET":
-            Raylib.DrawRectangle(cx - 8, cy - 2, 16, 10,
-                new Color((byte)160,(byte)160,(byte)170,(byte)255));
-            Raylib.DrawRectangle(cx - 10, cy - 8, 20, 8,
-                new Color((byte)140,(byte)140,(byte)150,(byte)255));
-            Raylib.DrawRectangle(cx - 6, cy + 8, 12, 4,
-                new Color((byte)120,(byte)120,(byte)130,(byte)255));
-            break;
-        case "BODY":
-            Raylib.DrawRectangle(cx - 10, cy - 8, 20, 18,
-                new Color((byte)160,(byte)160,(byte)170,(byte)255));
-            Raylib.DrawRectangle(cx - 14, cy - 6, 6, 12,
-                new Color((byte)140,(byte)140,(byte)150,(byte)255));
-            Raylib.DrawRectangle(cx + 8, cy - 6, 6, 12,
-                new Color((byte)140,(byte)140,(byte)150,(byte)255));
-            break;
-        case "LEGS":
-            Raylib.DrawRectangle(cx - 9, cy - 8, 8, 18,
-                new Color((byte)160,(byte)160,(byte)170,(byte)255));
-            Raylib.DrawRectangle(cx + 1, cy - 8, 8, 18,
-                new Color((byte)160,(byte)160,(byte)170,(byte)255));
-            break;
-        case "BOOTS":
-            Raylib.DrawRectangle(cx - 8, cy - 6, 7, 14,
-                new Color((byte)120,(byte)80,(byte)30,(byte)255));
-            Raylib.DrawRectangle(cx + 1, cy - 6, 7, 14,
-                new Color((byte)120,(byte)80,(byte)30,(byte)255));
-            Raylib.DrawRectangle(cx - 10, cy + 6, 9, 4,
-                new Color((byte)100,(byte)60,(byte)20,(byte)255));
-            Raylib.DrawRectangle(cx + 1, cy + 6, 9, 4,
-                new Color((byte)100,(byte)60,(byte)20,(byte)255));
-            break;
-        case "GLOVES":
-            Raylib.DrawRectangle(cx - 8, cy - 4, 6, 10,
-                new Color((byte)120,(byte)80,(byte)30,(byte)255));
-            Raylib.DrawRectangle(cx + 2, cy - 4, 6, 10,
-                new Color((byte)120,(byte)80,(byte)30,(byte)255));
-            for (int f = 0; f < 4; f++)
-                Raylib.DrawRectangle(cx - 8 + f * 4, cy - 8, 3, 6,
-                    new Color((byte)120,(byte)80,(byte)30,(byte)255));
-            break;
-        case "CAPE":
-            Raylib.DrawTriangle(
-                new Vector2(cx - 10, cy - 8),
-                new Vector2(cx + 10, cy - 8),
-                new Vector2(cx,      cy + 12),
-                new Color((byte)120,(byte)40,(byte)160,(byte)255));
-            break;
+{
+    Color c = IconWeaponColor(item, new Color((byte)160,(byte)160,(byte)170,(byte)255));
+    Raylib.DrawRectangle(cx - 8, cy - 2, 16, 10, c);
+    Raylib.DrawRectangle(cx - 10, cy - 8, 20, 8, c);
+    Raylib.DrawRectangle(cx - 6, cy + 8, 12, 4, new Color((byte)Math.Max(0,c.R-20),(byte)Math.Max(0,c.G-20),(byte)Math.Max(0,c.B-20),(byte)255));
+    break;
+}
+case "BODY":
+{
+    Color c = IconWeaponColor(item, new Color((byte)160,(byte)160,(byte)170,(byte)255));
+    Raylib.DrawRectangle(cx - 10, cy - 8, 20, 18, c);
+    Raylib.DrawRectangle(cx - 14, cy - 6, 6, 12, new Color((byte)Math.Max(0,c.R-20),(byte)Math.Max(0,c.G-20),(byte)Math.Max(0,c.B-20),(byte)255));
+    Raylib.DrawRectangle(cx + 8, cy - 6, 6, 12, new Color((byte)Math.Max(0,c.R-20),(byte)Math.Max(0,c.G-20),(byte)Math.Max(0,c.B-20),(byte)255));
+    break;
+}
+case "LEGS":
+{
+    Color c = IconWeaponColor(item, new Color((byte)160,(byte)160,(byte)170,(byte)255));
+    Raylib.DrawRectangle(cx - 9, cy - 8, 8, 18, c);
+    Raylib.DrawRectangle(cx + 1, cy - 8, 8, 18, c);
+    break;
+}
+case "BOOTS":
+{
+    Color c = IconWeaponColor(item, new Color((byte)120,(byte)80,(byte)30,(byte)255));
+    Raylib.DrawRectangle(cx - 8, cy - 6, 7, 14, c);
+    Raylib.DrawRectangle(cx + 1, cy - 6, 7, 14, c);
+    Raylib.DrawRectangle(cx - 10, cy + 6, 9, 4, new Color((byte)Math.Max(0,c.R-20),(byte)Math.Max(0,c.G-20),(byte)Math.Max(0,c.B-20),(byte)255));
+    Raylib.DrawRectangle(cx + 1, cy + 6, 9, 4, new Color((byte)Math.Max(0,c.R-20),(byte)Math.Max(0,c.G-20),(byte)Math.Max(0,c.B-20),(byte)255));
+    break;
+}
+case "GLOVES":
+{
+    Color c = IconWeaponColor(item, new Color((byte)120,(byte)80,(byte)30,(byte)255));
+    Raylib.DrawRectangle(cx - 8, cy - 4, 6, 10, c);
+    Raylib.DrawRectangle(cx + 2, cy - 4, 6, 10, c);
+    for (int f = 0; f < 4; f++)
+        Raylib.DrawRectangle(cx - 8 + f * 4, cy - 8, 3, 6, c);
+    break;
+}
+case "CAPE":
+{
+    Color c = IconWeaponColor(item, new Color((byte)140,(byte)60,(byte)60,(byte)255));
+    Raylib.DrawTriangle(
+        new Vector2(cx - 10, cy - 8),
+        new Vector2(cx + 10, cy - 8),
+        new Vector2(cx, cy + 12),
+        c);
+    break;
+}
+case "SHIELD":
+{
+    Color c = IconWeaponColor(item, new Color((byte)100,(byte)80,(byte)40,(byte)255));
+    Raylib.DrawRectangle(cx - 8, cy - 10, 16, 20, c);
+    Raylib.DrawTriangle(
+        new Vector2(cx - 8, cy + 10),
+        new Vector2(cx + 8, cy + 10),
+        new Vector2(cx, cy + 18),
+        c);
+    Raylib.DrawCircle(cx, cy, 4, new Color((byte)180,(byte)140,(byte)40,(byte)255));
+    break;
+}
         case "WEAPON":
-            if (item == "Stick")
-            {
-                Raylib.DrawLineEx(new Vector2(cx, cy - 12), new Vector2(cx, cy + 12), 4,
-                    new Color((byte)120,(byte)80,(byte)30,(byte)255));
-                Raylib.DrawRectangle(cx - 2, cy - 14, 4, 4, new Color((byte)100,(byte)60,(byte)20,(byte)255));
-            }
-            else if (item == "Sword")
-            {
-                // blade
-                Raylib.DrawRectangle(cx - 2, cy - 12, 4, 18, new Color((byte)180,(byte)190,(byte)200,(byte)255));
-                // tip
-                Raylib.DrawTriangle(
-                    new Vector2(cx - 2, cy - 12),
-                    new Vector2(cx + 2, cy - 12),
-                    new Vector2(cx, cy - 18),
-                    new Color((byte)200,(byte)210,(byte)220,(byte)255));
-                // crossguard
-                Raylib.DrawRectangle(cx - 8, cy + 4, 16, 4, new Color((byte)180,(byte)140,(byte)40,(byte)255));
-                // handle
-                Raylib.DrawRectangle(cx - 2, cy + 8, 4, 8, new Color((byte)120,(byte)80,(byte)30,(byte)255));
-            }
-            else if (item == "Bow")
-            {
-                Raylib.DrawLineEx(new Vector2(cx, cy - 14), new Vector2(cx, cy + 14), 3,
-                    new Color((byte)140,(byte)90,(byte)40,(byte)255));
-                Raylib.DrawLineEx(new Vector2(cx, cy - 14), new Vector2(cx, cy + 14), 1, Color.LightGray);
-            }
-            else if (item == "Crossbow")
-            {
-                Raylib.DrawLineEx(new Vector2(cx - 10, cy - 4), new Vector2(cx + 10, cy - 4), 3,
-                    new Color((byte)90,(byte)60,(byte)30,(byte)255));
-                Raylib.DrawLineEx(new Vector2(cx, cy - 8), new Vector2(cx, cy + 10), 3,
-                    new Color((byte)90,(byte)60,(byte)30,(byte)255));
-            }
-            else
-            {
-                // generic fallback for other weapons (Great Sword, War Axe, Battle Staff)
+            // WEAPON icons (detect by name, tint by material)
+if (item.Contains("Great Sword"))
+{
+    Color blade = IconWeaponColor(item, new Color((byte)180,(byte)190,(byte)200,(byte)255));
+    Raylib.DrawRectangle(cx - 2, cy - 16, 4, 24, blade);                       // long blade
+    Raylib.DrawTriangle(new Vector2(cx - 2, cy - 16), new Vector2(cx + 2, cy - 16), new Vector2(cx, cy - 22), blade);
+    Raylib.DrawRectangle(cx - 10, cy + 6, 20, 4, new Color((byte)180,(byte)140,(byte)40,(byte)255)); // wide guard
+    Raylib.DrawRectangle(cx - 2, cy + 10, 4, 8, new Color((byte)120,(byte)80,(byte)30,(byte)255));   // grip
+    return;
+}
+if (item.Contains("War Axe"))
+{
+    Color metal = IconWeaponColor(item, new Color((byte)160,(byte)160,(byte)170,(byte)255));
+    Raylib.DrawRectangle(cx - 2, cy - 14, 4, 30, new Color((byte)120,(byte)80,(byte)30,(byte)255));   // handle
+    Raylib.DrawTriangle(new Vector2(cx, cy - 12), new Vector2(cx, cy + 2), new Vector2(cx + 14, cy - 5), metal); // axe head
+    Raylib.DrawTriangle(new Vector2(cx, cy - 9), new Vector2(cx - 8, cy - 5), new Vector2(cx, cy - 1), metal);   // back spike
+    return;
+}
+if (item.Contains("Sword"))
+{
+    Color blade = IconWeaponColor(item, new Color((byte)180,(byte)190,(byte)200,(byte)255));
+    Raylib.DrawRectangle(cx - 2, cy - 12, 4, 18, blade);
+    Raylib.DrawTriangle(new Vector2(cx - 2, cy - 12), new Vector2(cx + 2, cy - 12), new Vector2(cx, cy - 18), blade);
+    Raylib.DrawRectangle(cx - 8, cy + 4, 16, 4, new Color((byte)180,(byte)140,(byte)40,(byte)255));
+    Raylib.DrawRectangle(cx - 2, cy + 8, 4, 8, new Color((byte)120,(byte)80,(byte)30,(byte)255));
+    return;
+}
+if (item.Contains("Stick"))
+{
+    Raylib.DrawRectangle(cx - 2, cy - 14, 4, 28, new Color((byte)120,(byte)80,(byte)30,(byte)255));
+    return;
+}
+if (item.Contains("Bow"))
+{
+    Color limb = IconWeaponColor(item, new Color((byte)140,(byte)90,(byte)40,(byte)255));
+    Raylib.DrawLineEx(new Vector2(cx, cy - 16), new Vector2(cx, cy + 16), 3, limb);
+    Raylib.DrawLineEx(new Vector2(cx, cy - 16), new Vector2(cx - 5, cy - 9), 2, limb);
+    Raylib.DrawLineEx(new Vector2(cx, cy + 16), new Vector2(cx - 5, cy + 9), 2, limb);
+    Raylib.DrawLineEx(new Vector2(cx + 4, cy - 14), new Vector2(cx + 4, cy + 14), 1, new Color((byte)220,(byte)220,(byte)220,(byte)255));
+    return;
+}
+if (item.Contains("Crossbow"))
+{
+    Color limb = IconWeaponColor(item, new Color((byte)90,(byte)60,(byte)30,(byte)255));
+    Raylib.DrawLineEx(new Vector2(cx - 12, cy - 4), new Vector2(cx + 12, cy - 4), 3, limb);
+    Raylib.DrawLineEx(new Vector2(cx, cy - 8), new Vector2(cx, cy + 12), 4, limb);
+    Raylib.DrawTriangle(new Vector2(cx, cy - 14), new Vector2(cx - 3, cy - 8), new Vector2(cx + 3, cy - 8), Color.Gray);
+    return;
+}         
+                // generic fallback
                 Raylib.DrawLineEx(new Vector2(cx - 6, cy + 10), new Vector2(cx + 6, cy - 10), 3,
                     new Color((byte)180,(byte)190,(byte)200,(byte)255));
                 Raylib.DrawLineEx(new Vector2(cx - 6, cy), new Vector2(cx + 6, cy), 4,
                     new Color((byte)180,(byte)140,(byte)40,(byte)255));
-            }
-            break;
-        case "SHIELD":
-            Raylib.DrawRectangle(cx - 8, cy - 10, 16, 20,
-                new Color((byte)100,(byte)80,(byte)40,(byte)255));
-            Raylib.DrawTriangle(
-                new Vector2(cx - 8, cy + 10),
-                new Vector2(cx + 8, cy + 10),
-                new Vector2(cx,     cy + 18),
-                new Color((byte)100,(byte)80,(byte)40,(byte)255));
-            Raylib.DrawCircle(cx, cy, 4,
-                new Color((byte)180,(byte)140,(byte)40,(byte)255));
             break;
     }
 }
@@ -2856,7 +4857,7 @@ static void DrawDroppedItems()
             DrawInventoryIcon(d.Name, (int)d.Position.X - 16, (int)d.Position.Y - 16, 32);
         }
 
-        if (Vector2.Distance(player.Position, d.Position) < 50)
+        if (Vector2.Distance(player.Center, d.Position) < 50)
         {
             Raylib.DrawText($"F = Pick up {d.Name}", (int)d.Position.X - 50, (int)d.Position.Y - 36, 14, Color.White);
             Raylib.DrawText($"{(int)d.Lifetime}s", (int)d.Position.X - 8, (int)d.Position.Y + 18, 12, Color.Gray);
@@ -3467,6 +5468,414 @@ static void AddBarnDealer(float x, float y)
     b.EntryPosition = new Vector2(x + 180, y + 260);
     buildings.Add(b);
 }
+static void AddHallensteins(float x, float y)
+{
+    var h = new Building(
+        new Rectangle(x, y, 160, 110),
+        new Color(20, 20, 20, 255),          // near-black exterior
+        new Color(15, 15, 15, 255),          // very dark interior
+        new Vector2(x + 80, y + 220),
+        "Hallensteins",
+        new NPC(new Vector2(400, 200), "Sales Assistant", "Kia ora bro, check out our latest fits."),
+        entryPos: new Vector2(318, 885)
+    );
+
+    h.InteriorObjects.Clear();
+    h.InteriorObjects.Add(new Rectangle(60,  120, 500, 30));   // front counter
+    h.InteriorObjects.Add(new Rectangle(60,  200, 120, 200));  // rack left
+    h.InteriorObjects.Add(new Rectangle(260, 200, 120, 200));  // rack middle
+    h.InteriorObjects.Add(new Rectangle(460, 200, 120, 200));  // rack right
+    h.InteriorObjects.Add(new Rectangle(700, 150, 8,  400));   // divider
+    h.InteriorObjects.Add(new Rectangle(720, 180, 80, 100));   // fitting room 1
+    h.InteriorObjects.Add(new Rectangle(820, 180, 80, 100));   // fitting room 2
+
+    buildings.Add(h);
+}
+static void DrawHallensteinShop()
+{
+    if (!hallensteinShopOpen) return;
+
+    string[] cats = { "Tops", "Bottoms", "Outerwear", "Accessories" };
+
+    int pw = 1180, ph = 600;
+    int px = ScreenWidth / 2 - pw / 2;
+    int py = 60;
+    Color gold = new Color((byte)180,(byte)140,(byte)20,(byte)255);
+
+    // panel background
+    Raylib.DrawRectangle(px, py, pw, ph, new Color((byte)10,(byte)10,(byte)10,(byte)250));
+    Raylib.DrawRectangleLines(px, py, pw, ph, gold);
+    Raylib.DrawText("HALLENSTEINS", px + pw/2 - Raylib.MeasureText("HALLENSTEINS",28)/2, py + 10, 28, gold);
+    Raylib.DrawText($"${player.Money}", px + pw - 100, py + 14, 20, Color.Gold);
+
+    // category tabs
+    for (int i = 0; i < cats.Length; i++)
+    {
+        Rectangle tab = new Rectangle(px + 10 + i * 146, py + 46, 140, 30);
+        bool active = hallensteinCategory == i;
+        Raylib.DrawRectangleRec(tab, active ? gold : new Color((byte)30,(byte)30,(byte)30,(byte)255));
+        Raylib.DrawRectangleLinesEx(tab, 1, active ? gold : new Color((byte)60,(byte)60,(byte)60,(byte)255));
+        Raylib.DrawText(cats[i], (int)tab.X + 12, (int)tab.Y + 8, 16, active ? Color.Black : Color.LightGray);
+        if (Raylib.CheckCollisionPointRec(Raylib.GetMousePosition(), tab) && Raylib.IsMouseButtonPressed(MouseButton.Left))
+        { hallensteinCategory = i; hallensteinScroll = 0; }
+    }
+
+    // filter items by category
+    string activeCat = cats[hallensteinCategory];
+    var catItems = hallItems.Where(h => h.Category == activeCat).ToArray();
+
+    // scroll arrows
+    int cardW = 180, cardH = 420, cardPad = 16;
+    int visibleCards = 5;
+    int maxScroll = Math.Max(0, catItems.Length - visibleCards);
+    hallensteinScroll = Math.Clamp(hallensteinScroll, 0, maxScroll);
+
+    Rectangle leftArrow  = new Rectangle(px + 4, py + ph/2 - 24, 28, 48);
+    Rectangle rightArrow = new Rectangle(px + pw - 32, py + ph/2 - 24, 28, 48);
+    bool hLeft  = Raylib.CheckCollisionPointRec(Raylib.GetMousePosition(), leftArrow)  && hallensteinScroll > 0;
+    bool hRight = Raylib.CheckCollisionPointRec(Raylib.GetMousePosition(), rightArrow) && hallensteinScroll < maxScroll;
+
+    Raylib.DrawRectangleRec(leftArrow,  new Color((byte)30,(byte)30,(byte)30,(byte)255));
+    Raylib.DrawRectangleRec(rightArrow, new Color((byte)30,(byte)30,(byte)30,(byte)255));
+    Raylib.DrawText("<", px + 8,      py + ph/2 - 12, 28, hLeft  ? gold : Color.DarkGray);
+    Raylib.DrawText(">", px + pw - 24, py + ph/2 - 12, 28, hRight ? gold : Color.DarkGray);
+
+    if (hLeft  && Raylib.IsMouseButtonPressed(MouseButton.Left)) hallensteinScroll--;
+    if (hRight && Raylib.IsMouseButtonPressed(MouseButton.Left)) hallensteinScroll++;
+
+    // draw item cards
+    int startX = px + 36;
+    int cardY   = py + 84;
+    for (int i = 0; i < visibleCards && (i + hallensteinScroll) < catItems.Length; i++)
+    {
+        var item = catItems[i + hallensteinScroll];
+        int cx = startX + i * (cardW + cardPad);
+
+        Rectangle card = new Rectangle(cx, cardY, cardW, cardH);
+        bool hover = Raylib.CheckCollisionPointRec(Raylib.GetMousePosition(), card);
+        Raylib.DrawRectangleRec(card, new Color((byte)22,(byte)22,(byte)22,(byte)255));
+        Raylib.DrawRectangleLinesEx(card, hover ? 2 : 1, hover ? gold : new Color((byte)50,(byte)50,(byte)50,(byte)255));
+
+        // mannequin preview — drawn facing down, 3x scale via offset math
+        int mx = cx + cardW/2 - 20;  // mannequin left edge (40px wide at 1x)
+        int my = cardY + 20;
+        DrawHallMannequin(mx, my, item, player.SkinColor);
+
+        // name + price
+        int nameW = Raylib.MeasureText(item.Name, 16);
+        Raylib.DrawText(item.Name, cx + cardW/2 - nameW/2, cardY + cardH - 70, 16, Color.White);
+        string priceStr = $"${item.Price}";
+        int priceW = Raylib.MeasureText(priceStr, 18);
+        Raylib.DrawText(priceStr, cx + cardW/2 - priceW/2, cardY + cardH - 48, 18, Color.Gold);
+
+        // buy button
+        Rectangle buyBtn = new Rectangle(cx + 14, cardY + cardH - 26, cardW - 28, 22);
+        bool hBuy = Raylib.CheckCollisionPointRec(Raylib.GetMousePosition(), buyBtn);
+        Raylib.DrawRectangleRec(buyBtn, hBuy ? gold : new Color((byte)40,(byte)35,(byte)10,(byte)255));
+        Raylib.DrawRectangleLinesEx(buyBtn, 1, gold);
+        int buyW = Raylib.MeasureText("BUY", 15);
+        Raylib.DrawText("BUY", (int)buyBtn.X + (int)buyBtn.Width/2 - buyW/2, (int)buyBtn.Y + 4, 15, hBuy ? Color.Black : gold);
+
+        if (hBuy && Raylib.IsMouseButtonPressed(MouseButton.Left))
+        {
+            if (player.Money >= item.Price)
+            {
+                player.Money -= item.Price;
+                ApplyHallItem(item);
+                shopMessage = $"Sweet pick bro! {item.Name} is yours.";
+                shopMessageTimer = 2f;
+            }
+            else
+            {
+                shopMessage = "Not enough cash bro!";
+                shopMessageTimer = 1.5f;
+            }
+        }
+    }
+
+    Raylib.DrawText("Q = Close", px + pw/2 - 40, py + ph - 18, 16, Color.DarkGray);
+    if (Raylib.IsKeyPressed(KeyboardKey.Q)) { hallensteinShopOpen = false; }
+}
+static void DrawHallMannequin(int x, int y, HallItem item, Color skin)
+{
+    // scale 2.5x — all offsets multiplied from DrawFacingDown base (40x70 sprite)
+    // base: head circle at +20,+12 r12, body +10,+24 20x30, legs +10,+54 etc
+    int s = 3; // scale factor
+
+    // head
+    Raylib.DrawCircle(x + 20*s/2, y + 12*s/2, 12*s/2, skin);
+    // eyes
+    Raylib.DrawCircle(x + 15*s/2, y + 11*s/2, 2*s/2, Color.Black);
+    Raylib.DrawCircle(x + 25*s/2, y + 11*s/2, 2*s/2, Color.Black);
+    // mouth
+    Raylib.DrawRectangle(x + 15*s/2, y + 17*s/2, 10*s/2, 2*s/2, new Color((byte)150,(byte)80,(byte)80,(byte)255));
+
+    // draw clothing style BODY first, then arms on top
+    DrawHallClothingBody(x, y, s, item, skin);
+
+    // arms — always skin coloured, drawn after body clothing
+    Raylib.DrawRectangle(x + 2*s/2,  y + 26*s/2, 8*s/2, 18*s/2, skin);
+    Raylib.DrawRectangle(x + 30*s/2, y + 26*s/2, 8*s/2, 18*s/2, skin);
+
+    // legs
+    DrawHallClothingLegs(x, y, s, item, skin);
+
+    // accessories drawn on top of everything
+    DrawHallAccessory(x, y, s, item, skin);
+}
+
+static void DrawHallClothingBody(int x, int y, int s, HallItem item, Color skin)
+{
+    Color c = item.Primary;
+    Color c2 = item.Secondary;
+
+    switch (item.Style)
+    {
+        case "tee":
+            // full torso rectangle
+            Raylib.DrawRectangle(x + 10*s/2, y + 24*s/2, 20*s/2, 30*s/2, c);
+            // collar
+            Raylib.DrawRectangle(x + 14*s/2, y + 24*s/2, 12*s/2, 4*s/2, new Color((byte)Math.Max(0,c.R-20),(byte)Math.Max(0,c.G-20),(byte)Math.Max(0,c.B-20),(byte)255));
+            // short sleeves covering top of arms
+            Raylib.DrawRectangle(x + 2*s/2,  y + 26*s/2, 8*s/2, 8*s/2, c);
+            Raylib.DrawRectangle(x + 30*s/2, y + 26*s/2, 8*s/2, 8*s/2, c);
+            break;
+
+        case "singlet":
+            // narrower body, no sleeves
+            Raylib.DrawRectangle(x + 12*s/2, y + 24*s/2, 16*s/2, 30*s/2, c);
+            // thin straps
+            Raylib.DrawRectangle(x + 12*s/2, y + 22*s/2, 3*s/2, 6*s/2, c);
+            Raylib.DrawRectangle(x + 25*s/2, y + 22*s/2, 3*s/2, 6*s/2, c);
+            break;
+
+        case "stripe":
+            // alternating horizontal stripes
+            Raylib.DrawRectangle(x + 10*s/2, y + 24*s/2, 20*s/2, 30*s/2, c);
+            Raylib.DrawRectangle(x + 10*s/2, y + 26*s/2, 20*s/2, 4*s/2, c2);
+            Raylib.DrawRectangle(x + 10*s/2, y + 34*s/2, 20*s/2, 4*s/2, c2);
+            Raylib.DrawRectangle(x + 10*s/2, y + 42*s/2, 20*s/2, 4*s/2, c2);
+            Raylib.DrawRectangle(x + 2*s/2,  y + 26*s/2, 8*s/2, 8*s/2, c);
+            Raylib.DrawRectangle(x + 30*s/2, y + 26*s/2, 8*s/2, 8*s/2, c);
+            break;
+
+        case "polo":
+            // body
+            Raylib.DrawRectangle(x + 10*s/2, y + 24*s/2, 20*s/2, 30*s/2, c);
+            // collar (wider, raised)
+            Raylib.DrawRectangle(x + 13*s/2, y + 22*s/2, 14*s/2, 6*s/2, c2);
+            Raylib.DrawRectangle(x + 16*s/2, y + 22*s/2, 8*s/2, 8*s/2, c); // collar notch
+            // short sleeves
+            Raylib.DrawRectangle(x + 2*s/2,  y + 26*s/2, 8*s/2, 10*s/2, c);
+            Raylib.DrawRectangle(x + 30*s/2, y + 26*s/2, 8*s/2, 10*s/2, c);
+            // sleeve stripe
+            Raylib.DrawRectangle(x + 2*s/2,  y + 34*s/2, 8*s/2, 2*s/2, c2);
+            Raylib.DrawRectangle(x + 30*s/2, y + 34*s/2, 8*s/2, 2*s/2, c2);
+            break;
+
+        case "hoodie":
+            // body — slightly bulkier
+            Raylib.DrawRectangle(x + 9*s/2, y + 24*s/2, 22*s/2, 30*s/2, c);
+            // hood raised behind head
+            Raylib.DrawRectangle(x + 10*s/2, y + 16*s/2, 20*s/2, 10*s/2, new Color((byte)Math.Max(0,c.R-15),(byte)Math.Max(0,c.G-15),(byte)Math.Max(0,c.B-15),(byte)255));
+            // front kangaroo pocket
+            Raylib.DrawRectangle(x + 13*s/2, y + 38*s/2, 14*s/2, 10*s/2, new Color((byte)Math.Max(0,c.R-20),(byte)Math.Max(0,c.G-20),(byte)Math.Max(0,c.B-20),(byte)255));
+            // long sleeves to wrist
+            Raylib.DrawRectangle(x + 2*s/2,  y + 26*s/2, 8*s/2, 18*s/2, c);
+            Raylib.DrawRectangle(x + 30*s/2, y + 26*s/2, 8*s/2, 18*s/2, c);
+            // cuffs
+            Raylib.DrawRectangle(x + 2*s/2,  y + 42*s/2, 8*s/2, 2*s/2, new Color((byte)Math.Max(0,c.R-30),(byte)Math.Max(0,c.G-30),(byte)Math.Max(0,c.B-30),(byte)255));
+            Raylib.DrawRectangle(x + 30*s/2, y + 42*s/2, 8*s/2, 2*s/2, new Color((byte)Math.Max(0,c.R-30),(byte)Math.Max(0,c.G-30),(byte)Math.Max(0,c.B-30),(byte)255));
+            break;
+
+        case "jacket":
+            // body
+            Raylib.DrawRectangle(x + 9*s/2, y + 24*s/2, 22*s/2, 30*s/2, c);
+            // lapels
+            Raylib.DrawRectangle(x + 14*s/2, y + 24*s/2, 4*s/2, 14*s/2, c2);
+            Raylib.DrawRectangle(x + 22*s/2, y + 24*s/2, 4*s/2, 14*s/2, c2);
+            // zip line
+            Raylib.DrawRectangle(x + 19*s/2, y + 26*s/2, 2*s/2, 26*s/2, c2);
+            // long sleeves
+            Raylib.DrawRectangle(x + 2*s/2,  y + 26*s/2, 8*s/2, 18*s/2, c);
+            Raylib.DrawRectangle(x + 30*s/2, y + 26*s/2, 8*s/2, 18*s/2, c);
+            break;
+
+        case "puffer":
+            // puffer segments (horizontal quilted lines)
+            Raylib.DrawRectangle(x + 9*s/2, y + 24*s/2, 22*s/2, 30*s/2, c);
+            for (int seg = 0; seg < 4; seg++)
+                Raylib.DrawRectangle(x + 9*s/2, y + (26 + seg*7)*s/2, 22*s/2, 2*s/2,
+                    new Color((byte)Math.Max(0,c.R-30),(byte)Math.Max(0,c.G-30),(byte)Math.Max(0,c.B-30),(byte)255));
+            // puffy sleeves
+            Raylib.DrawRectangle(x + 1*s/2,  y + 26*s/2, 10*s/2, 18*s/2, c);
+            Raylib.DrawRectangle(x + 29*s/2, y + 26*s/2, 10*s/2, 18*s/2, c);
+            for (int seg = 0; seg < 3; seg++)
+            {
+                Raylib.DrawRectangle(x + 1*s/2, y + (28 + seg*5)*s/2, 10*s/2, 2*s/2, new Color((byte)Math.Max(0,c.R-30),(byte)Math.Max(0,c.G-30),(byte)Math.Max(0,c.B-30),(byte)255));
+                Raylib.DrawRectangle(x + 29*s/2, y + (28 + seg*5)*s/2, 10*s/2, 2*s/2, new Color((byte)Math.Max(0,c.R-30),(byte)Math.Max(0,c.G-30),(byte)Math.Max(0,c.B-30),(byte)255));
+            }
+            break;
+
+        default:
+            // fallback: plain tee
+            Raylib.DrawRectangle(x + 10*s/2, y + 24*s/2, 20*s/2, 30*s/2, c);
+            break;
+    }
+}
+
+static void DrawHallClothingLegs(int x, int y, int s, HallItem item, Color skin)
+{
+    Color c = item.Primary;
+    Color c2 = item.Secondary;
+    Color defaultPants = player.PantsColor;
+
+    switch (item.Style)
+    {
+        case "jeans":
+            // full length legs
+            Raylib.DrawRectangle(x + 10*s/2, y + 54*s/2, 8*s/2, 18*s/2, c);
+            Raylib.DrawRectangle(x + 22*s/2, y + 54*s/2, 8*s/2, 18*s/2, c);
+            // seam line
+            Raylib.DrawRectangle(x + 17*s/2, y + 54*s/2, 2*s/2, 18*s/2, new Color((byte)Math.Max(0,c.R-20),(byte)Math.Max(0,c.G-20),(byte)Math.Max(0,c.B-20),(byte)255));
+            // waistband
+            Raylib.DrawRectangle(x + 10*s/2, y + 52*s/2, 20*s/2, 4*s/2, new Color((byte)Math.Max(0,c.R-25),(byte)Math.Max(0,c.G-25),(byte)Math.Max(0,c.B-25),(byte)255));
+            break;
+
+        case "chinos":
+            Raylib.DrawRectangle(x + 10*s/2, y + 54*s/2, 8*s/2, 18*s/2, c);
+            Raylib.DrawRectangle(x + 22*s/2, y + 54*s/2, 8*s/2, 18*s/2, c);
+            // crease line
+            Raylib.DrawRectangle(x + 13*s/2, y + 54*s/2, 1*s/2, 18*s/2, new Color((byte)Math.Max(0,c.R+20),(byte)Math.Max(0,c.G+20),(byte)Math.Max(0,c.B+20),(byte)255));
+            Raylib.DrawRectangle(x + 25*s/2, y + 54*s/2, 1*s/2, 18*s/2, new Color((byte)Math.Max(0,c.R+20),(byte)Math.Max(0,c.G+20),(byte)Math.Max(0,c.B+20),(byte)255));
+            Raylib.DrawRectangle(x + 10*s/2, y + 52*s/2, 20*s/2, 4*s/2, new Color((byte)Math.Max(0,c.R-20),(byte)Math.Max(0,c.G-20),(byte)Math.Max(0,c.B-20),(byte)255));
+            break;
+
+        case "shorts":
+            // shorter — only goes half as far down
+            Raylib.DrawRectangle(x + 10*s/2, y + 54*s/2, 8*s/2, 9*s/2, c);
+            Raylib.DrawRectangle(x + 22*s/2, y + 54*s/2, 8*s/2, 9*s/2, c);
+            Raylib.DrawRectangle(x + 10*s/2, y + 52*s/2, 20*s/2, 4*s/2, new Color((byte)Math.Max(0,c.R-20),(byte)Math.Max(0,c.G-20),(byte)Math.Max(0,c.B-20),(byte)255));
+            // exposed legs below
+            Raylib.DrawRectangle(x + 10*s/2, y + 63*s/2, 8*s/2, 9*s/2, skin);
+            Raylib.DrawRectangle(x + 22*s/2, y + 63*s/2, 8*s/2, 9*s/2, skin);
+            break;
+
+        case "camo":
+            Raylib.DrawRectangle(x + 10*s/2, y + 54*s/2, 8*s/2, 9*s/2, c);
+            Raylib.DrawRectangle(x + 22*s/2, y + 54*s/2, 8*s/2, 9*s/2, c);
+            // camo patches
+            Raylib.DrawRectangle(x + 11*s/2, y + 55*s/2, 3*s/2, 2*s/2, c2);
+            Raylib.DrawRectangle(x + 14*s/2, y + 58*s/2, 2*s/2, 2*s/2, c2);
+            Raylib.DrawRectangle(x + 23*s/2, y + 56*s/2, 3*s/2, 2*s/2, c2);
+            Raylib.DrawRectangle(x + 10*s/2, y + 52*s/2, 20*s/2, 4*s/2, new Color((byte)Math.Max(0,c.R-20),(byte)Math.Max(0,c.G-20),(byte)Math.Max(0,c.B-20),(byte)255));
+            Raylib.DrawRectangle(x + 10*s/2, y + 63*s/2, 8*s/2, 9*s/2, skin);
+            Raylib.DrawRectangle(x + 22*s/2, y + 63*s/2, 8*s/2, 9*s/2, skin);
+            break;
+
+        default:
+            // not a bottoms item — draw player's current pants
+            Raylib.DrawRectangle(x + 10*s/2, y + 54*s/2, 8*s/2, 18*s/2, defaultPants);
+            Raylib.DrawRectangle(x + 22*s/2, y + 54*s/2, 8*s/2, 18*s/2, defaultPants);
+            break;
+    }
+}
+
+static void DrawHallAccessory(int x, int y, int s, HallItem item, Color skin)
+{
+    Color c = item.Primary;
+
+    switch (item.Style)
+    {
+        case "cap":
+            // brim
+            Raylib.DrawRectangle(x + 7*s/2,  y + 8*s/2, 26*s/2, 4*s/2, c);
+            // dome
+            Raylib.DrawRectangle(x + 9*s/2,  y + 2*s/2, 22*s/2, 8*s/2, c);
+            Raylib.DrawRectangle(x + 20*s/2, y + 8*s/2, 4*s/2, 2*s/2, new Color((byte)Math.Max(0,c.R+40),(byte)Math.Max(0,c.G+40),(byte)Math.Max(0,c.B+40),(byte)255)); // button
+            break;
+
+        case "beanie":
+            Raylib.DrawRectangle(x + 9*s/2,  y + 2*s/2,  22*s/2, 10*s/2, c);
+            // ribbed band
+            for (int r = 0; r < 3; r++)
+                Raylib.DrawRectangle(x + 9*s/2, y + (8 + r*2)*s/2, 22*s/2, 1*s/2, new Color((byte)Math.Max(0,c.R-30),(byte)Math.Max(0,c.G-30),(byte)Math.Max(0,c.B-30),(byte)255));
+            // pom
+            Raylib.DrawCircle(x + 20*s/2, y + 1*s/2, 3*s/2, new Color((byte)Math.Min(255,c.R+40),(byte)Math.Min(255,c.G+40),(byte)Math.Min(255,c.B+40),(byte)255));
+            break;
+
+        case "sunnies":
+            // two lenses + bridge
+            Raylib.DrawRectangle(x + 11*s/2, y + 10*s/2, 7*s/2, 5*s/2, c);
+            Raylib.DrawRectangle(x + 22*s/2, y + 10*s/2, 7*s/2, 5*s/2, c);
+            Raylib.DrawRectangle(x + 18*s/2, y + 11*s/2, 4*s/2, 2*s/2, c); // bridge
+            Raylib.DrawRectangle(x + 8*s/2,  y + 10*s/2, 3*s/2, 2*s/2, c); // left arm
+            Raylib.DrawRectangle(x + 29*s/2, y + 10*s/2, 3*s/2, 2*s/2, c); // right arm
+            break;
+
+        case "chain":
+            // gold chain around neck
+            Raylib.DrawRectangle(x + 13*s/2, y + 22*s/2, 14*s/2, 2*s/2, c);
+            Raylib.DrawRectangle(x + 18*s/2, y + 24*s/2, 4*s/2, 6*s/2, c); // pendant drop
+            Raylib.DrawCircle(x + 20*s/2, y + 31*s/2, 2*s/2, c);           // pendant circle
+            break;
+    }
+}
+static void ApplyHallItem(HallItem item)
+{
+    switch (item.Category)
+    {
+        case "Tops":
+        case "Outerwear":
+            player.ShirtColor = item.Primary;
+            break;
+        case "Bottoms":
+            player.PantsColor = item.Primary;
+            break;
+        // Accessories don't change ShirtColor/PantsColor — 
+        // you can wire these to hat/chain fields later
+    }
+}
+
+// Adding decorative buildings
+
+static void AddCottage(float x, float y)
+{
+    decorativeBuildings.Add(new DecorativeBuilding(
+        new Rectangle(x, y, 120, 90), "Cottage"));
+}
+
+static void AddTownhouse(float x, float y)
+{
+    decorativeBuildings.Add(new DecorativeBuilding(
+        new Rectangle(x, y, 140, 190), "Townhouse"));
+}
+
+static void AddApartmentBlock(float x, float y)
+{
+    decorativeBuildings.Add(new DecorativeBuilding(
+        new Rectangle(x, y, 200, 210), "Apartment Block"));
+}
+
+// Adding interactive buildings
+static void AddAA(float x, float y)
+{
+    var aa = new Building(
+        new Rectangle(x, y, 160, 110),
+        new Color(0, 80, 160, 255),
+        new Color(10, 50, 100, 255),
+        new Vector2(x + 80, y + 220),
+        "AA",
+        new NPC(new Vector2(700, 160), "AA Officer", "Kia ora! Theory tests, licence checks and practical bookings here bro."),
+        entryPos: new Vector2(700, 900)
+    );
+    aa.InteriorObjects.Clear();
+    aa.InteriorObjects.Add(new Rectangle(400, 100, 400, 40));   // front counter
+    aa.InteriorObjects.Add(new Rectangle(100, 250, 200, 120));  // waiting seats
+    aa.InteriorObjects.Add(new Rectangle(700, 250, 200, 120));  // theory computer desks
+    aa.InteriorObjects.Add(new Rectangle(900, 250, 200, 120));
+    buildings.Add(aa);
+}
 
 
 static void AddDBar(float x, float y)
@@ -3491,6 +5900,37 @@ static void AddDBar(float x, float y)
     dbar.InteriorObjects.Add(new Rectangle(880, 200, 60, 90));   // pokie 3
  
     buildings.Add(dbar);
+}
+static void AddKiwiCuts(float x, float y)
+{
+    var kiwicuts = new Building(
+        new Rectangle(x, y, 140, 110),
+        new Color(240, 240, 235, 255),
+        new Color(245, 240, 230, 255),
+        new Vector2(x + 80, y + 220),          // ExitPosition (world coords, where player lands outside)
+        "KiwiCuts",
+        new NPC(new Vector2(400, 300), "Barber", "Sweet as, take a seat bro."),
+        entryPos: new Vector2(640, 640)        // EntryPosition — bottom-centre, clear floor near exit door
+    );
+
+    kiwicuts.InteriorObjects.Clear();
+
+    // Reception counter (top-left) — matches screen rect (60,60,280,40)
+    kiwicuts.InteriorObjects.Add(new Rectangle(60, 60, 280, 40));
+
+    // Barber chair 1 (seat + armrests) — matches screen draw (70,160,80,65)
+    kiwicuts.InteriorObjects.Add(new Rectangle(64, 160, 88, 65));
+
+    // Barber chair 2 (seat + armrests) — matches screen draw (210,160,80,65)
+    kiwicuts.InteriorObjects.Add(new Rectangle(204, 160, 88, 65));
+
+    // Waiting bench (right side) — matches screen rect (700,120,200,50)
+    kiwicuts.InteriorObjects.Add(new Rectangle(700, 120, 200, 50));
+
+    // Magazine table — matches screen rect (700,200,200,10)
+    kiwicuts.InteriorObjects.Add(new Rectangle(700, 200, 200, 14));
+
+    buildings.Add(kiwicuts);
 }
 
 static void AddDropZone(float x, float y)
@@ -4421,6 +6861,29 @@ static void AddPoliceStation(float x, float y)
     if (pos.X >= 14985 && pos.X <= 15135) return true;
     if (pos.X >= 24985 && pos.X <= 25135) return true;
 
+    // ── City of Hamiltron ─────────────────────────────────────────────────────
+    if (pos.Y >= 5500 && pos.Y <= 5660 && pos.X >= 11800 && pos.X <= 18200) return true; // boulevard
+    if (pos.X >= 14800 && pos.X <= 14960 && pos.Y >= 3000 && pos.Y <= 8200) return true; // north ave
+    if (pos.Y >= 3900 && pos.Y <= 4020 && pos.X >= 11800 && pos.X <= 18200) return true; // cross N
+    if (pos.Y >= 7200 && pos.Y <= 7320 && pos.X >= 11800 && pos.X <= 18200) return true; // cross S
+    if (pos.X >= 12800 && pos.X <= 12920 && pos.Y >= 3000 && pos.Y <= 8200) return true; // cross W
+    if (pos.X >= 16600 && pos.X <= 16720 && pos.Y >= 3000 && pos.Y <= 8200) return true; // cross E
+    if (pos.Y >= 3000 && pos.Y <= 3120 && pos.X >= 11800 && pos.X <= 18000) return true; // ring N
+    if (pos.Y >= 8100 && pos.Y <= 8220 && pos.X >= 11800 && pos.X <= 18000) return true; // ring S
+    if (pos.X >= 11800 && pos.X <= 11920 && pos.Y >= 3000 && pos.Y <= 8220) return true; // ring W
+    if (pos.X >= 17880 && pos.X <= 18000 && pos.Y >= 3000 && pos.Y <= 8220) return true; // ring E
+    if (pos.X >= 14800 && pos.X <= 14960 && pos.Y >= 200  && pos.Y <= 3000) return true; // connector
+
+    // ── Country Town Rotoaira ─────────────────────────────────────────────────
+    if (pos.Y >= 4400 && pos.Y <= 4540 && pos.X >= -18000 && pos.X <= -13800) return true; // main st
+    if (pos.X >= -17200 && pos.X <= -17080 && pos.Y >= 3200 && pos.Y <= 6200) return true; // side L
+    if (pos.X >= -15400 && pos.X <= -15280 && pos.Y >= 3200 && pos.Y <= 6200) return true; // side R
+    if (pos.Y >= 3200 && pos.Y <= 3320 && pos.X >= -18000 && pos.X <= -13800) return true; // loop N
+    if (pos.Y >= 6100 && pos.Y <= 6220 && pos.X >= -18000 && pos.X <= -13800) return true; // loop S
+    if (pos.X >= -18000 && pos.X <= -17880 && pos.Y >= 3200 && pos.Y <= 6220) return true; // loop W
+    if (pos.X >= -13920 && pos.X <= -13800 && pos.Y >= 3200 && pos.Y <= 6220) return true; // loop E
+    if (pos.X >= -16200 && pos.X <= -16080 && pos.Y >= 260  && pos.Y <= 3320) return true; // connector
+
     return false;
 }
 
@@ -4742,6 +7205,25 @@ static void DrawBiomeTextures()
         // ring road bottom
         for (int i = -40000; i < 40000; i += 600)
             DrawStreetLight(i, 38020);
+        
+        // City of Hamiltron street lights
+        for (int i = 12000; i < 18000; i += 400)
+        {
+            DrawStreetLight(i, 5490);
+            DrawStreetLight(i, 3890);
+            DrawStreetLight(i, 7190);
+        }
+        for (int i = 3200; i < 8200; i += 400)
+        {
+            DrawStreetLight(14790, i);
+            DrawStreetLight(12790, i);
+            DrawStreetLight(16590, i);
+        }
+        // Country town street lights
+        for (int i = -17800; i < -13900; i += 500)
+            DrawStreetLight(i, 4390);
+        DrawStreetLight(-17210, 3800);
+        DrawStreetLight(-15410, 3800);
     }
 
         static void SaveGame()
@@ -4839,14 +7321,90 @@ static void DrawBiomeTextures()
         lines.Add(equipped1H ?? "empty");       
         lines.Add(equipped2H ?? "empty");        
         lines.Add(equippedAmmo ?? "empty");
+        // chest dog fangs (was missing)
+        lines.Add(chestDogFangs.ToString());
+
+        // new loot materials — player carried
+        lines.Add(player.DogFangs.ToString());
+        lines.Add(player.WolfClaws.ToString());
+        lines.Add(player.VenomSacs.ToString());
+        lines.Add(player.CrabClaws.ToString());
+        lines.Add(player.BearClaws.ToString());
+        lines.Add(player.CrabShells.ToString());
+        lines.Add(player.SharkFins.ToString());
+        lines.Add(player.SharkTeeth.ToString());
+        lines.Add(player.SnakeSkins.ToString());
+        lines.Add(player.SnakeFangs.ToString());
+        lines.Add(player.CrocScales.ToString());
+        lines.Add(player.CrocTeeth.ToString());
+        lines.Add(player.LizardScales.ToString());
+        lines.Add(player.EmberStones.ToString());
+        lines.Add(player.MagmaShards.ToString());
+        lines.Add(player.LavaCores.ToString());
+        lines.Add(player.Feathers.ToString());
+        lines.Add(player.EagleTalons.ToString());
+        lines.Add(player.Horns.ToString());
+        lines.Add(player.GoatHooves.ToString());
+
+        // new loot materials — chest stored
+        lines.Add(chestWolfClaws.ToString());
+        lines.Add(chestVenomSacs.ToString());
+        lines.Add(chestCrabClaws.ToString());
+        lines.Add(chestBearClaws.ToString());
+        lines.Add(chestCrabShells.ToString());
+        lines.Add(chestSharkFins.ToString());
+        lines.Add(chestSharkTeeth.ToString());
+        lines.Add(chestSnakeSkins.ToString());
+        lines.Add(chestSnakeFangs.ToString());
+        lines.Add(chestCrocScales.ToString());
+        lines.Add(chestCrocTeeth.ToString());
+        lines.Add(chestLizardScales.ToString());
+        lines.Add(chestEmberStones.ToString());
+        lines.Add(chestMagmaShards.ToString());
+        lines.Add(chestLavaCores.ToString());
+        lines.Add(chestFeathers.ToString());
+        lines.Add(chestEagleTalons.ToString());
+        lines.Add(chestHorns.ToString());
+        lines.Add(chestGoatHooves.ToString());
+        lines.Add(armorHelmet ?? "empty");
+        lines.Add(armorBody   ?? "empty");
+        lines.Add(armorLegs   ?? "empty");
+        lines.Add(armorBoots  ?? "empty");
+        lines.Add(armorGloves ?? "empty");
+        lines.Add(armorCape   ?? "empty");
+        lines.Add(armorShield ?? "empty");
+
         lines.Add(player.OwnedGear.Count.ToString());
         foreach (var g in player.OwnedGear)
             lines.Add(g);
-     
 
-    System.IO.File.WriteAllLines(savePath, lines);
-    ShowNotification("Game Saved!");
-}
+        lines.Add(tutorialCompleted ? "1" : "0");
+
+        // Hair and facial hair
+        lines.Add(playerHairStyle ?? "None");
+        lines.Add(playerHairColor.R.ToString());
+        lines.Add(playerHairColor.G.ToString());
+        lines.Add(playerHairColor.B.ToString());
+        lines.Add(playerFacialHair ?? "None");
+        lines.Add(playerFacialHairColor.R.ToString());
+        lines.Add(playerFacialHairColor.G.ToString());
+        lines.Add(playerFacialHairColor.B.ToString());
+
+        // Toolbar (slots + counts) — written at the very end of the file
+        lines.Add("TOOLBAR_START");
+        for (int i = 0; i < 8; i++)
+        {
+            lines.Add(toolbarSlots[i] ?? "empty");
+            lines.Add(toolbarCounts[i].ToString());
+        }
+
+        lines.Add("BACKPACK_START");
+        lines.Add(backpack.Count.ToString());
+        foreach (var kv in backpack) { lines.Add(kv.Key); lines.Add(kv.Value.ToString()); }
+
+        System.IO.File.WriteAllLines(savePath, lines);
+        ShowNotification("Game Saved!");
+    }
 
        static void LoadGame()
 {
@@ -4940,25 +7498,112 @@ static void DrawBiomeTextures()
 
     if (equipped2H != null) armorWeapon = equipped2H;
     else if (equipped1H != null) armorWeapon = equipped1H;
-    if (lines.Length > 94)
+
+    if (lines.Length > 94)  chestDogFangs      = int.Parse(lines[94]);
+    if (lines.Length > 95)  player.DogFangs    = int.Parse(lines[95]);
+    if (lines.Length > 96)  player.WolfClaws   = int.Parse(lines[96]);
+    if (lines.Length > 97)  player.VenomSacs   = int.Parse(lines[97]);
+    if (lines.Length > 98)  player.CrabClaws   = int.Parse(lines[98]);
+    if (lines.Length > 99)  player.BearClaws   = int.Parse(lines[99]);
+    if (lines.Length > 100) player.CrabShells  = int.Parse(lines[100]);
+    if (lines.Length > 101) player.SharkFins   = int.Parse(lines[101]);
+    if (lines.Length > 102) player.SharkTeeth  = int.Parse(lines[102]);
+    if (lines.Length > 103) player.SnakeSkins  = int.Parse(lines[103]);
+    if (lines.Length > 104) player.SnakeFangs  = int.Parse(lines[104]);
+    if (lines.Length > 105) player.CrocScales  = int.Parse(lines[105]);
+    if (lines.Length > 106) player.CrocTeeth   = int.Parse(lines[106]);
+    if (lines.Length > 107) player.LizardScales= int.Parse(lines[107]);
+    if (lines.Length > 108) player.EmberStones = int.Parse(lines[108]);
+    if (lines.Length > 109) player.MagmaShards = int.Parse(lines[109]);
+    if (lines.Length > 110) player.LavaCores   = int.Parse(lines[110]);
+    if (lines.Length > 111) player.Feathers    = int.Parse(lines[111]);
+    if (lines.Length > 112) player.EagleTalons = int.Parse(lines[112]);
+    if (lines.Length > 113) player.Horns       = int.Parse(lines[113]);
+    if (lines.Length > 114) player.GoatHooves  = int.Parse(lines[114]);
+
+    if (lines.Length > 115) chestWolfClaws    = int.Parse(lines[115]);
+    if (lines.Length > 116) chestVenomSacs    = int.Parse(lines[116]);
+    if (lines.Length > 117) chestCrabClaws    = int.Parse(lines[117]);
+    if (lines.Length > 118) chestBearClaws    = int.Parse(lines[118]);
+    if (lines.Length > 119) chestCrabShells   = int.Parse(lines[119]);
+    if (lines.Length > 120) chestSharkFins    = int.Parse(lines[120]);
+    if (lines.Length > 121) chestSharkTeeth   = int.Parse(lines[121]);
+    if (lines.Length > 122) chestSnakeSkins   = int.Parse(lines[122]);
+    if (lines.Length > 123) chestSnakeFangs   = int.Parse(lines[123]);
+    if (lines.Length > 124) chestCrocScales   = int.Parse(lines[124]);
+    if (lines.Length > 125) chestCrocTeeth    = int.Parse(lines[125]);
+    if (lines.Length > 126) chestLizardScales = int.Parse(lines[126]);
+    if (lines.Length > 127) chestEmberStones  = int.Parse(lines[127]);
+    if (lines.Length > 128) chestMagmaShards  = int.Parse(lines[128]);
+    if (lines.Length > 129) chestLavaCores    = int.Parse(lines[129]);
+    if (lines.Length > 130) chestFeathers     = int.Parse(lines[130]);
+    if (lines.Length > 131) chestEagleTalons  = int.Parse(lines[131]);
+    if (lines.Length > 132) chestHorns        = int.Parse(lines[132]);
+    if (lines.Length > 133) chestGoatHooves   = int.Parse(lines[133]);
+    if (lines.Length > 134) armorHelmet = lines[134] == "empty" ? null : lines[134];
+    if (lines.Length > 135) armorBody   = lines[135] == "empty" ? null : lines[135];
+    if (lines.Length > 136) armorLegs   = lines[136] == "empty" ? null : lines[136];
+    if (lines.Length > 137) armorBoots  = lines[137] == "empty" ? null : lines[137];
+    if (lines.Length > 138) armorGloves = lines[138] == "empty" ? null : lines[138];
+    if (lines.Length > 139) armorCape   = lines[139] == "empty" ? null : lines[139];
+    if (lines.Length > 140) armorShield = lines[140] == "empty" ? null : lines[140];
+
+    if (lines.Length > 141)
     {
-        int gearCount = int.Parse(lines[94]);
+        int gearCount = int.Parse(lines[141]);
         player.OwnedGear.Clear();
         for (int g = 0; g < gearCount; g++)
         {
-            int idx = 95 + g;
+            int idx = 142 + g;
             if (lines.Length > idx) player.OwnedGear.Add(lines[idx]);
         }
-    }    
 
-// load toolbar slots
-for (int i = 0; i < 8; i++)
-{
-    int lineIndex = 62 + i;
-    if (lines.Length > lineIndex)
-        toolbarSlots[i] = lines[lineIndex] == "empty" ? null : lines[lineIndex];
-}
+        int tutIdx = 142 + gearCount;
+        if (lines.Length > tutIdx) tutorialCompleted = lines[tutIdx] == "1";
+
+        int hBase = tutIdx + 1;
+        if (lines.Length > hBase)     playerHairStyle       = lines[hBase];
+        if (lines.Length > hBase + 3) playerHairColor       = new Color((byte)int.Parse(lines[hBase + 1]), (byte)int.Parse(lines[hBase + 2]), (byte)int.Parse(lines[hBase + 3]), (byte)255);
+        if (lines.Length > hBase + 4) playerFacialHair      = lines[hBase + 4];
+        if (lines.Length > hBase + 7) playerFacialHairColor = new Color((byte)int.Parse(lines[hBase + 5]), (byte)int.Parse(lines[hBase + 6]), (byte)int.Parse(lines[hBase + 7]), (byte)255);
     }
+
+    tutorialActive = false;
+    tutorialMessage = "";
+    tutorialMessageTimer = 0f;
+
+    backpack.Clear();
+    int bpStart = Array.IndexOf(lines, "BACKPACK_START");
+    if (bpStart >= 0 && lines.Length > bpStart + 1)
+    {
+        int n = int.Parse(lines[bpStart + 1]);
+        for (int i = 0; i < n; i++)
+        {
+            int nameLine = bpStart + 2 + i * 2;
+            if (lines.Length > nameLine + 1)
+                backpack[lines[nameLine]] = int.Parse(lines[nameLine + 1]);
+        }
+    }
+
+    // load toolbar (slots + counts) — read from the TOOLBAR_START marker
+    for (int i = 0; i < 8; i++) { toolbarSlots[i] = null; toolbarCounts[i] = 0; }
+
+    int tbStart = Array.IndexOf(lines, "TOOLBAR_START");
+    if (tbStart >= 0)
+    {
+        for (int i = 0; i < 8; i++)
+        {
+            int slotLine  = tbStart + 1 + i * 2;
+            int countLine = slotLine + 1;
+            if (lines.Length > countLine)
+            {
+                string name = lines[slotLine];
+                toolbarSlots[i]  = name == "empty" ? null : name;
+                int.TryParse(lines[countLine], out toolbarCounts[i]);
+            }
+        }
+    }
+}
 
 static void DrawTrolley(int x, int y, bool takenAway)
 {
@@ -5011,6 +7656,16 @@ static void DrawSupermarketInventoryUI()
     Raylib.DrawText(title, px + 12, py + 10, 24, Color.Gold);
     Raylib.DrawText($"{inventory.Count(s => s != null)}/{capacity}", px + panelW - 60, py + 12, 18, Color.LightGray);
 
+    // aggregate cart contents into stacks (name -> count)
+    var stacks = new List<(string name, int count)>();
+    foreach (string entry in inventory)
+    {
+        if (string.IsNullOrEmpty(entry)) continue;
+        int idx = stacks.FindIndex(t => t.name == entry);
+        if (idx >= 0) stacks[idx] = (entry, stacks[idx].count + 1);
+        else stacks.Add((entry, 1));
+    }
+
     for (int i = 0; i < capacity; i++)
     {
         int col = i % cols;
@@ -5021,9 +7676,14 @@ static void DrawSupermarketInventoryUI()
         Raylib.DrawRectangle(sx, sy, slotSize, slotSize, new Color((byte)40,(byte)40,(byte)40,(byte)255));
         Raylib.DrawRectangleLines(sx, sy, slotSize, slotSize, new Color((byte)100,(byte)100,(byte)100,(byte)255));
 
-        if (!string.IsNullOrEmpty(inventory[i]))
-            Raylib.DrawText(inventory[i].Substring(0, Math.Min(6, inventory[i].Length)),
-                sx + 4, sy + slotSize / 2 - 8, 13, Color.White);
+        if (i < stacks.Count)
+        {
+            DrawInventoryIcon(stacks[i].name, sx + 4, sy + 4, slotSize - 8);
+            if (stacks[i].count > 1)
+                Raylib.DrawText($"{stacks[i].count}", sx + 4, sy + 4, 16, Color.White);
+            string shortName = stacks[i].name.Length > 7 ? stacks[i].name.Substring(0, 7) : stacks[i].name;
+            Raylib.DrawText(shortName, sx + 2, sy + slotSize - 14, 10, Color.White);
+        }
     }
 
     Raylib.DrawText("I = Close", px + panelW / 2 - 40, py + panelH - 22, 16, Color.LightGray);
@@ -5313,6 +7973,25 @@ static void SellItem(string itemName, int amount, int price)
         case "Stingers": player.Stingers -= amount; break;
         case "Pelts": player.BearPelts -= amount; break;
         case "Dog Fangs": player.DogFangs -= amount; break;
+        case "Wolf Claw": player.WolfClaws -= amount; break;
+        case "Venom Sac": player.VenomSacs -= amount; break;
+        case "Crab Claw": player.CrabClaws -= amount; break;
+        case "Bear Claw": player.BearClaws -= amount; break;
+        case "Crab Shell": player.CrabShells -= amount; break;
+        case "Shark Fin": player.SharkFins -= amount; break;
+        case "Shark Tooth": player.SharkTeeth -= amount; break;
+        case "Snake Skin": player.SnakeSkins -= amount; break;
+        case "Snake Fang": player.SnakeFangs -= amount; break;
+        case "Croc Scale": player.CrocScales -= amount; break;
+        case "Croc Tooth": player.CrocTeeth -= amount; break;
+        case "Lizard Scale": player.LizardScales -= amount; break;
+        case "Ember Stone": player.EmberStones -= amount; break;
+        case "Magma Shard": player.MagmaShards -= amount; break;
+        case "Lava Core": player.LavaCores -= amount; break;
+        case "Feather": player.Feathers -= amount; break;
+        case "Eagle Talon": player.EagleTalons -= amount; break;
+        case "Horn": player.Horns -= amount; break;
+        case "Goat Hoof": player.GoatHooves -= amount; break;
     }
 }
 
@@ -5332,7 +8011,27 @@ static int GetItemCount(string itemName)
         "Stingers" => player.Stingers,
         "Pelts" => player.BearPelts,
         "Dog Fangs" => player.DogFangs,
-        _ => 0
+        "Wolf Claw" => player.WolfClaws,
+        "Venom Sac" => player.VenomSacs,
+        "Crab Claw" => player.CrabClaws,
+        "Bear Claw" => player.BearClaws,
+        "Crab Shell" => player.CrabShells,
+        "Shark Fin" => player.SharkFins,
+        "Shark Tooth" => player.SharkTeeth,
+        "Snake Skin" => player.SnakeSkins,
+        "Snake Fang" => player.SnakeFangs,
+        "Croc Scale" => player.CrocScales,
+        "Croc Tooth" => player.CrocTeeth,
+        "Lizard Scale" => player.LizardScales,
+        "Ember Stone" => player.EmberStones,
+        "Magma Shard" => player.MagmaShards,
+        "Lava Core" => player.LavaCores,
+        "Feather" => player.Feathers,
+        "Eagle Talon" => player.EagleTalons,
+        "Horn" => player.Horns,
+        "Goat Hoof" => player.GoatHooves,
+        "Money" => player.Money,
+        _ => BackpackCount(itemName)
     };
 }
 
@@ -5677,9 +8376,29 @@ static void DrawBurgerKingMenu()
     // divider
     Raylib.DrawRectangle(panelX + 415, panelY + 10, 4, 540, new Color((byte)80,(byte)80,(byte)80,(byte)255));
 
-    string[] itemNames = { "Logs", "Fish", "Bones", "Fur", "Stingers", "Pelts",};
-    int[] chestCounts = { chestLogs, chestFish, chestBones, chestFur, chestStingers, chestBearPelts, chestDogFangs, };
-    int[] invCounts = { player.Logs, player.Fish, player.Bones, player.Fur, player.Stingers, player.BearPelts, player.DogFangs, };
+    string[] itemNames = {
+    "Logs", "Fish", "Bones", "Fur", "Stingers", "Pelts", "Dog Fangs",
+    "Wolf Claw", "Venom Sac", "Crab Claw", "Bear Claw", "Crab Shell",
+    "Shark Fin", "Shark Tooth", "Snake Skin", "Snake Fang", "Croc Scale",
+    "Croc Tooth", "Lizard Scale", "Ember Stone", "Magma Shard", "Lava Core",
+    "Feather", "Eagle Talon", "Horn", "Goat Hoof"
+    };
+
+    int[] chestCounts = {
+        chestLogs, chestFish, chestBones, chestFur, chestStingers, chestBearPelts, chestDogFangs,
+        chestWolfClaws, chestVenomSacs, chestCrabClaws, chestBearClaws, chestCrabShells,
+        chestSharkFins, chestSharkTeeth, chestSnakeSkins, chestSnakeFangs, chestCrocScales,
+        chestCrocTeeth, chestLizardScales, chestEmberStones, chestMagmaShards, chestLavaCores,
+        chestFeathers, chestEagleTalons, chestHorns, chestGoatHooves
+    };
+
+    int[] invCounts = {
+        player.Logs, player.Fish, player.Bones, player.Fur, player.Stingers, player.BearPelts, player.DogFangs,
+        player.WolfClaws, player.VenomSacs, player.CrabClaws, player.BearClaws, player.CrabShells,
+        player.SharkFins, player.SharkTeeth, player.SnakeSkins, player.SnakeFangs, player.CrocScales,
+        player.CrocTeeth, player.LizardScales, player.EmberStones, player.MagmaShards, player.LavaCores,
+        player.Feathers, player.EagleTalons, player.Horns, player.GoatHooves
+};
 
     Vector2 mouse = Raylib.GetMousePosition();
 
@@ -5706,6 +8425,18 @@ static void DrawBurgerKingMenu()
                 Raylib.DrawRectangleLines(sx, sy, slotSize, slotSize, Color.Gold);
                 if (Raylib.IsMouseButtonPressed(MouseButton.Left))
                 {
+                    // is this item already in the chest?
+    bool alreadyInChest = chestCounts[i] > 0;
+    int slotsUsed = ChestSlotsUsed(chestCounts);
+
+    // block only if chest is full AND this would be a new slot
+    if (!alreadyInChest && slotsUsed >= 20)
+    {
+        chestFullMessage = "Chest is full! You can't store any more item types.";
+        chestFullTimer = 2.5f;
+    }
+    else
+    {
                     switch (i)
                     {
                         case 0: player.Logs++; chestLogs--; break;
@@ -5715,7 +8446,27 @@ static void DrawBurgerKingMenu()
                         case 4: player.Stingers++; chestStingers--; break;
                         case 5: player.BearPelts++; chestBearPelts--; break;
                         case 6: player.DogFangs++; chestDogFangs--; break;
+                        case 7:  player.WolfClaws++;    chestWolfClaws--; break;
+                        case 8:  player.VenomSacs++;    chestVenomSacs--; break;
+                        case 9:  player.CrabClaws++;    chestCrabClaws--; break;
+                        case 10: player.BearClaws++;    chestBearClaws--; break;
+                        case 11: player.CrabShells++;   chestCrabShells--; break;
+                        case 12: player.SharkFins++;    chestSharkFins--; break;
+                        case 13: player.SharkTeeth++;   chestSharkTeeth--; break;
+                        case 14: player.SnakeSkins++;   chestSnakeSkins--; break;
+                        case 15: player.SnakeFangs++;   chestSnakeFangs--; break;
+                        case 16: player.CrocScales++;   chestCrocScales--; break;
+                        case 17: player.CrocTeeth++;    chestCrocTeeth--; break;
+                        case 18: player.LizardScales++; chestLizardScales--; break;
+                        case 19: player.EmberStones++;  chestEmberStones--; break;
+                        case 20: player.MagmaShards++;  chestMagmaShards--; break;
+                        case 21: player.LavaCores++;    chestLavaCores--; break;
+                        case 22: player.Feathers++;     chestFeathers--; break;
+                        case 23: player.EagleTalons++;  chestEagleTalons--; break;
+                        case 24: player.Horns++;        chestHorns--; break;
+                        case 25: player.GoatHooves++;   chestGoatHooves--; break;
                     }
+    }
                 }
             }
         }
@@ -5753,11 +8504,37 @@ static void DrawBurgerKingMenu()
                         case 4: chestStingers++; player.Stingers--; break;
                         case 5: chestBearPelts++; player.BearPelts--; break;
                         case 6: chestDogFangs++; player.DogFangs--; break;
+                        case 7:  chestWolfClaws++;    player.WolfClaws--; break;
+                        case 8:  chestVenomSacs++;    player.VenomSacs--; break;
+                        case 9:  chestCrabClaws++;    player.CrabClaws--; break;
+                        case 10: chestBearClaws++;    player.BearClaws--; break;
+                        case 11: chestCrabShells++;   player.CrabShells--; break;
+                        case 12: chestSharkFins++;    player.SharkFins--; break;
+                        case 13: chestSharkTeeth++;   player.SharkTeeth--; break;
+                        case 14: chestSnakeSkins++;   player.SnakeSkins--; break;
+                        case 15: chestSnakeFangs++;   player.SnakeFangs--; break;   
+                        case 16: chestCrocScales++;   player.CrocScales--; break;
+                        case 17: chestCrocTeeth++;    player.CrocTeeth--; break;
+                        case 18: chestLizardScales++; player.LizardScales--; break;
+                        case 19: chestEmberStones++;  player.EmberStones--; break;
+                        case 20: chestMagmaShards++;  player.MagmaShards--; break;
+                        case 21: chestLavaCores++;    player.LavaCores--; break;
+                        case 22: chestFeathers++;     player.Feathers--; break;
+                        case 23: chestEagleTalons++;  player.EagleTalons--; break;
+                        case 24: chestHorns++;        player.Horns--; break;
+                        case 25: chestGoatHooves++;   player.GoatHooves--; break;
                     }
                 }
             }
         }
     }
+    if (chestFullTimer > 0)
+{
+    chestFullTimer -= Raylib.GetFrameTime();
+    int mw = Raylib.MeasureText(chestFullMessage, 22);
+    Raylib.DrawRectangle(panelX + 420 - mw/2 - 10, panelY + 480, mw + 20, 30, new Color((byte)80,(byte)20,(byte)20,(byte)230));
+    Raylib.DrawText(chestFullMessage, panelX + 420 - mw/2, panelY + 485, 22, Color.White);
+}
 
     Raylib.DrawText("Q = Close Chest", panelX + 350, panelY + 520, 20, Color.LightGray);
 }
@@ -6399,6 +9176,10 @@ static void DrawStarShape(int cx, int cy, int radius, Color color)
         return "VOLCANO";
     if (y < -12000 || y > 12000)
         return "FOREST";
+    if (x >= 11800 && x <= 18200 && y >= 3000 && y <= 8200)
+    return "HAMILTRON CITY";
+    if (x >= -18000 && x <= -13800 && y >= 3200 && y <= 6200)
+    return "ROTOAIRA";
     return "GRASSLANDS";
 }
         static Color GetNightOverlay()
@@ -6407,12 +9188,30 @@ static void DrawStarShape(int cx, int cy, int radius, Color color)
                 byte alpha = (byte)(180 * (1f - night));
                 return new Color((byte)0, (byte)0, (byte)30, alpha);
             }
+
+static string ResolveCookedIcon(string item, out Color tint)
+{
+    tint = Color.Blank;
+    switch (item)
+    {
+        case "Cooked Fish":  tint = new Color((byte)180,(byte)110,(byte)50,(byte)90);  return "Fish";
+        case "Cooked Meat":  tint = new Color((byte)150,(byte)80,(byte)40,(byte)90);   return "Raw Meat";
+        case "Roast Potato": tint = new Color((byte)160,(byte)110,(byte)50,(byte)90);  return "Potato";
+        case "Cooked Corn":  tint = new Color((byte)200,(byte)150,(byte)20,(byte)80);  return "Corn";
+        // burnt — heavy dark tint over whatever it was
+        case "Ashes":        tint = new Color((byte)20,(byte)20,(byte)20,(byte)170);   return "Ashes";
+        default: return item;
+    }
+}
 static void DrawInventoryIcon(string item, int x, int y, int size)
 {
     float s = size / 80f;              // scale factor (icons designed for 80px)
     int cx = x + size / 2;
     int cy = y + size / 2 - (int)(10 * s);
     int I(float v) => (int)(v * s);    // helper: scale a value
+
+    string drawName = ResolveCookedIcon(item, out Color cookedTint);
+    item = drawName; 
 
     switch (item)
     {
@@ -6493,11 +9292,7 @@ static void DrawInventoryIcon(string item, int x, int y, int size)
 
         case "Axe":
             Raylib.DrawRectangle(cx - I(2), cy - I(14), I(5), I(28), new Color((byte)120,(byte)80,(byte)30,(byte)255));
-            Raylib.DrawTriangle(
-                new Vector2(cx + I(3), cy - I(14)),
-                new Vector2(cx + I(18), cy - I(20)),
-                new Vector2(cx + I(14), cy - I(2)),
-                new Color((byte)160,(byte)160,(byte)170,(byte)255));
+            Raylib.DrawRectangle(cx - I(15), cy - I(12), I(16), I(10), new Color((byte)160,(byte)160,(byte)170,(byte)255));  
             break;
 
         case "Stick":
@@ -6518,13 +9313,29 @@ static void DrawInventoryIcon(string item, int x, int y, int size)
             break;
 
         case "Bow":
-            Raylib.DrawLineEx(new Vector2(cx, y + I(12)), new Vector2(cx, y + size - I(12)), Math.Max(1, I(3)), new Color((byte)140,(byte)90,(byte)40,(byte)255));
-            Raylib.DrawLineEx(new Vector2(cx, y + I(12)), new Vector2(cx, y + size - I(12)), 1, Color.LightGray);
+            // vertical stave + string (larger)
+            Raylib.DrawLineEx(new Vector2(cx, cy - I(20)), new Vector2(cx, cy + I(20)), Math.Max(1, I(4)),
+                new Color((byte)140,(byte)90,(byte)40,(byte)255));
+            Raylib.DrawLineEx(new Vector2(cx + I(7), cy - I(17)), new Vector2(cx + I(7), cy + I(17)), Math.Max(1, I(1)),
+                new Color((byte)220,(byte)220,(byte)220,(byte)255));
+            // curved tips
+            Raylib.DrawLineEx(new Vector2(cx, cy - I(20)), new Vector2(cx - I(6), cy - I(12)), Math.Max(1, I(3)),
+                new Color((byte)110,(byte)70,(byte)30,(byte)255));
+            Raylib.DrawLineEx(new Vector2(cx, cy + I(20)), new Vector2(cx - I(6), cy + I(12)), Math.Max(1, I(3)),
+                new Color((byte)110,(byte)70,(byte)30,(byte)255));
             break;
 
         case "Crossbow":
-            Raylib.DrawLineEx(new Vector2(x + I(14), cy), new Vector2(x + size - I(14), cy), Math.Max(1, I(4)), new Color((byte)90,(byte)60,(byte)30,(byte)255));
-            Raylib.DrawLineEx(new Vector2(cx, y + I(16)), new Vector2(cx, y + size - I(16)), Math.Max(1, I(4)), new Color((byte)90,(byte)60,(byte)30,(byte)255));
+            // horizontal bow arm + vertical stock + bolt tip (larger)
+            Raylib.DrawLineEx(new Vector2(cx - I(16), cy - I(6)), new Vector2(cx + I(16), cy - I(6)), Math.Max(1, I(4)),
+                new Color((byte)90,(byte)60,(byte)30,(byte)255));
+            Raylib.DrawLineEx(new Vector2(cx, cy - I(12)), new Vector2(cx, cy + I(16)), Math.Max(1, I(5)),
+                new Color((byte)90,(byte)60,(byte)30,(byte)255));
+            Raylib.DrawTriangle(
+                new Vector2(cx, cy - I(18)),
+                new Vector2(cx - I(5), cy - I(9)),
+                new Vector2(cx + I(5), cy - I(9)),
+                Color.Gray);
             break;
 
         case "Arrows":
@@ -6568,12 +9379,154 @@ static void DrawInventoryIcon(string item, int x, int y, int size)
             Raylib.DrawCircle(cx, cy - I(10), I(5), new Color((byte)255,(byte)180,(byte)0,(byte)255));
             Raylib.DrawCircle(cx, cy - I(10), I(8), new Color((byte)255,(byte)100,(byte)0,(byte)80));
             break;
-    }
+        case "Dog Fangs":
+        case "Snake Fang":
+        case "Croc Tooth":
+        case "Shark Tooth":
+            Raylib.DrawTriangle(
+                new Vector2(cx, cy - I(18)),
+                new Vector2(cx - I(8), cy + I(14)),
+                new Vector2(cx + I(8), cy + I(14)),
+                Color.White);
+            Raylib.DrawTriangle(
+                new Vector2(cx, cy - I(10)),
+                new Vector2(cx - I(4), cy + I(8)),
+                new Vector2(cx + I(4), cy + I(8)),
+                new Color((byte)220,(byte)220,(byte)220,(byte)255));
+            break;
+
+        case "Wolf Claw":
+        case "Bear Claw":
+        case "Crab Claw":
+        case "Eagle Talon":
+            Raylib.DrawLineEx(new Vector2(cx - I(10), cy + I(14)), new Vector2(cx + I(8), cy - I(16)), Math.Max(1, I(4)),
+                new Color((byte)230,(byte)230,(byte)210,(byte)255));
+            Raylib.DrawLineEx(new Vector2(cx + I(8), cy - I(16)), new Vector2(cx + I(14), cy - I(10)), Math.Max(1, I(4)),
+                new Color((byte)230,(byte)230,(byte)210,(byte)255));
+            break;
+
+        case "Venom Sac":
+            Raylib.DrawCircle(cx, cy, I(16), new Color((byte)80,(byte)200,(byte)80,(byte)255));
+            Raylib.DrawCircle(cx - I(5), cy - I(5), I(5), new Color((byte)140,(byte)240,(byte)140,(byte)255));
+            break;
+
+        case "Crab Shell":
+        case "Croc Scale":
+        case "Lizard Scale":
+            Raylib.DrawRectangle(cx - I(16), cy - I(14), I(32), I(28), new Color((byte)120,(byte)160,(byte)90,(byte)255));
+            Raylib.DrawRectangle(cx - I(10), cy - I(8), I(20), I(16), new Color((byte)150,(byte)190,(byte)110,(byte)255));
+            break;
+
+        case "Shark Fin":
+            Raylib.DrawTriangle(
+                new Vector2(cx, cy - I(20)),
+                new Vector2(cx - I(16), cy + I(16)),
+                new Vector2(cx + I(16), cy + I(16)),
+                new Color((byte)150,(byte)150,(byte)170,(byte)255));
+            break;
+
+        case "Snake Skin":
+            Raylib.DrawRectangle(cx - I(14), cy - I(14), I(28), I(28), new Color((byte)110,(byte)160,(byte)70,(byte)255));
+            Raylib.DrawCircle(cx - I(6), cy - I(4), I(3), new Color((byte)70,(byte)110,(byte)40,(byte)255));
+            Raylib.DrawCircle(cx + I(6), cy + I(4), I(3), new Color((byte)70,(byte)110,(byte)40,(byte)255));
+            break;
+
+        case "Ember Stone":
+        case "Lava Core":
+            Raylib.DrawCircle(cx, cy, I(16), new Color((byte)255,(byte)100,(byte)0,(byte)255));
+            Raylib.DrawCircle(cx, cy, I(8), new Color((byte)255,(byte)200,(byte)40,(byte)255));
+            break;
+
+        case "Magma Shard":
+            Raylib.DrawTriangle(
+                new Vector2(cx, cy - I(18)),
+                new Vector2(cx - I(14), cy + I(14)),
+                new Vector2(cx + I(14), cy + I(14)),
+                new Color((byte)200,(byte)60,(byte)20,(byte)255));
+            Raylib.DrawTriangle(
+                new Vector2(cx, cy - I(8)),
+                new Vector2(cx - I(6), cy + I(8)),
+                new Vector2(cx + I(6), cy + I(8)),
+                new Color((byte)255,(byte)140,(byte)40,(byte)255));
+            break;
+
+        case "Feather":
+            Raylib.DrawLineEx(new Vector2(cx, cy - I(18)), new Vector2(cx, cy + I(18)), Math.Max(1, I(4)),
+                new Color((byte)220,(byte)220,(byte)240,(byte)255));
+            Raylib.DrawLineEx(new Vector2(cx, cy - I(14)), new Vector2(cx - I(8), cy - I(6)), Math.Max(1, I(2)),
+                new Color((byte)200,(byte)200,(byte)230,(byte)255));
+            Raylib.DrawLineEx(new Vector2(cx, cy - I(8)), new Vector2(cx + I(8), cy - I(0)), Math.Max(1, I(2)),
+                new Color((byte)200,(byte)200,(byte)230,(byte)255));
+            break;
+
+        case "Horn":
+            Raylib.DrawTriangle(
+                new Vector2(cx - I(4), cy + I(16)),
+                new Vector2(cx + I(4), cy + I(16)),
+                new Vector2(cx + I(10), cy - I(18)),
+                new Color((byte)220,(byte)210,(byte)180,(byte)255));
+            break;
+
+        case "Goat Hoof":
+            Raylib.DrawRectangle(cx - I(8), cy - I(12), I(16), I(24), new Color((byte)90,(byte)70,(byte)50,(byte)255));
+            Raylib.DrawRectangle(cx - I(2), cy - I(4), I(4), I(16), new Color((byte)40,(byte)30,(byte)20,(byte)255));
+            break;
+        case "Shopping Bag":
+            Raylib.DrawRectangle(cx - I(12), cy - I(10), I(24), I(20), new Color((byte)80,(byte)180,(byte)80,(byte)255));
+            Raylib.DrawRectangle(cx - I(8),  cy - I(16), I(16), I(8), new Color((byte)60,(byte)140,(byte)60,(byte)255));
+            Raylib.DrawLineEx(new Vector2(cx - I(5), cy - I(18)), new Vector2(cx + I(5), cy - I(18)), 2, new Color((byte)80,(byte)100,(byte)80,(byte)255));
+            break;
+        case "Ashes":
+            Raylib.DrawCircle(cx, cy + I(4), I(14), new Color((byte)60,(byte)60,(byte)60,(byte)255));
+            Raylib.DrawCircle(cx - I(8), cy + I(6), I(8), new Color((byte)80,(byte)80,(byte)80,(byte)255));
+            Raylib.DrawCircle(cx + I(8), cy + I(6), I(7), new Color((byte)70,(byte)70,(byte)70,(byte)255));
+            break;
+        case "Raw Meat":
+            // pink steak body
+            Raylib.DrawEllipse(cx, cy + I(2), I(18), I(13), new Color((byte)220,(byte)110,(byte)120,(byte)255));
+            // darker outer rim
+            Raylib.DrawEllipseLines(cx, cy + I(2), I(18), I(13), new Color((byte)150,(byte)60,(byte)70,(byte)255));
+            // fat marbling streaks
+            Raylib.DrawRectangle(cx - I(8), cy - I(2), I(16), I(2), new Color((byte)240,(byte)200,(byte)200,(byte)200));
+            Raylib.DrawRectangle(cx - I(6), cy + I(5), I(12), I(2), new Color((byte)240,(byte)200,(byte)200,(byte)200));
+            // white bone nub on the side
+            Raylib.DrawCircle(cx - I(18), cy + I(2), I(5), Color.White);
+            break;
+
+        case "Potato":
+            // tan oval tuber
+            Raylib.DrawEllipse(cx, cy + I(2), I(16), I(12), new Color((byte)190,(byte)150,(byte)90,(byte)255));
+            Raylib.DrawEllipseLines(cx, cy + I(2), I(16), I(12), new Color((byte)150,(byte)115,(byte)65,(byte)255));
+            // eyes/spots
+            Raylib.DrawCircle(cx - I(6), cy - I(2), I(2), new Color((byte)120,(byte)90,(byte)50,(byte)255));
+            Raylib.DrawCircle(cx + I(5), cy + I(4), I(2), new Color((byte)120,(byte)90,(byte)50,(byte)255));
+            Raylib.DrawCircle(cx + I(2), cy - I(5), I(1), new Color((byte)120,(byte)90,(byte)50,(byte)255));
+            break;
+
+        case "Corn":
+            // yellow cob
+            Raylib.DrawEllipse(cx, cy + I(2), I(9), I(18), new Color((byte)240,(byte)210,(byte)40,(byte)255));
+            // kernel rows (vertical + horizontal grid)
+            for (int ky = -14; ky <= 14; ky += 5)
+                Raylib.DrawRectangle(cx - I(8), cy + I(2 + ky), I(16), I(1), new Color((byte)200,(byte)165,(byte)20,(byte)180));
+            for (int kx = -6; kx <= 6; kx += 4)
+                Raylib.DrawRectangle(cx + I(kx), cy - I(16), I(1), I(36), new Color((byte)200,(byte)165,(byte)20,(byte)180));
+            // green husk leaf at the base
+            Raylib.DrawTriangle(
+                new Vector2(cx - I(4), cy + I(18)),
+                new Vector2(cx + I(4), cy + I(18)),
+                new Vector2(cx - I(10), cy + I(26)),
+                new Color((byte)60,(byte)160,(byte)60,(byte)255));
+            break;
+            }
+            
+    if (cookedTint.A > 0)
+        Raylib.DrawRectangle(x, y, size, size, cookedTint);
 }
 static void DropToGround(string item)
 {
     RemoveOneItem(item);
-    droppedItems.Add(new DroppedItem(item, 1, player.Position + new Vector2(0, 20)));
+    droppedItems.Add(new DroppedItem(item, 1, player.Center + new Vector2(0, 20)));
     ShowNotification($"Dropped {item}");
 }
 static void UpdateDroppedItems(float dt)
@@ -6589,7 +9542,7 @@ static void UpdateDroppedItems(float dt)
         }
 
         // press F near it to collect
-        if (Vector2.Distance(player.Position, d.Position) < 50 && Raylib.IsKeyPressed(KeyboardKey.F))
+        if (Vector2.Distance(player.Center, d.Position) < 50 && Raylib.IsKeyPressed(KeyboardKey.F))
         {
             GiveItemBack(d.Name, d.Count);
             ShowNotification($"Picked up {d.Name}");
@@ -6602,26 +9555,31 @@ static void GiveItemBack(string item, int count)
 {
     switch (item)
     {
-        case "Logs": player.Logs += count; break;
-        case "Birch Logs": player.BirchLogs += count; break;
-        case "Oak Logs": player.OakLogs += count; break;
-        case "Pine Logs": player.PineLogs += count; break;
-        case "Arctic Logs": player.ArcticLogs += count; break;
-        case "Dead Wood": player.DeadWood += count; break;
-        case "Fish": player.Fish += count; break;
-        case "Bones": player.Bones += count; break;
-        case "Fur": player.Fur += count; break;
-        case "Stingers": player.Stingers += count; break;
-        case "Pelts": player.BearPelts += count; break;
-        case "Arrows": player.Arrows += count; break;
-        case "Bolts": player.Bolts += count; break;
-        case "Axe": player.HasAxe = true; break;
-        case "Bow": player.HasBow = true; break;
-        case "Crossbow": player.HasCrossbow = true; break;
         case "Money": player.Money += count; break;
-        // armor/weapons go back to owned gear
+        case "Dog Fangs": player.DogFangs += count; break;
+        case "Wolf Claw": player.WolfClaws += count; break;
+        case "Venom Sac": player.VenomSacs += count; break;
+        case "Crab Claw": player.CrabClaws += count; break;
+        case "Bear Claw": player.BearClaws += count; break;
+        case "Crab Shell": player.CrabShells += count; break;
+        case "Shark Fin": player.SharkFins += count; break;
+        case "Shark Tooth": player.SharkTeeth += count; break;
+        case "Snake Skin": player.SnakeSkins += count; break;
+        case "Snake Fang": player.SnakeFangs += count; break;
+        case "Croc Scale": player.CrocScales += count; break;
+        case "Croc Tooth": player.CrocTeeth += count; break;
+        case "Lizard Scale": player.LizardScales += count; break;
+        case "Ember Stone": player.EmberStones += count; break;
+        case "Magma Shard": player.MagmaShards += count; break;
+        case "Lava Core": player.LavaCores += count; break;
+        case "Feather": player.Feathers += count; break;
+        case "Eagle Talon": player.EagleTalons += count; break;
+        case "Horn": player.Horns += count; break;
+        case "Goat Hoof": player.GoatHooves += count; break;
+        // armor/weapons go back to owned gear; everything else to the backpack
         default:
             if (GetItemSlot(item) != null) AcquireGear(item);
+            else BackpackAdd(item, count);
             break;
     }
 }
@@ -6816,6 +9774,7 @@ static void DrawDropConfirm()
         Rectangle divingBtn = new Rectangle(ScreenWidth - 320, ScreenHeight - 180, 140, 40);
         Rectangle sportsBtn = new Rectangle(ScreenWidth - 320, ScreenHeight - 130, 140, 40);
         Rectangle rangedBtn = new Rectangle(ScreenWidth - 320, ScreenHeight - 230, 140, 40);
+        Rectangle cookingBtn = new Rectangle(ScreenWidth - 320, ScreenHeight - 280, 140, 40);
 
 
         hoverStrength  = Raylib.CheckCollisionPointRec(mouse, strengthBtn);
@@ -6832,6 +9791,7 @@ static void DrawDropConfirm()
         hoverDiving   = Raylib.CheckCollisionPointRec(mouse, divingBtn);
         hoverSports = Raylib.CheckCollisionPointRec(mouse, sportsBtn);
         hoverRanged = Raylib.CheckCollisionPointRec(mouse, rangedBtn);
+        hoverCooking = Raylib.CheckCollisionPointRec(mouse, cookingBtn);
 
     }
     else
@@ -6850,6 +9810,7 @@ static void DrawDropConfirm()
         hoverDiving = false;
         hoverSports = false;
         hoverRanged = false;
+        hoverCooking = false;
             }
 }
     static void DrawSkillsUI()
@@ -6885,8 +9846,8 @@ static void DrawDropConfirm()
     {
         int miningRequired = player.MiningLevel * player.MiningLevel * 50;
         float miningProgress = (float)player.MiningXP / miningRequired;
-        Raylib.DrawRectangle(ScreenWidth - 160, ScreenHeight - 93, 140, 8, new Color((byte)40, (byte)40, (byte)40, (byte)255));
-        Raylib.DrawRectangle(ScreenWidth - 160, ScreenHeight - 93, (int)(140 * miningProgress), 8, Color.Green);
+        Raylib.DrawRectangle(ScreenWidth - 160, ScreenHeight - 393, 140, 8, new Color((byte)40, (byte)40, (byte)40, (byte)255));
+        Raylib.DrawRectangle(ScreenWidth - 160, ScreenHeight - 393, (int)(140 * miningProgress), 8, Color.Green);
     }
 
     // Fishing
@@ -7051,6 +10012,20 @@ if (!hoverRanged)
     Raylib.DrawRectangle(ScreenWidth - 320, ScreenHeight - 193, (int)(140 * prog), 8, new Color((byte)150,(byte)100,(byte)200,(byte)255));
 }
 
+// Cooking
+Rectangle cookingBtn = new Rectangle(ScreenWidth - 320, ScreenHeight - 280, 140, 40);
+Color cookingColor = hoverCooking ? Color.Gold : Color.White;
+Raylib.DrawRectangleRec(cookingBtn, new Color((byte)0,(byte)0,(byte)0,(byte)200));
+Raylib.DrawRectangleLinesEx(cookingBtn, 2, cookingColor);
+Raylib.DrawText($"Cooking Lv {player.CookingLevel}", ScreenWidth - 315, ScreenHeight - 268, 18, cookingColor);
+if (!hoverCooking)
+{
+    int req = player.CookingLevel * player.CookingLevel * 50;
+    float prog = (float)player.CookingXP / req;
+    Raylib.DrawRectangle(ScreenWidth - 320, ScreenHeight - 243, 140, 8, new Color((byte)40,(byte)40,(byte)40,(byte)255));
+    Raylib.DrawRectangle(ScreenWidth - 320, ScreenHeight - 243, (int)(140 * prog), 8, new Color((byte)150,(byte)100,(byte)200,(byte)255));
+}
+
 
     // XP tooltips
     if (hoverWoodcutting)
@@ -7136,6 +10111,12 @@ if (!hoverRanged)
         int req = player.RangedLevel * player.RangedLevel * 50;
         Raylib.DrawRectangle(ScreenWidth - 480, ScreenHeight - 230, 150, 40, new Color((byte)0,(byte)0,(byte)0,(byte)210));
         Raylib.DrawText($"XP: {player.RangedXP}/{req}", ScreenWidth - 475, ScreenHeight - 218, 18, Color.LightGray);
+    }
+     if (hoverCooking)
+    {
+        int req = player.CookingLevel * player.CookingLevel * 50;
+        Raylib.DrawRectangle(ScreenWidth - 480, ScreenHeight - 280, 150, 40, new Color((byte)0,(byte)0,(byte)0,(byte)210));
+        Raylib.DrawText($"XP: {player.CookingXP}/{req}", ScreenWidth - 475, ScreenHeight - 268, 18, Color.LightGray);
     }
 
 }
@@ -7529,24 +10510,32 @@ if (!hoverRanged)
         else if (nameEntered)
         {
             if (Raylib.IsKeyPressed(KeyboardKey.Enter))
-                {
-                    player = new Player(new Vector2(-1917, -9720));
-                    ResetGameState();  
-                    chestLogs = 0; chestFish = 0; chestBones = 0;
-                    chestFur = 0; chestStingers = 0; chestBearPelts = 0;
-                    chestDogFangs = 0;
-                    timeOfDay = 0f; dayOfWeek = 0;
-                    quests[0].Progress = 0; quests[0].Completed = false;
-                    quests[1].Progress = 0; quests[1].Completed = false;
-                    quests[2].Progress = 0; quests[2].Completed = false;
-                    totalPlayTime = 0f;
-                    tutorialActive = true;
-                    tutorialStep = 0;
-                    tutorialNpcPos = player.Position + new Vector2(-60, -40);
-                    foreach (var t in tutorialTasks) t.Done = false;
-                    SnapshotTutorialMarks();
-                    currentScene = SceneState.World;
-                }
+            {
+                player = new Player(new Vector2(-1917, -9720));
+                ResetGameState();  
+                chestLogs = 0; chestFish = 0; chestBones = 0;
+                chestFur = 0; chestStingers = 0; chestBearPelts = 0;
+                chestDogFangs = 0;
+                // new loot materials
+                chestWolfClaws = 0; chestVenomSacs = 0; chestCrabClaws = 0;
+                chestBearClaws = 0; chestCrabShells = 0; chestSharkFins = 0;
+                chestSharkTeeth = 0; chestSnakeSkins = 0; chestSnakeFangs = 0;
+                chestCrocScales = 0; chestCrocTeeth = 0; chestLizardScales = 0;
+                chestEmberStones = 0; chestMagmaShards = 0; chestLavaCores = 0;
+                chestFeathers = 0; chestEagleTalons = 0; chestHorns = 0;
+                chestGoatHooves = 0;
+                timeOfDay = 0f; dayOfWeek = 0;
+                quests[0].Progress = 0; quests[0].Completed = false;
+                quests[1].Progress = 0; quests[1].Completed = false;
+                quests[2].Progress = 0; quests[2].Completed = false;
+                totalPlayTime = 0f;
+                tutorialActive = true;
+                tutorialStep = 0;
+                tutorialNpcPos = player.Position + new Vector2(-60, -40);
+                foreach (var t in tutorialTasks) t.Done = false;
+                SnapshotTutorialMarks();
+                currentScene = SceneState.World;
+            }
         }
 
         if (Raylib.IsKeyPressed(KeyboardKey.Escape) && playerName.Length == 0)
@@ -7573,13 +10562,22 @@ for (int k = 0; k < 8; k++)
     if (Raylib.IsKeyPressed(KeyboardKey.One   + k))
         toolbarSelectedSlot = k;
 }
+
+if (Raylib.IsKeyPressed(KeyboardKey.Space))
+{
+    string held = toolbarSlots[toolbarSelectedSlot];
+    if (held != null && IsUsable(held))
+        UseToolbarItem(toolbarSelectedSlot);
+   
+}
+
 // Also mouse scroll wheel
 float scroll = Raylib.GetMouseWheelMove();
 if (scroll != 0)
     camera.Zoom = Math.Clamp(camera.Zoom + scroll * 0.1f, 0.2f, 4.0f);
 
                 // Axe pickup
-                if (!axePickedUp && Vector2.Distance(player.Position, axePosition) < 60)
+                if (!axePickedUp && Vector2.Distance(player.Center, axePosition) < 60)
                 {
                     if (Raylib.IsKeyPressed(KeyboardKey.E))
                     {
@@ -7591,7 +10589,7 @@ if (scroll != 0)
                 }
 
                 // Pickaxe pickup
-if (!pickaxePickedUp && Vector2.Distance(player.Position, pickaxePosition) < 60)
+if (!pickaxePickedUp && Vector2.Distance(player.Center, pickaxePosition) < 60)
 {
     if (Raylib.IsKeyPressed(KeyboardKey.E))
     {
@@ -7602,7 +10600,7 @@ if (!pickaxePickedUp && Vector2.Distance(player.Position, pickaxePosition) < 60)
 }
 
 // Fishing rod pickup
-if (!fishingRodPickedUp && Vector2.Distance(player.Position, fishingRodPosition) < 60)
+if (!fishingRodPickedUp && Vector2.Distance(player.Center, fishingRodPosition) < 60)
 {
     if (Raylib.IsKeyPressed(KeyboardKey.E))
     {
@@ -7613,7 +10611,7 @@ if (!fishingRodPickedUp && Vector2.Distance(player.Position, fishingRodPosition)
 }
 
 // Fishing net pickup
-if (!fishingNetPickedUp && Vector2.Distance(player.Position, fishingNetPosition) < 60)
+if (!fishingNetPickedUp && Vector2.Distance(player.Center, fishingNetPosition) < 60)
 {
     if (Raylib.IsKeyPressed(KeyboardKey.E))
     {
@@ -7624,7 +10622,7 @@ if (!fishingNetPickedUp && Vector2.Distance(player.Position, fishingNetPosition)
 }
 
 // Torch pickup
-if (!torchPickedUp && Vector2.Distance(player.Position, torchPosition) < 60)
+if (!torchPickedUp && Vector2.Distance(player.Center, torchPosition) < 60)
 {
     if (Raylib.IsKeyPressed(KeyboardKey.E))
     {
@@ -7635,7 +10633,7 @@ if (!torchPickedUp && Vector2.Distance(player.Position, torchPosition) < 60)
 }
 
 // Stick pickup
-if (!stickPickedUp && Vector2.Distance(player.Position, stickPosition) < 60)
+if (!stickPickedUp && Vector2.Distance(player.Center, stickPosition) < 60)
 {
     if (Raylib.IsKeyPressed(KeyboardKey.E))
     {
@@ -7646,7 +10644,7 @@ if (!stickPickedUp && Vector2.Distance(player.Position, stickPosition) < 60)
 }
 
 // Sword pickup
-if (!swordPickedUp && Vector2.Distance(player.Position, swordPosition) < 60)
+if (!swordPickedUp && Vector2.Distance(player.Center, swordPosition) < 60)
 {
     if (Raylib.IsKeyPressed(KeyboardKey.E))
     {
@@ -7657,7 +10655,7 @@ if (!swordPickedUp && Vector2.Distance(player.Position, swordPosition) < 60)
 }
 
 // Bow pickup
-if (!bowPickedUp && Vector2.Distance(player.Position, bowSpawnPos) < 50 && Raylib.IsKeyPressed(KeyboardKey.E))
+if (!bowPickedUp && Vector2.Distance(player.Center, bowSpawnPos) < 50 && Raylib.IsKeyPressed(KeyboardKey.E))
 {
     bowPickedUp = true;
     player.HasBow = true;
@@ -7665,7 +10663,7 @@ if (!bowPickedUp && Vector2.Distance(player.Position, bowSpawnPos) < 50 && Rayli
 }
 
 // Crossbow pickup
-if (!crossbowPickedUp && Vector2.Distance(player.Position, crossbowSpawnPos) < 50 && Raylib.IsKeyPressed(KeyboardKey.E))
+if (!crossbowPickedUp && Vector2.Distance(player.Center, crossbowSpawnPos) < 50 && Raylib.IsKeyPressed(KeyboardKey.E))
 {
     crossbowPickedUp = true;
     player.HasCrossbow = true;
@@ -7679,6 +10677,9 @@ if (Raylib.IsKeyPressed(KeyboardKey.T))
 
 if (Raylib.IsKeyPressed(KeyboardKey.G))
     armorMenuOpen = !armorMenuOpen;
+
+if (Raylib.IsKeyPressed(KeyboardKey.F8))
+    skillCheatOpen = !skillCheatOpen;
 
                     if (Raylib.IsKeyPressed(KeyboardKey.Escape))
                         {
@@ -7713,6 +10714,7 @@ if (Raylib.IsKeyPressed(KeyboardKey.G))
                     UpdateWeather(dt);
                     UpdateQuests();
                     player.UpdateHealth(dt);
+                    UpdateQuickCook(dt);
                     bool nearEnemy = false;
                     totalPlayTime += dt;
 
@@ -7777,76 +10779,34 @@ if (Raylib.IsKeyPressed(KeyboardKey.G))
                         if (!drop.Collected && Raylib.CheckCollisionRecs(player.Bounds, drop.Bounds))
                         {
                             drop.Collected = true;
-
-                            switch (drop.ItemType)
-                            {
-                                case "Bone":
-                                    player.Bones++;
-                                    break;
-                                case "Fur":
-                                    player.Fur++;
-                                    break;
-                                case "Stinger":
-                                    player.Stingers++;
-                                    break;
-                                case "Bear Pelt":
-                                    player.BearPelts++;
-                                    break;
-                                case "Dog Fang":
-                                    player.DogFangs++;
-                                    break;
-                                case "Wolf Claw":
-                                    player.BearPelts++;
-                                    break;
-                                case "Venom sac":
-                                    player.BearPelts++;
-                                    break;
-                                case "Crab Claw":
-                                    player.BearPelts++;
-                                    break;
-                                case "Bear Claw":
-                                    player.BearPelts++;
-                                    break;
-                                case "Crab Shell":
-                                    player.BearPelts++;
-                                    break;
-                                case "Shark Fin":
-                                    player.BearPelts++;
-                                    break;
-                                case "Shark Tooth":
-                                    player.BearPelts++;
-                                    break;
-                                case "Snake Fang":
-                                    player.BearPelts++;
-                                    break;
-                                case "Croc Scale":
-                                    player.BearPelts++;
-                                    break;
-                                case "Croc Tooth":
-                                    player.BearPelts++;
-                                    break;
-                                case "Lizard Scale":
-                                    player.BearPelts++;
-                                    break;
-                                case "Ember Stone":
-                                    player.BearPelts++;
-                                    break;
-                                case "Magma Shard":
-                                    player.BearPelts++;
-                                    break;
-                                case "Lava Core":
-                                    player.BearPelts++;
-                                    break;
-                                case "Feather":
-                                    player.BearPelts++;
-                                    break;
-                                case "Eagle Talon":
-                                    player.BearPelts++;
-                                    break;
-                                case "Goat Hoof":
-                                    player.BearPelts++;
-                                    break;
-                            }
+               
+                                switch (drop.ItemType)
+                                {
+                case "Bone":         player.Bones++; break;
+                case "Fur":          player.Fur++; break;
+                case "Stinger":      player.Stingers++; break;
+                case "Bear Pelt":    player.BearPelts++; break;
+                case "Dog Fang":     player.DogFangs++; break;
+                case "Wolf Claw":    player.WolfClaws++; break;
+                case "Venom Sac":    player.VenomSacs++; break;
+                case "Crab Claw":    player.CrabClaws++; break;
+                case "Bear Claw":    player.BearClaws++; break;
+                case "Crab Shell":   player.CrabShells++; break;
+                case "Shark Fin":    player.SharkFins++; break;
+                case "Shark Tooth":  player.SharkTeeth++; break;
+                case "Snake Skin":   player.SnakeSkins++; break;
+                case "Snake Fang":   player.SnakeFangs++; break;
+                case "Croc Scale":   player.CrocScales++; break;
+                case "Croc Tooth":   player.CrocTeeth++; break;
+                case "Lizard Scale": player.LizardScales++; break;
+                case "Ember Stone":  player.EmberStones++; break;
+                case "Magma Shard":  player.MagmaShards++; break;
+                case "Lava Core":    player.LavaCores++; break;
+                case "Feather":      player.Feathers++; break;
+                case "Eagle Talon":  player.EagleTalons++; break;
+                case "Horn":         player.Horns++; break;
+                case "Goat Hoof":    player.GoatHooves++; break;
+            }
 
                             floatingTexts.Add(new FloatingText {
                                 Position = player.Position - new Vector2(0, 40),
@@ -7859,19 +10819,28 @@ if (Raylib.IsKeyPressed(KeyboardKey.G))
                         }
                     }
 
-if (Raylib.IsKeyPressed(KeyboardKey.Space) || Raylib.IsMouseButtonPressed(MouseButton.Left))
+if (Raylib.IsKeyPressed(KeyboardKey.Space))
 {
-    string equipped = GetActiveWeapon();
-    if (equipped == "Sword")
-        Raylib.PlaySound(soundSwordSwing);
-    else if (equipped == "Stick")
-        Raylib.PlaySound(soundStickSwing);
-    else if (equipped == "Axe")
-        Raylib.PlaySound(soundStickSwing);
-    else if (equipped == "Pickaxe")
-        Raylib.PlaySound(soundStickSwing);
-    else if (equipped == "Fishing rod")
-        Raylib.PlaySound(soundStickSwing);
+    if (!player.isSwinging && !player.InventoryOpen && !chestOpen && !shopUIOpen)
+    {
+        player.isSwinging = true;
+        player.swingTimer = 0f;
+
+        string equipped = GetActiveItem();   // respects phase (weapon or tool)
+        if (equipped != null)
+        {
+            if (equipped.Contains("Sword"))        // Sword, Great Sword, Gold Sword, etc.
+                Raylib.PlaySound(soundSwordSwing);
+            else if (equipped.Contains("Stick"))
+                Raylib.PlaySound(soundStickSwing);
+            else if (equipped.Contains("Pickaxe"))  // check before Axe (Pickaxe contains "axe")
+                Raylib.PlaySound(soundStickSwing);
+            else if (equipped.Contains("Axe"))      // Axe, War Axe, Gold Axe, etc.
+                Raylib.PlaySound(soundStickSwing);
+            else if (equipped.Contains("Rod"))
+                Raylib.PlaySound(soundStickSwing);
+        }
+    }
 }
 
                     foreach (Enemy enemy in enemies)
@@ -7905,14 +10874,14 @@ if (Raylib.IsKeyPressed(KeyboardKey.Space) || Raylib.IsMouseButtonPressed(MouseB
                     TextColor = Color.Red
                 });
             }
-                        if (!enemy.Dead && Vector2.Distance(player.Position, enemy.Position) < 80)
+                        if (!enemy.Dead && Vector2.Distance(player.Center, enemy.Center) < 80)
                 {
                     nearEnemy = true;
 
                   if (Raylib.IsKeyPressed(KeyboardKey.Space) || Raylib.IsMouseButtonPressed(MouseButton.Left))
 {
     string equipped = GetActiveWeapon();
-    bool hasWeapon = equipped == "Stick" || equipped == "Sword";
+    bool hasWeapon = equipped == "Stick" || equipped == "Sword" || equipped == "Sapphire Sword"|| equipped == "Ruby Sword";
 
     if (!hasWeapon)
     {
@@ -8032,12 +11001,63 @@ else if (enemy.Type == "Mountain Goat") {
             }
                     
 
-                    player.Update(dt, buildings, trees, vehicles, lakes);
+                    player.Update(dt, buildings, trees, vehicles, lakes, decorativeBuildings);
+
+                    // BUS SYSTEM
+{
+    float hour = GetCurrentHour();
+    busOperating = hour >= 6f && hour < 12f;
+
+    if (busOperating)
+    {
+        if (!busMoving)
+        {
+            busRouteTimer += daySpeed * Raylib.GetFrameTime() * 24f; // advance in game hours
+            if (busRouteTimer >= 4f)
+            {
+                busRouteTimer = 0f;
+                busMoving = true;
+                busLerpT = 0f;
+                busNextStop = (busCurrentStop + 1) % busStops.Length;
+            }
+        }
+        else
+        {
+            busLerpT += dt * 0.4f; // travel speed
+            busPosition = Vector2.Lerp(busStops[busCurrentStop].WorldPos,
+                                       busStops[busNextStop].WorldPos,
+                                       Math.Min(busLerpT, 1f));
+            if (busLerpT >= 1f)
+            {
+                busCurrentStop = busNextStop;
+                busPosition = busStops[busCurrentStop].WorldPos;
+                busMoving = false;
+                busRouteTimer = 0f;
+            }
+        }
+    }
+    else
+    {
+        // parked at stop 0 overnight
+        busPosition = busStops[0].WorldPos;
+        busCurrentStop = 0;
+        busMoving = false;
+        busRouteTimer = 0f;
+    }
+
+        // board bus
+        if (!busMoving && busOperating && Vector2.Distance(player.Center, busPosition) < 80)
+        {
+            if (Raylib.IsKeyPressed(KeyboardKey.E)) busMenuOpen = !busMenuOpen;
+        }
+        else if (Vector2.Distance(player.Center, busPosition) >= 80)
+            busMenuOpen = false;
+}
 
                     foreach (Vehicle vehicle in vehicles)
             {
                 Vector2 vehicleOldPos = vehicle.Position;
-                vehicle.Update(dt, buildings, trees, vehicles);
+                vehicle.Update(dt, buildings, trees, vehicles, decorativeBuildings, rocks);
 
                 foreach (Rectangle fenceRect in fenceManager.GetCollisionRects())
     {
@@ -8091,8 +11111,22 @@ else
     }
     else
     {
-        vehicle.Driving = true;
-        player.Hidden = true;
+        if (!HasTheoryForCurrentClass)
+{
+    levelUpMessage = "You need a licence to drive bro! Visit the AA.";
+    levelUpTimer = 2.5f;
+}
+else if (!CanDriveNow())
+{
+    levelUpMessage = $"Restricted licence — can only drive 6am-10pm. Current time: {GetTimeString()}";
+    levelUpTimer = 3f;
+}
+else
+{
+    vehicle.Driving = true;
+    player.Hidden = true;
+}
+        player.Hidden = false;
     }
 }
         }
@@ -8103,7 +11137,7 @@ else
             foreach (Rideable rideable in rideables)
 {
     Vector2 rideableOldPos = rideable.Position;
-    rideable.Update(dt, buildings, trees, vehicles, rideables);
+    rideable.Update(dt, buildings, trees, vehicles, rideables, decorativeBuildings);
               foreach (Rectangle fenceRect in fenceManager.GetCollisionRects())
     {
         if (Raylib.CheckCollisionRecs(rideable.Bounds, fenceRect))
@@ -8160,8 +11194,8 @@ foreach (GasStation station in gasStations)
     {
         float distVehicleP1 = Vector2.Distance(vehicle.Position, station.Pump1Pos);
         float distVehicleP2 = Vector2.Distance(vehicle.Position, station.Pump2Pos);
-        float distPlayerP1  = Vector2.Distance(player.Position,  station.Pump1Pos);
-        float distPlayerP2  = Vector2.Distance(player.Position,  station.Pump2Pos);
+        float distPlayerP1  = Vector2.Distance(player.Center,  station.Pump1Pos);
+        float distPlayerP2  = Vector2.Distance(player.Center,  station.Pump2Pos);
 
         bool canFuelP1 = distVehicleP1 < 120 && (distPlayerP1 < 150 || vehicle.Driving);
         bool canFuelP2 = distVehicleP2 < 120 && (distPlayerP2 < 150 || vehicle.Driving);
@@ -8195,7 +11229,7 @@ foreach (GasStation station in gasStations)
 
     if (!rock.Broken && !nearEnemy)
     {
-        if (Vector2.Distance(player.Position, rock.Position) < 80)
+        if (Vector2.Distance(player.Center, rock.Position) < 80)
         {
             if (Raylib.IsKeyPressed(KeyboardKey.Space))
             {
@@ -8267,7 +11301,7 @@ foreach (GasStation station in gasStations)
 
     if (!tree.Chopped && !nearEnemy)
     {
-        if (Vector2.Distance(player.Position, tree.Position) < 80)
+        if (Vector2.Distance(player.Center, tree.Center) < 80)
         {
             if (Raylib.IsKeyPressed(KeyboardKey.Space))
 {
@@ -8337,7 +11371,7 @@ foreach (Lake lake in lakes)
 {
     lake.Update(dt);
 
-    if (Vector2.Distance(player.Position, lake.Position) < 120 && Raylib.IsKeyPressed(KeyboardKey.Space) && !isFishing)
+    if (Vector2.Distance(player.Center, lake.Position) < 200 && Raylib.IsKeyPressed(KeyboardKey.Space) && !isFishing)
     {
         currentLake = lake;
         TryStartFishing("Lake");
@@ -8470,7 +11504,7 @@ if (isFishing)
                     // Dungeon entrances
 foreach (var entrance in dungeonEntrances)
 {
-    if (Vector2.Distance(player.Position, entrance.pos) < 80)
+    if (Vector2.Distance(player.Center, entrance.pos) < 80)
     {
         if (Raylib.IsKeyPressed(KeyboardKey.E))
         {
@@ -8489,6 +11523,10 @@ foreach (var entrance in dungeonEntrances)
                     break;
         case SceneState.Dungeon:
         UpdateDungeon(dt);
+        break;
+
+        case SceneState.DrivingTest:
+        UpdateDrivingTest(dt);
         break;
 
          case SceneState.Building:
@@ -8512,9 +11550,9 @@ foreach (var entrance in dungeonEntrances)
             wardrobeTab = i;
     }
 
-    bool nearWardrobe = Vector2.Distance(player.Position, wardrobePos) < 200;
-    bool nearChest    = Vector2.Distance(player.Position, chestPos)    < 200;
-    bool nearBed      = Vector2.Distance(player.Position, bedPos)      < 200;
+    bool nearWardrobe = Vector2.Distance(player.Center, wardrobePos) < 100;
+    bool nearChest    = Vector2.Distance(player.Center, chestPos)    < 100;
+    bool nearBed      = Vector2.Distance(player.Center, bedPos)      < 100;
 
     if (!chestOpen && nearWardrobe)
     {
@@ -8551,6 +11589,39 @@ foreach (var entrance in dungeonEntrances)
         chestOpen = false;
         return;
     }
+    // Kitchen stove/bench interaction
+Vector2 stovePos = new Vector2(200, 150);
+bool nearStove = Vector2.Distance(player.Center, stovePos) < 160;
+
+if (nearStove && !wardrobeOpen && !chestOpen && !fridgeOpen && !cupboardOpen)
+{
+    Raylib.DrawRectangle(0, 620, 1280, 100, new Color((byte)0,(byte)0,(byte)0,(byte)180));
+    Raylib.DrawText("KITCHEN STOVE", 20, 630, 28, new Color((byte)255,(byte)160,(byte)30,(byte)255));
+    Raylib.DrawText("E = Cook (all recipes available)", 20, 668, 22, Color.White);
+    if (Raylib.IsKeyPressed(KeyboardKey.E)) { cookingContext = "kitchen"; cookingMenuOpen = !cookingMenuOpen; }
+}
+
+// Fridge interaction
+Vector2 fridgeInteractPos = new Vector2(290, 170);
+bool nearFridge = Vector2.Distance(player.Center, fridgeInteractPos) < 120;
+if (nearFridge && !wardrobeOpen && !chestOpen && !cookingMenuOpen)
+{
+    Raylib.DrawRectangle(0, 620, 1280, 100, new Color((byte)0,(byte)0,(byte)0,(byte)180));
+    Raylib.DrawText("FRIDGE", 20, 630, 28, new Color((byte)100,(byte)200,(byte)255,(byte)255));
+    Raylib.DrawText($"Space = Open  |  Contents: {fridgeContents.Count(s => s != null)}/12", 20, 668, 22, Color.White);
+    if (Raylib.IsKeyPressed(KeyboardKey.Space)) fridgeOpen = !fridgeOpen;
+}
+
+// Cupboard interaction — bench top area left of fridge
+Vector2 cupboardPos = new Vector2(120, 120);
+bool nearCupboard = Vector2.Distance(player.Center, cupboardPos) < 120;
+if (nearCupboard && !wardrobeOpen && !chestOpen && !cookingMenuOpen)
+{
+    Raylib.DrawRectangle(0, 620, 1280, 100, new Color((byte)0,(byte)0,(byte)0,(byte)180));
+    Raylib.DrawText("CUPBOARD", 20, 630, 28, new Color((byte)200,(byte)160,(byte)80,(byte)255));
+    Raylib.DrawText($"Space = Open  |  Contents: {cupboardContents.Count(s => s != null)}/12", 20, 668, 22, Color.White);
+    if (Raylib.IsKeyPressed(KeyboardKey.Space)) cupboardOpen = !cupboardOpen;
+}
 }
 if (currentBuilding.BuildingName == "DropZone")
 {
@@ -8561,7 +11632,7 @@ if (currentBuilding.BuildingName == "DropZone")
     };
     for (int i = 0; i < bowlingLanes.Length; i++)
     {
-        if (Vector2.Distance(player.Position, bowlingLanes[i]) < 80 && Raylib.IsKeyPressed(KeyboardKey.Space))
+        if (Vector2.Distance(player.Center, bowlingLanes[i]) < 80 && Raylib.IsKeyPressed(KeyboardKey.Space))
         {
             if (player.Money >= 3)
             {
@@ -8581,7 +11652,7 @@ Vector2[] poolTables = {
 };
 for (int i = 0; i < poolTables.Length; i++)
 {
-    if (Vector2.Distance(player.Position, poolTables[i]) < 100 && Raylib.IsKeyPressed(KeyboardKey.Space))
+    if (Vector2.Distance(player.Center, poolTables[i]) < 100 && Raylib.IsKeyPressed(KeyboardKey.Space))
     {
         if (player.Money >= 2)
         {
@@ -8601,7 +11672,7 @@ for (int i = 0; i < poolTables.Length; i++)
     };
     for (int i = 0; i < clawMachines.Length; i++)
     {
-        if (Vector2.Distance(player.Position, clawMachines[i]) < 70 && Raylib.IsKeyPressed(KeyboardKey.Space))
+        if (Vector2.Distance(player.Center, clawMachines[i]) < 70 && Raylib.IsKeyPressed(KeyboardKey.Space))
         {
             activeClawMachine.Open(i);
             activeMinigameType = MinigameType.Claw;
@@ -8610,26 +11681,26 @@ for (int i = 0; i < poolTables.Length; i++)
     }
 
     // Pinball
-if (Vector2.Distance(player.Position, new Vector2(1095, 255)) < 75 && Raylib.IsKeyPressed(KeyboardKey.Space))
+if (Vector2.Distance(player.Center, new Vector2(1095, 255)) < 75 && Raylib.IsKeyPressed(KeyboardKey.Space))
 {
     if (player.Money >= 2) { player.Money -= 2; activePinballGame.Open(0); activeMinigameType = MinigameType.Pinball; currentScene = SceneState.Minigame; }
     else { shopMessage = "Need $2 to play pinball!"; shopMessageTimer = 1.5f; }
 }
 // Air Hockey
-if (Vector2.Distance(player.Position, new Vector2(1095, 415)) < 75 && Raylib.IsKeyPressed(KeyboardKey.Space))
+if (Vector2.Distance(player.Center, new Vector2(1095, 415)) < 75 && Raylib.IsKeyPressed(KeyboardKey.Space))
 {
     if (player.Money >= 3) { player.Money -= 3; activeAirHockeyGame.Open(0); activeMinigameType = MinigameType.AirHockey; currentScene = SceneState.Minigame; }
     else { shopMessage = "Need $3 to play air hockey!"; shopMessageTimer = 1.5f; }
 }
 // Piano Tiles
-if (Vector2.Distance(player.Position, new Vector2(1095, 575)) < 75 && Raylib.IsKeyPressed(KeyboardKey.Space))
+if (Vector2.Distance(player.Center, new Vector2(1095, 575)) < 75 && Raylib.IsKeyPressed(KeyboardKey.Space))
 {
     if (player.Money >= 2) { player.Money -= 2; activePianoTilesGame.Open(0); activeMinigameType = MinigameType.PianoTiles; currentScene = SceneState.Minigame; }
     else { shopMessage = "Need $2 to play!"; shopMessageTimer = 1.5f; }
 }
 
 // Flappy Bird (tickets)
-if (Vector2.Distance(player.Position, new Vector2(935, 575)) < 75 && Raylib.IsKeyPressed(KeyboardKey.Space))
+if (Vector2.Distance(player.Center, new Vector2(935, 575)) < 75 && Raylib.IsKeyPressed(KeyboardKey.Space))
 {
     if (player.Money >= 1)
     {
@@ -8642,7 +11713,7 @@ if (Vector2.Distance(player.Position, new Vector2(935, 575)) < 75 && Raylib.IsKe
 }
 
 // Prize counter
-if (Vector2.Distance(player.Position, new Vector2(825, 545)) < 80 && Raylib.IsKeyPressed(KeyboardKey.E))
+if (Vector2.Distance(player.Center, new Vector2(825, 545)) < 80 && Raylib.IsKeyPressed(KeyboardKey.E))
     prizeCounterOpen = !prizeCounterOpen;
 
 if (prizeCounterOpen)
@@ -8660,7 +11731,7 @@ if (prizeCounterOpen)
     };
     for (int i = 0; i < arcadeCabinets.Length; i++)
     {
-        if (Vector2.Distance(player.Position, arcadeCabinets[i]) < 70 && Raylib.IsKeyPressed(KeyboardKey.Space))
+        if (Vector2.Distance(player.Center, arcadeCabinets[i]) < 70 && Raylib.IsKeyPressed(KeyboardKey.Space))
         {
             activePokieMachine.Open(i);
             activeMinigameType = MinigameType.Pokie;
@@ -8669,7 +11740,7 @@ if (prizeCounterOpen)
     }
 
     // Food & drink counter
-    if (Vector2.Distance(player.Position, new Vector2(600, 550)) < 80 && Raylib.IsKeyPressed(KeyboardKey.E))
+    if (Vector2.Distance(player.Center, new Vector2(600, 550)) < 80 && Raylib.IsKeyPressed(KeyboardKey.E))
         dropZoneFoodMenuOpen = !dropZoneFoodMenuOpen;
 
     if (dropZoneFoodMenuOpen)
@@ -8680,7 +11751,7 @@ if (prizeCounterOpen)
         if (Raylib.IsKeyPressed(KeyboardKey.Four)) BuyDropZoneItem("Slushie", 5, 14);
     }
 
-    if (Vector2.Distance(player.Position, cRidePos) < 100)
+    if (Vector2.Distance(player.Center, cRidePos) < 100)
 {
     cRideMessageActive = true;
 }
@@ -8691,7 +11762,7 @@ else
 }
 if (currentBuilding.BuildingName == "MiniGolf")
 {
-    if (Vector2.Distance(player.Position, new Vector2(640, 345)) < 90 && Raylib.IsKeyPressed(KeyboardKey.Space))
+    if (Vector2.Distance(player.Center, new Vector2(640, 345)) < 90 && Raylib.IsKeyPressed(KeyboardKey.Space))
     {
         if (player.Money >= 5)
         {
@@ -8763,8 +11834,8 @@ if (currentBuilding.BuildingName == "GYM")
 
     Vector2 dumbbellPos = new Vector2(250, 210);
     Vector2 benchPos    = new Vector2(590, 330);
-    bool nearDumbbells  = Vector2.Distance(player.Position, dumbbellPos) < 120;
-    bool nearBench      = Vector2.Distance(player.Position, benchPos) < 120;
+    bool nearDumbbells  = Vector2.Distance(player.Center, dumbbellPos) < 120;
+    bool nearBench      = Vector2.Distance(player.Center, benchPos) < 120;
 
     // start minigame
     if (!strengthMinigameActive && strengthMinigameCooldown <= 0
@@ -8879,7 +11950,7 @@ if (currentBuilding.BuildingName == "McDONALD'S")
     }
     else
     {
-        if (Vector2.Distance(player.Position, currentBuilding.InteriorNPC.Position) < 120)
+        if (Vector2.Distance(player.Center, currentBuilding.InteriorNPC.Position) < 120)
         {
             if (Raylib.IsKeyPressed(KeyboardKey.E))
                 mcdonaldsMenuOpen = true;
@@ -8911,7 +11982,7 @@ if (currentBuilding.BuildingName == "DOMINO'S")
     }
     else
     {
-        if (Vector2.Distance(player.Position, currentBuilding.InteriorNPC.Position) < 120)
+        if (Vector2.Distance(player.Center, currentBuilding.InteriorNPC.Position) < 120)
         {
             if (Raylib.IsKeyPressed(KeyboardKey.E))
                 dominosMenuOpen = true;
@@ -8944,7 +12015,7 @@ if (currentBuilding.BuildingName == "KFC")
     }
     else
     {
-        if (Vector2.Distance(player.Position, currentBuilding.InteriorNPC.Position) < 120)
+        if (Vector2.Distance(player.Center, currentBuilding.InteriorNPC.Position) < 120)
         {
             if (Raylib.IsKeyPressed(KeyboardKey.E))
                 kfcMenuOpen = true;
@@ -8977,7 +12048,7 @@ if (currentBuilding.BuildingName == "BURGER KING")
     }
     else
     {
-        if (Vector2.Distance(player.Position, currentBuilding.InteriorNPC.Position) < 120)
+        if (Vector2.Distance(player.Center, currentBuilding.InteriorNPC.Position) < 120)
         {
             if (Raylib.IsKeyPressed(KeyboardKey.E))
                 burgerKingMenuOpen = true;
@@ -9163,7 +12234,7 @@ if (currentBuilding.BuildingName == "SWIMMING COMPLEX" && !swimmingActive && pla
 if (currentBuilding.BuildingName == "TENNIS COURT")
 {
     Vector2 netPos = new Vector2(680, 300);
-    if (!tennisActive && Vector2.Distance(player.Position, netPos) < 150 && Raylib.IsKeyPressed(KeyboardKey.Space))
+    if (!tennisActive && Vector2.Distance(player.Center, netPos) < 150 && Raylib.IsKeyPressed(KeyboardKey.Space))
     {
         tennisActive = true;
         tennisDifficultySelect = true;
@@ -9213,7 +12284,7 @@ if (currentBuilding.BuildingName == "TENNIS COURT" && !tennisActive && player.Hi
 if (currentBuilding.BuildingName == "BASKETBALL COURT")
 {
     Vector2 freeThrowLine = new Vector2(400, 500);
-    bool nearFreeThrow = Vector2.Distance(player.Position, freeThrowLine) < 100;
+    bool nearFreeThrow = Vector2.Distance(player.Center, freeThrowLine) < 100;
 
     if (bbMessageTimer > 0) bbMessageTimer -= dt;
 
@@ -9311,7 +12382,7 @@ if (currentBuilding.BuildingName == "BASKETBALL COURT")
     };
 
     bool nearAnyBooth = boothPositions.Any(bp =>
-        Vector2.Distance(player.Position, bp) < 130);
+        Vector2.Distance(player.Center, bp) < 130);
 
     if (nearAnyBooth)
     {
@@ -9353,8 +12424,8 @@ if (currentBuilding.BuildingName == "BASKETBALL COURT")
 {
     Vector2 trolleyPickupPos = new Vector2(80, 945);
     Vector2 basketPickupPos  = new Vector2(1000, 945);
-    bool nearTrolleyPickup   = Vector2.Distance(player.Position, trolleyPickupPos) < 100;
-    bool nearBasketPickup    = Vector2.Distance(player.Position, basketPickupPos)  < 100;
+    bool nearTrolleyPickup   = Vector2.Distance(player.Center, trolleyPickupPos) < 100;
+    bool nearBasketPickup    = Vector2.Distance(player.Center, basketPickupPos)  < 100;
 
     if (Raylib.IsKeyPressed(KeyboardKey.Space))
     {
@@ -9398,6 +12469,23 @@ if (currentBuilding.BuildingName == "BASKETBALL COURT")
             }
         }
     }
+    // near grocery shelves — open shop panel
+bool nearShelf =
+    (player.Center.X > 50 && player.Center.X < 1380 &&
+     player.Center.Y > 140 && player.Center.Y < 780 &&
+     (player.HasTrolley || player.HasBasket));
+
+if (nearShelf && Raylib.IsKeyPressed(KeyboardKey.E))
+    groceryShopOpen = !groceryShopOpen;
+
+if (!nearShelf && player.Center.Y < 870) groceryShopOpen = false;
+
+if (nearShelf && !groceryShopOpen)
+{
+    Raylib.DrawRectangle(0, 620, 1280, 100, new Color((byte)0,(byte)0,(byte)0,(byte)180));
+    Raylib.DrawText("GROCERY SHELVES", 20, 630, 28, new Color((byte)80,(byte)200,(byte)80,(byte)255));
+    Raylib.DrawText("E = Browse groceries", 20, 668, 22, Color.White);
+}
 
     // open/close inventory — unchanged
     if ((player.HasTrolley || player.HasBasket) && Raylib.IsKeyPressed(KeyboardKey.I))
@@ -9406,7 +12494,7 @@ if (currentBuilding.BuildingName == "BASKETBALL COURT")
 
         if (currentBuilding.BuildingName == "DBar")
 {
-if (Raylib.IsKeyPressed(KeyboardKey.Space) && !barMenuOpen && Vector2.Distance(player.Position, barCounterPos) < 120)
+if (Raylib.IsKeyPressed(KeyboardKey.Space) && !barMenuOpen && Vector2.Distance(player.Center, barCounterPos) < 120)
     barMenuOpen = true;
 
         if (Raylib.IsKeyPressed(KeyboardKey.Q) && barMenuOpen)
@@ -9416,7 +12504,7 @@ if (Raylib.IsKeyPressed(KeyboardKey.Space) && !barMenuOpen && Vector2.Distance(p
     return;
 }
 
-        if (Vector2.Distance(player.Position, barCounterPos) < 120)
+        if (Vector2.Distance(player.Center, barCounterPos) < 120)
         {
             Raylib.DrawRectangle(0, 620, 1280, 100, new Color((byte)0, (byte)0, (byte)0, (byte)180));
             Raylib.DrawText("THE BAR", 20, 630, 30, Color.Gold);
@@ -9436,7 +12524,7 @@ if (Raylib.IsKeyPressed(KeyboardKey.Space) && !barMenuOpen && Vector2.Distance(p
     {
         if (i == 1) continue; // machine 2 (index 1) is the occupied one — handled below
 
-        if (Vector2.Distance(player.Position, pokiePositions[i]) < 80)
+        if (Vector2.Distance(player.Center, pokiePositions[i]) < 80)
         {
             if (Raylib.IsKeyPressed(KeyboardKey.Space))
             {
@@ -9448,7 +12536,7 @@ if (Raylib.IsKeyPressed(KeyboardKey.Space) && !barMenuOpen && Vector2.Distance(p
     }
 
     // occupied pokie machine (index 1)
-    if (Vector2.Distance(player.Position, pokiePositions[1]) < 80)
+    if (Vector2.Distance(player.Center, pokiePositions[1]) < 80)
     {
         if (Raylib.IsKeyPressed(KeyboardKey.Space))
         {
@@ -9464,7 +12552,7 @@ if (Raylib.IsKeyPressed(KeyboardKey.Space) && !barMenuOpen && Vector2.Distance(p
 
 for (int i = 0; i < poolTablePositions.Length; i++)
 {
-    if (Vector2.Distance(player.Position, poolTablePositions[i]) < 100)
+    if (Vector2.Distance(player.Center, poolTablePositions[i]) < 100)
     {
         if (Raylib.IsKeyPressed(KeyboardKey.Space))
         {
@@ -9484,7 +12572,7 @@ for (int i = 0; i < poolTablePositions.Length; i++)
     }
 }
 
-if (Vector2.Distance(player.Position, dartboardPosition) < 100)
+if (Vector2.Distance(player.Center, dartboardPosition) < 100)
 {
     if (Raylib.IsKeyPressed(KeyboardKey.Space))
     {
@@ -9504,8 +12592,43 @@ if (Vector2.Distance(player.Position, dartboardPosition) < 100)
 }
 }
 
+if (currentBuilding.BuildingName == "KiwiCuts")
+{
+    Vector2 chair1Pos = new Vector2(130, 245);
+    Vector2 chair2Pos = new Vector2(250, 245);
+
+    foreach (Vector2 chairPos in new[] { chair1Pos, chair2Pos })
+    {
+        if (Vector2.Distance(player.Center, chairPos) < 80)
+        {
+            Raylib.DrawRectangle(0, 620, 1280, 100, new Color((byte)0,(byte)0,(byte)0,(byte)180));
+            Raylib.DrawText("BARBER CHAIR", 20, 630, 30, new Color((byte)40,(byte)220,(byte)180,(byte)255));
+            
+            string chairPrompt = Program.HasHeadItemEquipped
+            ? "Remove your head gear"
+            : "Space = Get a haircut | Q = Close";
+            Color chairPromptColor = Program.HasHeadItemEquipped ? Color.Orange : Color.White;
+            Raylib.DrawText(chairPrompt, 20, 670, 24, chairPromptColor);
+
+            if (Raylib.IsKeyPressed(KeyboardKey.Space) && !hairMenuOpen)
+{
+    if (Program.HasHeadItemEquipped)
+    {
+        shopMessage = "Take off your head gear first bro, can't cut through that!";
+        shopMessageTimer = 3f;
+    }
+    else
+        hairMenuOpen = true;
+}
+        }
+    }
+
+    if (Raylib.IsKeyPressed(KeyboardKey.Q) && hairMenuOpen)
+        hairMenuOpen = false;
+}
+
     // All other buildings - NPC distance check
-    if (Vector2.Distance(player.Position, currentBuilding.InteriorNPC.Position) < 120)
+    if (Vector2.Distance(player.Center, currentBuilding.InteriorNPC.Position) < 120)
     {
         if (currentBuilding.BuildingName == "HOSPITAL")
 {
@@ -9569,8 +12692,7 @@ if (currentBuilding.BuildingName == "GYM")
     }
 }
 
-// existing: if (Vector2.Distance(player.Position, currentBuilding.InteriorNPC.Position) < 120) { ... }
-if (Vector2.Distance(player.Position, currentBuilding.InteriorNPC.Position) < 120)
+if (Vector2.Distance(player.Center, currentBuilding.InteriorNPC.Position) < 120)
 {
     // existing other cases...
     if (currentBuilding.BuildingName == "BIKE DEALER" ||
@@ -9616,7 +12738,7 @@ if (currentBuilding.BuildingName == "POLICE STATION")
  if (Raylib.IsKeyPressed(KeyboardKey.Q) && !wardrobeOpen && !chestOpen && !shopUIOpen && !barMenuOpen)
 {
     // Only allow exit when near the entry position (the entrance/door area)
-    float distToEntrance = Vector2.Distance(player.Position, currentBuilding.EntryPosition);
+    float distToEntrance = Vector2.Distance(player.Center, currentBuilding.EntryPosition);
     bool nearEntrance = distToEntrance < 120f;
 
     if (nearEntrance)
@@ -9710,9 +12832,15 @@ if (currentBuilding.BuildingName == "POLICE STATION")
                 case SceneState.Dungeon:
                 DrawDungeon();
                 break;
+
+                case SceneState.DrivingTest:
+                DrawDrivingTest();
+                break;
             }
             
+            DrawCookingMenu();
             UpdateSkillsUI();
+            DrawQuickCookBar();
             Vector2 mouse = Raylib.GetMousePosition();
             Rectangle questsBtn = new Rectangle(ScreenWidth - 320, ScreenHeight - 60, 140, 40);
                 if (Raylib.IsMouseButtonPressed(MouseButton.Left))
@@ -9981,6 +13109,16 @@ int faW = (int)(3000 * scale);        int faH = (int)(4000  * scale);
 Raylib.DrawRectangle(Math.Clamp(faX, mapX, mapX + mapW), Math.Clamp(faY, mapY, mapY + mapH),
     Math.Clamp(faW, 0, mapW), Math.Clamp(faH, 0, mapH),
     new Color((byte)139,(byte)90,(byte)43,(byte)255));
+
+// City label
+int cityMapX = cx + (int)(14800 * minimapScale);
+int cityMapY = cy + (int)(5500  * minimapScale);
+Raylib.DrawRectangle(cityMapX - 2, cityMapY - 2, 8, 8, new Color((byte)220,(byte)180,(byte)20,(byte)255));
+
+// Town label  
+int townMapX = cx + (int)(-16200 * minimapScale);
+int townMapY = cy + (int)(4400   * minimapScale);
+Raylib.DrawRectangle(townMapX - 2, townMapY - 2, 6, 6, new Color((byte)180,(byte)220,(byte)120,(byte)255));
 
     // Roads
     int roadY    = cy + (int)(550  * scale);
@@ -10579,6 +13717,123 @@ Raylib.DrawRectangle(200, -200, 120, 760, Color.DarkGray);
 // vertical road to weapons shop
 Raylib.DrawRectangle(500, -200, 120, 760, Color.DarkGray);
 
+// ── CITY OF HAMILTRON (X 12000-18000, Y 3000-8000) ──────────────────────────
+
+// Main boulevard (horizontal spine)
+Raylib.DrawRectangle(11800, 5500, 6400, 160, Color.DarkGray);
+// North avenue (vertical spine)
+Raylib.DrawRectangle(14800, 3000, 160, 5200, Color.DarkGray);
+// East-west cross streets
+Raylib.DrawRectangle(11800, 3900, 6400, 120, Color.DarkGray);
+Raylib.DrawRectangle(11800, 7200, 6400, 120, Color.DarkGray);
+// North-south cross streets
+Raylib.DrawRectangle(12800, 3000, 120, 5200, Color.DarkGray);
+Raylib.DrawRectangle(16600, 3000, 120, 5200, Color.DarkGray);
+Raylib.DrawRectangle(17800, 3000, 120, 5200, Color.DarkGray);
+// Connector from main road (Y 200) down to city boulevard
+Raylib.DrawRectangle(14800, 200, 160, 3700, Color.DarkGray);
+// City ring loop
+Raylib.DrawRectangle(11800, 3000, 6200, 120, Color.DarkGray); // north ring
+Raylib.DrawRectangle(11800, 8100, 6200, 120, Color.DarkGray); // south ring
+Raylib.DrawRectangle(11800, 3000, 120, 5220, Color.DarkGray); // west ring
+Raylib.DrawRectangle(17880, 3000, 120, 5220, Color.DarkGray); // east ring
+
+// Sidewalks — city
+Raylib.DrawRectangle(11800, 5496, 6400, 10, new Color((byte)180,(byte)180,(byte)180,(byte)255));
+Raylib.DrawRectangle(11800, 5654, 6400, 10, new Color((byte)180,(byte)180,(byte)180,(byte)255));
+Raylib.DrawRectangle(14796, 3000, 10, 5200, new Color((byte)180,(byte)180,(byte)180,(byte)255));
+Raylib.DrawRectangle(14954, 3000, 10, 5200, new Color((byte)180,(byte)180,(byte)180,(byte)255));
+
+// Road markings — city boulevard
+for (int i = 11800; i < 18200; i += 200)
+    Raylib.DrawRectangle(i, 5572, 100, 12, Color.Yellow);
+// Road markings — north avenue
+for (int i = 3000; i < 8200; i += 200)
+    Raylib.DrawRectangle(14872, i, 12, 100, Color.Yellow);
+// Cross street markings
+for (int i = 11800; i < 18200; i += 200)
+{
+    Raylib.DrawRectangle(i, 3952, 100, 12, Color.Yellow);
+    Raylib.DrawRectangle(i, 7252, 100, 12, Color.Yellow);
+}
+// North-south cross markings
+for (int i = 3000; i < 8200; i += 200)
+{
+    Raylib.DrawRectangle(12852, i, 12, 100, Color.Yellow);
+    Raylib.DrawRectangle(16652, i, 12, 100, Color.Yellow);
+}
+
+// ── INTERSECTIONS — city (painted boxes + stop lines) ────────────────────────
+// Intersection: boulevard x north avenue
+Raylib.DrawRectangle(14800, 5500, 160, 160, Color.DarkGray);
+Raylib.DrawRectangle(14790, 5490, 180, 10, new Color((byte)220,(byte)220,(byte)60,(byte)255)); // stop N
+Raylib.DrawRectangle(14790, 5660, 180, 10, new Color((byte)220,(byte)220,(byte)60,(byte)255)); // stop S
+Raylib.DrawRectangle(14790, 5490, 10, 180, new Color((byte)220,(byte)220,(byte)60,(byte)255)); // stop W
+Raylib.DrawRectangle(14960, 5490, 10, 180, new Color((byte)220,(byte)220,(byte)60,(byte)255)); // stop E
+// Zebra crossing — boulevard x north avenue (east approach)
+for (int z = 0; z < 5; z++)
+    Raylib.DrawRectangle(14970 + z * 16, 5510, 10, 140, new Color((byte)240,(byte)240,(byte)240,(byte)200));
+
+// Intersection: east cross x north avenue
+Raylib.DrawRectangle(14800, 3900, 160, 120, Color.DarkGray);
+Raylib.DrawRectangle(14790, 3892, 180, 10, new Color((byte)220,(byte)220,(byte)60,(byte)255));
+Raylib.DrawRectangle(14790, 4012, 180, 10, new Color((byte)220,(byte)220,(byte)60,(byte)255));
+
+// Intersection: boulevard x west cross
+Raylib.DrawRectangle(12800, 5500, 120, 160, Color.DarkGray);
+Raylib.DrawRectangle(12792, 5490, 140, 10, new Color((byte)220,(byte)220,(byte)60,(byte)255));
+Raylib.DrawRectangle(12792, 5660, 140, 10, new Color((byte)220,(byte)220,(byte)60,(byte)255));
+// Zebra W
+for (int z = 0; z < 5; z++)
+    Raylib.DrawRectangle(12808 + z * 16, 5670, 10, 120, new Color((byte)240,(byte)240,(byte)240,(byte)200));
+
+// Intersection: south cross x north avenue
+Raylib.DrawRectangle(14800, 7200, 160, 120, Color.DarkGray);
+Raylib.DrawRectangle(14790, 7192, 180, 10, new Color((byte)220,(byte)220,(byte)60,(byte)255));
+Raylib.DrawRectangle(14790, 7312, 180, 10, new Color((byte)220,(byte)220,(byte)60,(byte)255));
+
+// ── COUNTRY TOWN OF ROTOAIRA (X -14000 to -18000, Y 3000-6000) ──────────────
+
+// Main street (horizontal)
+Raylib.DrawRectangle(-18000, 4400, 4200, 140, Color.DarkGray);
+// Two side streets (vertical)
+Raylib.DrawRectangle(-17200, 3200, 120, 3000, Color.DarkGray);
+Raylib.DrawRectangle(-15400, 3200, 120, 3000, Color.DarkGray);
+// Loop road around town
+Raylib.DrawRectangle(-18000, 3200, 4200, 120, Color.DarkGray); // north loop
+Raylib.DrawRectangle(-18000, 6100, 4200, 120, Color.DarkGray); // south loop
+Raylib.DrawRectangle(-18000, 3200, 120, 3020, Color.DarkGray); // west loop
+Raylib.DrawRectangle(-13920, 3200, 120, 3020, Color.DarkGray); // east loop
+// Connector from snow side road (Y 260) down to town
+Raylib.DrawRectangle(-16200, 260, 120, 3060, Color.DarkGray);
+
+// Sidewalks — town
+Raylib.DrawRectangle(-18000, 4396, 4200, 8, new Color((byte)180,(byte)180,(byte)180,(byte)255));
+Raylib.DrawRectangle(-18000, 4534, 4200, 8, new Color((byte)180,(byte)180,(byte)180,(byte)255));
+
+// Road markings — main street
+for (int i = -18000; i < -13800; i += 200)
+    Raylib.DrawRectangle(i, 4463, 100, 12, Color.Yellow);
+// Side street markings
+for (int i = 3200; i < 6200; i += 200)
+{
+    Raylib.DrawRectangle(-17148, i, 12, 100, Color.Yellow);
+    Raylib.DrawRectangle(-15348, i, 12, 100, Color.Yellow);
+}
+
+// Town intersection: main street x left side street
+Raylib.DrawRectangle(-17200, 4400, 120, 140, Color.DarkGray);
+Raylib.DrawRectangle(-17210, 4392, 140, 10, new Color((byte)220,(byte)220,(byte)60,(byte)255));
+Raylib.DrawRectangle(-17210, 4534, 140, 10, new Color((byte)220,(byte)220,(byte)60,(byte)255));
+// Zebra
+for (int z = 0; z < 4; z++)
+    Raylib.DrawRectangle(-17192 + z * 16, 4545, 10, 100, new Color((byte)240,(byte)240,(byte)240,(byte)200));
+
+// Town intersection: main street x right side street
+Raylib.DrawRectangle(-15400, 4400, 120, 140, Color.DarkGray);
+Raylib.DrawRectangle(-15410, 4392, 140, 10, new Color((byte)220,(byte)220,(byte)60,(byte)255));
+Raylib.DrawRectangle(-15410, 4534, 140, 10, new Color((byte)220,(byte)220,(byte)60,(byte)255));
+
 // =====================
 // ROAD MARKINGS
 // =====================
@@ -10697,6 +13952,9 @@ for (int i = -53000; i < 53000; i += 200)
             {
                 building.Draw();
             }
+
+            foreach (var b in decorativeBuildings)
+            b.Draw();
 
 // ─── DRAW ALL BUILDING EXTERIORS ────────────────────────────────────────────
 foreach (Building building in buildings)
@@ -10973,6 +14231,139 @@ if (building.BuildingName == "BASKETBALL COURT")
  
         
     }
+//KiwiCuts Exterior
+    if (building.BuildingName == "KiwiCuts")
+{
+    // main body - cream/white
+    Raylib.DrawRectangle((int)bx, (int)by, 140, 110, new Color((byte)240,(byte)240,(byte)235,(byte)255));
+    // roof trim - teal/green NZ vibe
+    Raylib.DrawRectangle((int)bx - 4, (int)by - 6, 148, 8, new Color((byte)20,(byte)140,(byte)120,(byte)255));
+    Raylib.DrawRectangle((int)bx - 4, (int)by - 6, 148, 3, new Color((byte)40,(byte)200,(byte)170,(byte)255));
+    // neon sign
+    Raylib.DrawRectangle((int)bx + 10, (int)by - 22, 120, 18, new Color((byte)10,(byte)10,(byte)10,(byte)255));
+    Raylib.DrawRectangleLines((int)bx + 10, (int)by - 22, 120, 18, new Color((byte)20,(byte)160,(byte)140,(byte)255));
+    Raylib.DrawText("KiwiCuts", (int)bx + 18, (int)by - 20, 16, new Color((byte)40,(byte)220,(byte)180,(byte)255));
+    // barber pole
+    Raylib.DrawRectangle((int)bx + 4, (int)by + 20, 8, 60, Color.White);
+    Raylib.DrawRectangle((int)bx + 4, (int)by + 20, 8, 10, Color.Red);
+    Raylib.DrawRectangle((int)bx + 4, (int)by + 36, 8, 10, Color.Red);
+    Raylib.DrawRectangle((int)bx + 4, (int)by + 52, 8, 10, Color.Red);
+    Raylib.DrawRectangle((int)bx + 4, (int)by + 68, 8, 10, Color.Red);
+    Raylib.DrawRectangle((int)bx + 3, (int)by + 18, 10, 4, new Color((byte)180,(byte)180,(byte)180,(byte)255));
+    Raylib.DrawRectangle((int)bx + 3, (int)by + 80, 10, 4, new Color((byte)180,(byte)180,(byte)180,(byte)255));
+    // windows
+    Raylib.DrawRectangle((int)bx + 20, (int)by + 20, 40, 35, new Color((byte)200,(byte)235,(byte)240,(byte)255));
+    Raylib.DrawRectangleLines((int)bx + 20, (int)by + 20, 40, 35, new Color((byte)20,(byte)140,(byte)120,(byte)255));
+    Raylib.DrawRectangle((int)bx + 80, (int)by + 20, 40, 35, new Color((byte)200,(byte)235,(byte)240,(byte)255));
+    Raylib.DrawRectangleLines((int)bx + 80, (int)by + 20, 40, 35, new Color((byte)20,(byte)140,(byte)120,(byte)255));
+    // door
+    Raylib.DrawRectangle((int)bx + 50, (int)by + 65, 40, 45, new Color((byte)20,(byte)140,(byte)120,(byte)255));
+    Raylib.DrawRectangleLines((int)bx + 50, (int)by + 65, 40, 45, new Color((byte)10,(byte)80,(byte)70,(byte)255));
+    Raylib.DrawCircle((int)bx + 86, (int)by + 88, 3, new Color((byte)220,(byte)200,(byte)100,(byte)255));
+}
+// Hallensteins Exterior
+if (building.BuildingName == "Hallensteins")
+{
+    // main body — jet black
+    Raylib.DrawRectangle((int)bx, (int)by, 160, 110, new Color((byte)15,(byte)15,(byte)15,(byte)255));
+    // gold roof band
+    Raylib.DrawRectangle((int)bx - 4, (int)by - 8, 168, 10, new Color((byte)180,(byte)140,(byte)20,(byte)255));
+    Raylib.DrawRectangle((int)bx - 4, (int)by - 8, 168, 3, new Color((byte)220,(byte)180,(byte)40,(byte)255));
+    // large display windows
+    Raylib.DrawRectangle((int)bx + 8,  (int)by + 14, 50, 50, new Color((byte)30,(byte)30,(byte)40,(byte)255));
+    Raylib.DrawRectangleLines((int)bx + 8,  (int)by + 14, 50, 50, new Color((byte)180,(byte)140,(byte)20,(byte)255));
+    Raylib.DrawRectangle((int)bx + 100, (int)by + 14, 50, 50, new Color((byte)30,(byte)30,(byte)40,(byte)255));
+    Raylib.DrawRectangleLines((int)bx + 100, (int)by + 14, 50, 50, new Color((byte)180,(byte)140,(byte)20,(byte)255));
+    // mannequins in windows
+    Raylib.DrawRectangle((int)bx + 26, (int)by + 18, 6, 18, new Color((byte)200,(byte)180,(byte)140,(byte)255)); // body
+    Raylib.DrawCircle((int)bx + 29, (int)by + 16, 5, new Color((byte)200,(byte)180,(byte)140,(byte)255));        // head
+    Raylib.DrawRectangle((int)bx + 118, (int)by + 18, 6, 18, new Color((byte)200,(byte)180,(byte)140,(byte)255));
+    Raylib.DrawCircle((int)bx + 121, (int)by + 16, 5, new Color((byte)200,(byte)180,(byte)140,(byte)255));
+    // door
+    Raylib.DrawRectangle((int)bx + 62, (int)by + 66, 36, 44, new Color((byte)30,(byte)30,(byte)30,(byte)255));
+    Raylib.DrawRectangleLines((int)bx + 62, (int)by + 66, 36, 44, new Color((byte)180,(byte)140,(byte)20,(byte)255));
+    Raylib.DrawCircle((int)bx + 93, (int)by + 89, 3, new Color((byte)180,(byte)140,(byte)20,(byte)255));
+    // sign
+    Raylib.DrawRectangle((int)bx + 10, (int)by - 22, 140, 16, new Color((byte)10,(byte)10,(byte)10,(byte)255));
+    Raylib.DrawRectangleLines((int)bx + 10, (int)by - 22, 140, 16, new Color((byte)180,(byte)140,(byte)20,(byte)255));
+    Raylib.DrawText("HALLENSTEINS", (int)bx + 14, (int)by - 20, 11, new Color((byte)180,(byte)140,(byte)20,(byte)255));
+}
+
+//AA Exterior
+if (building.BuildingName == "AA")
+{
+    Color aaBlue = new Color((byte)0,(byte)80,(byte)160,(byte)255);
+    Raylib.DrawRectangle((int)bx, (int)by, 160, 110, aaBlue);
+    Raylib.DrawRectangle((int)bx - 4, (int)by - 10, 168, 12, new Color((byte)0,(byte)60,(byte)130,(byte)255));
+    Raylib.DrawRectangle((int)bx - 4, (int)by - 10, 168, 3, new Color((byte)0,(byte)120,(byte)220,(byte)255));
+    // large windows
+    Raylib.DrawRectangle((int)bx + 8,  (int)by + 14, 55, 45, new Color((byte)160,(byte)200,(byte)240,(byte)200));
+    Raylib.DrawRectangleLines((int)bx + 8, (int)by + 14, 55, 45, new Color((byte)0,(byte)120,(byte)220,(byte)255));
+    Raylib.DrawRectangle((int)bx + 97, (int)by + 14, 55, 45, new Color((byte)160,(byte)200,(byte)240,(byte)200));
+    Raylib.DrawRectangleLines((int)bx + 97, (int)by + 14, 55, 45, new Color((byte)0,(byte)120,(byte)220,(byte)255));
+    // door
+    Raylib.DrawRectangle((int)bx + 60, (int)by + 65, 40, 45, new Color((byte)0,(byte)50,(byte)110,(byte)255));
+    Raylib.DrawRectangleLines((int)bx + 60, (int)by + 65, 40, 45, new Color((byte)0,(byte)120,(byte)220,(byte)255));
+    Raylib.DrawCircle((int)bx + 95, (int)by + 88, 3, new Color((byte)200,(byte)220,(byte)255,(byte)255));
+    // AA sign
+    Raylib.DrawRectangle((int)bx + 30, (int)by - 26, 100, 18, new Color((byte)0,(byte)40,(byte)90,(byte)255));
+    Raylib.DrawRectangleLines((int)bx + 30, (int)by - 26, 100, 18, new Color((byte)0,(byte)120,(byte)220,(byte)255));
+    Raylib.DrawText("AA", (int)bx + 70, (int)by - 24, 14, new Color((byte)200,(byte)220,(byte)255,(byte)255));
+    // licence plate decorations
+    for (int lp = 0; lp < 5; lp++)
+        Raylib.DrawRectangle((int)bx + 8 + lp * 30, (int)by + 68, 20, 10, new Color((lp % 2 == 0) ? (byte)255 : (byte)200, (byte)180, (byte)0, (byte)255));
+}
+//Airport Exterior
+if (building.BuildingName == "Airport")
+{
+    // main terminal
+    Raylib.DrawRectangle((int)bx, (int)by, 400, 200, new Color((byte)220,(byte)220,(byte)225,(byte)255));
+    // glass facade
+    Raylib.DrawRectangle((int)bx, (int)by, 400, 60, new Color((byte)160,(byte)200,(byte)220,(byte)200));
+    Raylib.DrawRectangleLines((int)bx, (int)by, 400, 200, new Color((byte)140,(byte)150,(byte)160,(byte)255));
+    // roof overhang
+    Raylib.DrawRectangle((int)bx - 10, (int)by - 14, 420, 16, new Color((byte)80,(byte)90,(byte)100,(byte)255));
+    Raylib.DrawRectangle((int)bx - 10, (int)by - 14, 420, 4, new Color((byte)100,(byte)115,(byte)130,(byte)255));
+    // control tower
+    Raylib.DrawRectangle((int)bx + 340, (int)by - 80, 30, 80, new Color((byte)180,(byte)185,(byte)190,(byte)255));
+    Raylib.DrawRectangle((int)bx + 330, (int)by - 90, 50, 14, new Color((byte)100,(byte)180,(byte)220,(byte)255)); // tower cab
+    Raylib.DrawRectangleLines((int)bx + 330, (int)by - 90, 50, 14, new Color((byte)60,(byte)120,(byte)160,(byte)255));
+    Raylib.DrawCircle((int)bx + 355, (int)by - 96, 4, new Color((byte)220,(byte)40,(byte)40,(byte)255)); // beacon
+    // windows row
+    for (int w = 0; w < 5; w++)
+        Raylib.DrawRectangle((int)bx + 20 + w * 72, (int)by + 10, 50, 40, new Color((byte)120,(byte)180,(byte)210,(byte)180));
+    // doors
+    Raylib.DrawRectangle((int)bx + 170, (int)by + 150, 60, 50, new Color((byte)100,(byte)160,(byte)190,(byte)255));
+    Raylib.DrawRectangleLines((int)bx + 170, (int)by + 150, 60, 50, new Color((byte)60,(byte)100,(byte)140,(byte)255));
+    // runway strip hint
+    Raylib.DrawRectangle((int)bx - 200, (int)by + 220, 800, 30, new Color((byte)60,(byte)60,(byte)65,(byte)255));
+    for (int m = 0; m < 8; m++)
+        Raylib.DrawRectangle((int)bx - 180 + m * 100, (int)by + 232, 50, 6, Color.White);
+    // sign
+    Raylib.DrawRectangle((int)bx + 120, (int)by - 22, 160, 14, new Color((byte)20,(byte)30,(byte)40,(byte)255));
+    Raylib.DrawText("AIRPORT", (int)bx + 134, (int)by - 21, 12, new Color((byte)200,(byte)220,(byte)255,(byte)255));
+}
+
+if (building.BuildingName == "Casino")
+{
+    Raylib.DrawRectangle((int)bx, (int)by, 220, 140, new Color((byte)60,(byte)5,(byte)60,(byte)255));
+    Raylib.DrawRectangle((int)bx - 5, (int)by - 10, 230, 12, new Color((byte)120,(byte)10,(byte)120,(byte)255));
+    // neon sign
+    Raylib.DrawRectangle((int)bx + 20, (int)by - 28, 180, 20, new Color((byte)10,(byte)5,(byte)10,(byte)255));
+    Raylib.DrawRectangleLines((int)bx + 20, (int)by - 28, 180, 20, new Color((byte)220,(byte)20,(byte)220,(byte)255));
+    Raylib.DrawText("CASINO", (int)bx + 58, (int)by - 25, 16, new Color((byte)255,(byte)50,(byte)255,(byte)255));
+    // windows — purple glow
+    Raylib.DrawRectangle((int)bx + 10, (int)by + 14, 60, 50, new Color((byte)100,(byte)10,(byte)100,(byte)200));
+    Raylib.DrawRectangleLines((int)bx + 10, (int)by + 14, 60, 50, new Color((byte)180,(byte)20,(byte)180,(byte)255));
+    Raylib.DrawRectangle((int)bx + 150, (int)by + 14, 60, 50, new Color((byte)100,(byte)10,(byte)100,(byte)200));
+    Raylib.DrawRectangleLines((int)bx + 150, (int)by + 14, 60, 50, new Color((byte)180,(byte)20,(byte)180,(byte)255));
+    // door
+    Raylib.DrawRectangle((int)bx + 90, (int)by + 80, 40, 60, new Color((byte)80,(byte)5,(byte)80,(byte)255));
+    Raylib.DrawRectangleLines((int)bx + 90, (int)by + 80, 40, 60, new Color((byte)200,(byte)20,(byte)200,(byte)255));
+    // gold trim
+    Raylib.DrawRectangle((int)bx, (int)by + 2, 220, 3, new Color((byte)200,(byte)160,(byte)20,(byte)255));
+    Raylib.DrawRectangle((int)bx, (int)by + 137, 220, 3, new Color((byte)200,(byte)160,(byte)20,(byte)255));
+}
 
     // Mini golf exterior decoration — find the MiniGolf building and add flourishes
 foreach (var b in buildings)
@@ -11472,7 +14863,7 @@ foreach (var entrance in dungeonEntrances)
     Raylib.DrawText(entrance.name, ex - nw / 2, ey - 46, 11, Color.Gold);
 
     // Prompt when nearby
-    if (Vector2.Distance(player.Position, entrance.pos) < 80)
+    if (Vector2.Distance(player.Center, entrance.pos) < 80)
     {
         int pw2 = Raylib.MeasureText("E = Enter Dungeon", 20);
         Raylib.DrawText("E = Enter Dungeon", ex - pw2 / 2, ey - 75, 20, Color.Gold);
@@ -11493,7 +14884,7 @@ foreach (var entrance in dungeonEntrances)
             foreach (NPC npc in npcs)
             {
                 npc.Draw();
-                if (Vector2.Distance(player.Position, npc.Position) < 150)
+                if (Vector2.Distance(player.Center, npc.Position) < 150)
                     DrawSpeechBubble(npc.Position, npc.Dialogue,
                         new Color((byte)80,(byte)120,(byte)80,(byte)255));
             }
@@ -11515,6 +14906,101 @@ foreach (var entrance in dungeonEntrances)
                 drop.Draw();
             }
 
+            // Campfires
+campfireAnimTimer += Raylib.GetFrameTime();
+foreach (var cf in campfirePositions)
+{
+    int cx = (int)cf.X, cy = (int)cf.Y;
+    // log ring
+    Raylib.DrawRectangle(cx - 14, cy + 4,  10, 6, new Color((byte)100,(byte)60,(byte)20,(byte)255));
+    Raylib.DrawRectangle(cx + 4,  cy + 4,  10, 6, new Color((byte)100,(byte)60,(byte)20,(byte)255));
+    Raylib.DrawRectangle(cx - 6,  cy + 8,  12, 5, new Color((byte)80,(byte)45,(byte)15,(byte)255));
+    // ember base
+    Raylib.DrawCircle(cx, cy + 6, 8, new Color((byte)200,(byte)80,(byte)10,(byte)255));
+    // animated flames
+    float flicker = MathF.Sin(campfireAnimTimer * 8f + cf.X * 0.01f) * 4f;
+    Raylib.DrawTriangle(
+        new Vector2(cx - 8, cy + 6),
+        new Vector2(cx + 8, cy + 6),
+        new Vector2(cx + (int)(flicker * 0.5f), cy - 18 + (int)flicker),
+        new Color((byte)220,(byte)100,(byte)10,(byte)220));
+    Raylib.DrawTriangle(
+        new Vector2(cx - 5, cy + 4),
+        new Vector2(cx + 5, cy + 4),
+        new Vector2(cx + (int)(flicker), cy - 10 + (int)(flicker * 0.5f)),
+        new Color((byte)255,(byte)200,(byte)20,(byte)180));
+    Raylib.DrawCircle(cx, cy - 4, 3, new Color((byte)255,(byte)240,(byte)80,(byte)120));
+    // warm glow
+    Raylib.DrawCircle(cx, cy, 24, new Color((byte)255,(byte)120,(byte)10,(byte)30));
+
+    // interaction prompt
+    // REPLACE the campfire interaction block:
+    // interaction prompt
+    if (Vector2.Distance(player.Center, cf) < 80)
+    {
+        string heldItem = toolbarSlots[toolbarSelectedSlot];
+        bool holdingRaw = heldItem == "Fish" || heldItem == "Raw Meat"
+                       || heldItem == "Potato" || heldItem == "Corn";
+
+        if (holdingRaw)
+            Raylib.DrawText($"Space = Cook {heldItem}   |   E = Cooking menu", cx - 90, cy - 40, 14, Color.White);
+        else
+            Raylib.DrawText("E = Cooking menu", cx - 55, cy - 40, 14, Color.White);
+
+        if (Raylib.IsKeyPressed(KeyboardKey.Space) && holdingRaw && !isCooking)
+            CookRawItemFromToolbar(heldItem);
+
+        if (Raylib.IsKeyPressed(KeyboardKey.E))
+        {
+            cookingContext = "campfire";
+            cookingMenuOpen = true;
+        }
+    }
+}
+
+            // Draw bus
+if (busOperating)
+{
+    int bx = (int)busPosition.X;
+    int by = (int)busPosition.Y - 30;
+    Color busCol = new Color((byte)20,(byte)60,(byte)180,(byte)255);
+    // body
+    Raylib.DrawRectangle(bx, by, 120, 40, busCol);
+    Raylib.DrawRectangle(bx, by, 120, 6, new Color((byte)40,(byte)90,(byte)220,(byte)255));
+    // windows row
+    for (int w = 0; w < 4; w++)
+        Raylib.DrawRectangle(bx + 8 + w * 28, by + 6, 22, 16, new Color((byte)160,(byte)210,(byte)240,(byte)200));
+    // front windscreen
+    Raylib.DrawRectangle(bx + 2, by + 6, 18, 16, new Color((byte)120,(byte)180,(byte)220,(byte)180));
+    // wheels
+    Raylib.DrawCircle(bx + 18, by + 42, 10, Color.Black);
+    Raylib.DrawCircle(bx + 100, by + 42, 10, Color.Black);
+    Raylib.DrawCircle(bx + 18, by + 42, 4, Color.DarkGray);
+    Raylib.DrawCircle(bx + 100, by + 42, 4, Color.DarkGray);
+    // destination sign
+    Raylib.DrawRectangle(bx + 4, by - 14, 112, 14, new Color((byte)10,(byte)10,(byte)20,(byte)255));
+    string destText = busMoving
+        ? busStops[busNextStop].Name
+        : busStops[busCurrentStop].Name;
+    Raylib.DrawText(destText, bx + 8, by - 13, 10, new Color((byte)255,(byte)220,(byte)50,(byte)255));
+
+    // nearby prompt
+    if (Vector2.Distance(player.Center, busPosition) < 80 && !busMoving)
+    {
+        Raylib.DrawText("E = Bus Menu", bx + 10, by - 30, 16, Color.White);
+    }
+}
+
+// Draw bus stop signs at each stop
+foreach (var stop in busStops)
+{
+    int sx = (int)stop.WorldPos.X + 40;
+    int sy = (int)stop.WorldPos.Y - 180;
+    Raylib.DrawRectangle(sx, sy, 4, 50, Color.DarkGray);  // pole
+    Raylib.DrawRectangle(sx - 20, sy, 46, 24, new Color((byte)20,(byte)60,(byte)180,(byte)255)); // sign
+    Raylib.DrawText("BUS", sx - 14, sy + 5, 12, Color.White);
+}
+
             // Draw axe pickup
 if (!axePickedUp)
 {
@@ -11532,7 +15018,7 @@ if (!axePickedUp)
     // Glow/pickup hint
     Raylib.DrawCircle(ax, ay - 10, 20, new Color((byte)255,(byte)220,(byte)0,(byte)40));
     
-    if (Vector2.Distance(player.Position, axePosition) < 60)
+    if (Vector2.Distance(player.Center, axePosition) < 60)
         Raylib.DrawText("E = Pick up Axe", ax - 50, ay - 50, 18, Color.Gold);
 }
 
@@ -11549,7 +15035,7 @@ if (!pickaxePickedUp)
         new Color((byte)160,(byte)160,(byte)170,(byte)255)
     );
     Raylib.DrawCircle(px, py - 10, 20, new Color((byte)255,(byte)220,(byte)0,(byte)40));
-    if (Vector2.Distance(player.Position, pickaxePosition) < 60)
+    if (Vector2.Distance(player.Center, pickaxePosition) < 60)
         Raylib.DrawText("E = Pick up Pickaxe", px - 60, py - 50, 18, Color.Gold);
 }
 
@@ -11562,7 +15048,7 @@ if (!fishingRodPickedUp)
     Raylib.DrawLine(rx + 2, ry - 30, rx + 20, ry - 10, new Color((byte)200,(byte)200,(byte)200,(byte)255));
     Raylib.DrawCircle(rx + 20, ry - 10, 3, new Color((byte)100,(byte)180,(byte)220,(byte)255));
     Raylib.DrawCircle(rx, ry - 15, 20, new Color((byte)255,(byte)220,(byte)0,(byte)40));
-    if (Vector2.Distance(player.Position, fishingRodPosition) < 60)
+    if (Vector2.Distance(player.Center, fishingRodPosition) < 60)
         Raylib.DrawText("E = Pick up Fishing Rod", rx - 70, ry - 60, 18, Color.Gold);
 }
 
@@ -11576,7 +15062,7 @@ if (!fishingNetPickedUp)
     for (int i = 0; i < 2; i++)
         Raylib.DrawLine(nx - 15, ny - 10 + i * 10, nx + 15, ny - 10 + i * 10, new Color((byte)180,(byte)160,(byte)80,(byte)255));
     Raylib.DrawCircle(nx, ny - 8, 20, new Color((byte)255,(byte)220,(byte)0,(byte)40));
-    if (Vector2.Distance(player.Position, fishingNetPosition) < 60)
+    if (Vector2.Distance(player.Center, fishingNetPosition) < 60)
         Raylib.DrawText("E = Pick up Fishing Net", nx - 70, ny - 50, 18, Color.Gold);
 }
 
@@ -11589,7 +15075,7 @@ if (!torchPickedUp)
     Raylib.DrawCircle(tx, ty - 26, 5, new Color((byte)255,(byte)180,(byte)0,(byte)255));
     Raylib.DrawCircle(tx, ty - 26, 8, new Color((byte)255,(byte)100,(byte)0,(byte)80));
     Raylib.DrawCircle(tx, ty - 8, 20, new Color((byte)255,(byte)220,(byte)0,(byte)40));
-    if (Vector2.Distance(player.Position, torchPosition) < 60)
+    if (Vector2.Distance(player.Center, torchPosition) < 60)
         Raylib.DrawText("E = Pick up Torch", tx - 50, ty - 55, 18, Color.Gold);
 }
 
@@ -11603,7 +15089,7 @@ if (!stickPickedUp)
     Raylib.DrawRectangle(sx - 1, sy - 22, 3, 5,
         new Color((byte)100,(byte)60,(byte)20,(byte)255));
     Raylib.DrawCircle(sx, sy - 10, 20, new Color((byte)255,(byte)220,(byte)0,(byte)40));
-    if (Vector2.Distance(player.Position, stickPosition) < 60)
+    if (Vector2.Distance(player.Center, stickPosition) < 60)
         Raylib.DrawText("E = Pick up Stick", sx - 50, sy - 50, 18, Color.Gold);
 }
 
@@ -11627,7 +15113,7 @@ if (!swordPickedUp)
     Raylib.DrawCircle(sx, sy + 21, 4,
         new Color((byte)180,(byte)140,(byte)40,(byte)255));
     Raylib.DrawCircle(sx, sy - 10, 22, new Color((byte)255,(byte)220,(byte)0,(byte)40));
-    if (Vector2.Distance(player.Position, swordPosition) < 60)
+    if (Vector2.Distance(player.Center, swordPosition) < 60)
         Raylib.DrawText("E = Pick up Sword", sx - 50, sy - 60, 18, Color.Gold);
 }
 
@@ -11919,7 +15405,7 @@ if (currentBuilding.BuildingName == "DropZone")
     Raylib.DrawRectangle(920, 530, 8, 20, Color.Green);  // pipe
     Raylib.DrawRectangle(950, 575, 8, 25, Color.Green);
     Raylib.DrawText("FLAPPY", 906, 634, 11, Color.White);
-    if (Vector2.Distance(player.Position, new Vector2(935, 575)) < 75)
+    if (Vector2.Distance(player.Center, new Vector2(935, 575)) < 75)
         Raylib.DrawText("SPACE = Play ($1)", 875, 652, 14, Color.Gold);
 
     // ── PRIZE COUNTER ──────────────────────────────────────────────────
@@ -11929,7 +15415,7 @@ if (currentBuilding.BuildingName == "DropZone")
     Raylib.DrawCircle(780, 560, 6, Color.Gold);          // trophy
     Raylib.DrawCircle(800, 560, 5, Color.Brown);         // plush
     Raylib.DrawText($"Tickets: {player.Tickets}", 760, 584, 14, new Color((byte)255,(byte)200,(byte)60,(byte)255));
-    if (Vector2.Distance(player.Position, new Vector2(825, 545)) < 80)
+    if (Vector2.Distance(player.Center, new Vector2(825, 545)) < 80)
         Raylib.DrawText("E = Redeem Prizes", 760, 602, 14, Color.Gold);
 
     // ── PRIZE REDEMPTION POPUP ─────────────────────────────────────────
@@ -11979,7 +15465,7 @@ if (currentBuilding.BuildingName == "DropZone")
     Raylib.DrawCircle(1100, 250, 4, Color.Yellow);
     Raylib.DrawCircle(1090, 265, 4, Color.Red);
     Raylib.DrawText("PINBALL", 1066, 314, 11, Color.White);
-    if (Vector2.Distance(player.Position, new Vector2(1095, 255)) < 75)
+    if (Vector2.Distance(player.Center, new Vector2(1095, 255)) < 75)
         Raylib.DrawText("SPACE = Play ($2)", 1035, 332, 14, Color.Gold);
 
     // ── AIR HOCKEY ─────────────────────────────────────────────────────
@@ -11988,7 +15474,7 @@ if (currentBuilding.BuildingName == "DropZone")
     Raylib.DrawLine(1066, 405, 1124, 405, new Color((byte)150, (byte)170, (byte)200, (byte)255));
     Raylib.DrawCircle(1095, 405, 5, Color.Black);
     Raylib.DrawText("AIR HOCKEY", 1062, 474, 10, Color.White);
-    if (Vector2.Distance(player.Position, new Vector2(1095, 415)) < 75)
+    if (Vector2.Distance(player.Center, new Vector2(1095, 415)) < 75)
         Raylib.DrawText("SPACE = Play ($3)", 1035, 492, 14, Color.Gold);
 
     // ── PIANO TILES ────────────────────────────────────────────────────
@@ -11997,45 +15483,33 @@ if (currentBuilding.BuildingName == "DropZone")
     for (int c = 0; c < 4; c++)
         Raylib.DrawRectangle(1068 + c * 14, 540 + (c % 2) * 20, 12, 18, new Color((byte)40, (byte)120, (byte)255, (byte)255));
     Raylib.DrawText("PIANO", 1072, 634, 11, Color.White);
-    if (Vector2.Distance(player.Position, new Vector2(1095, 575)) < 75)
+    if (Vector2.Distance(player.Center, new Vector2(1095, 575)) < 75)
         Raylib.DrawText("SPACE = Play ($2)", 1035, 652, 14, Color.Gold);
 
     // ── INTERACTION PROMPTS ────────────────────────────────────────────
     Vector2[] bowlingLanes = { new Vector2(250, 300)};
     foreach (var lane in bowlingLanes)
-        if (Vector2.Distance(player.Position, lane) < 80)
+        if (Vector2.Distance(player.Center, lane) < 80)
             Raylib.DrawText("SPACE = Bowl ($3)", (int)lane.X - 60, (int)lane.Y + 95, 16, Color.Gold);
     
     Vector2[] poolTables = { new Vector2(240, 852)};
 foreach (var table in poolTables)
-    if (Vector2.Distance(player.Position, table) < 100)
+    if (Vector2.Distance(player.Center, table) < 100)
         Raylib.DrawText("SPACE = Pool ($2)", (int)table.X - 60, (int)table.Y + 56, 16, Color.Gold);
 
     Vector2[] clawMachines = { new Vector2(600, 250), new Vector2(700, 250) };
     foreach (var claw in clawMachines)
-        if (Vector2.Distance(player.Position, claw) < 70)
+        if (Vector2.Distance(player.Center, claw) < 70)
             Raylib.DrawText("SPACE = Play ($2)", (int)claw.X - 60, (int)claw.Y + 72, 14, Color.Gold);
 
     Vector2[] arcadeCabinets = { new Vector2(900, 250), new Vector2(1000, 250) };
     foreach (var cab in arcadeCabinets)
-        if (Vector2.Distance(player.Position, cab) < 70)
+        if (Vector2.Distance(player.Center, cab) < 70)
             Raylib.DrawText("SPACE = Play", (int)cab.X - 44, (int)cab.Y + 72, 14, Color.Gold);
 
-    if (Vector2.Distance(player.Position, new Vector2(600, 550)) < 80)
+    if (Vector2.Distance(player.Center, new Vector2(600, 550)) < 80)
         Raylib.DrawText("E = Order Food", 545, 588, 16, Color.Gold);
 
-    // ── FOOD MENU POPUP ────────────────────────────────────────────────
-    if (dropZoneFoodMenuOpen)
-    {
-        Raylib.DrawRectangle(ScreenWidth / 2 - 180, 150, 360, 240, new Color((byte)0, (byte)0, (byte)0, (byte)230));
-        Raylib.DrawRectangleLines(ScreenWidth / 2 - 180, 150, 360, 240, Color.Gold);
-        Raylib.DrawText("SNACK BAR", ScreenWidth / 2 - 70, 165, 26, Color.Gold);
-        Raylib.DrawText("1. Hot Dog  - $6  (+18 HP)", ScreenWidth / 2 - 160, 210, 20, Color.White);
-        Raylib.DrawText("2. Nachos   - $7  (+20 HP)", ScreenWidth / 2 - 160, 245, 20, Color.White);
-        Raylib.DrawText("3. Soda     - $4  (+12 HP)", ScreenWidth / 2 - 160, 280, 20, Color.White);
-        Raylib.DrawText("4. Slushie  - $5  (+14 HP)", ScreenWidth / 2 - 160, 315, 20, Color.White);
-        Raylib.DrawText("E = Close", ScreenWidth / 2 - 50, 355, 18, Color.Gray);
-    }
 
     // ── C RIDE — claw machine pro ──
         cRideAnimTimer += Raylib.GetFrameTime();
@@ -12102,7 +15576,7 @@ if (currentBuilding.BuildingName == "MiniGolf")
         Raylib.DrawCircle(200 + i * 180, 540, 14, new Color((byte)40, (byte)120, (byte)50, (byte)255));
     }
 
-    if (Vector2.Distance(player.Position, new Vector2(640, 345)) < 90)
+    if (Vector2.Distance(player.Center, new Vector2(640, 345)) < 90)
         Raylib.DrawText("SPACE = Play 9 Holes ($5)", 510, 410, 18, Color.Gold);
 }
 
@@ -12648,10 +16122,340 @@ if (currentBuilding.BuildingName != "DBar" &&
     currentBuilding.BuildingName != "BANK" &&
     currentBuilding.BuildingName != "STORE" &&
     currentBuilding.BuildingName != "DropZone" &&
-    currentBuilding.BuildingName != "MiniGolf")
+    currentBuilding.BuildingName != "MiniGolf" &&
+    currentBuilding.BuildingName != "KiwiCuts" &&
+    currentBuilding.BuildingName != "Hallensteins" &&
+    currentBuilding.BuildingName != "Casino" && 
+    currentBuilding.BuildingName != "Airport" &&
+    currentBuilding.BuildingName != "AA")
 {
     foreach (Rectangle obj in currentBuilding.InteriorObjects)
         Raylib.DrawRectangleRec(obj, Color.DarkBrown);
+}
+
+if (currentBuilding.BuildingName == "KiwiCuts")
+{
+    // ── Floor tile background ──────────────────────────────────────────────
+    for (int tx = 0; tx < 1280; tx += 60)
+        for (int ty = 0; ty < 720; ty += 60)
+        {
+            Color tile = ((tx / 60 + ty / 60) % 2 == 0)
+                ? new Color((byte)235, (byte)230, (byte)220, (byte)255)
+                : new Color((byte)220, (byte)215, (byte)205, (byte)255);
+            Raylib.DrawRectangle(tx, ty, 60, 60, tile);
+        }
+
+    // ── Teal skirting board ────────────────────────────────────────────────
+    Raylib.DrawRectangle(0, 0, 1280, 6, new Color((byte)20,(byte)140,(byte)120,(byte)255));
+    Raylib.DrawRectangle(0, 714, 1280, 6, new Color((byte)20,(byte)140,(byte)120,(byte)255));
+    Raylib.DrawRectangle(0, 0, 6, 720, new Color((byte)20,(byte)140,(byte)120,(byte)255));
+    Raylib.DrawRectangle(1274, 0, 6, 720, new Color((byte)20,(byte)140,(byte)120,(byte)255));
+
+    // ── Reception counter (top-left area) ─────────────────────────────────
+    Raylib.DrawRectangle(60, 60, 280, 40, new Color((byte)200,(byte)190,(byte)170,(byte)255));
+    Raylib.DrawRectangle(60, 60, 280, 6,  new Color((byte)220,(byte)210,(byte)190,(byte)255));
+    Raylib.DrawText("KIWI CUTS", 140, 72, 18, new Color((byte)20,(byte)140,(byte)120,(byte)255));
+
+    // ── Full mirror wall behind chairs ─────────────────────────────────────
+    Raylib.DrawRectangle(58, 100, 8, 220, new Color((byte)180,(byte)220,(byte)215,(byte)255));
+    Raylib.DrawRectangle(58, 100, 8, 220, new Color((byte)200,(byte)235,(byte)230,(byte)160));
+
+    // ── Barber chair 1 ─────────────────────────────────────────────────────
+    Raylib.DrawRectangle(70,  160, 80, 65, new Color((byte)180,(byte)30,(byte)30,(byte)255));   // seat
+    Raylib.DrawRectangle(130, 160, 14, 65, new Color((byte)140,(byte)20,(byte)20,(byte)255));   // backrest
+    Raylib.DrawRectangle(64,  185, 10, 24, new Color((byte)80,(byte)80,(byte)80,(byte)255));    // left armrest
+    Raylib.DrawRectangle(142, 185, 10, 24, new Color((byte)80,(byte)80,(byte)80,(byte)255));    // right armrest
+    Raylib.DrawRectangle(78,  225, 50, 10, new Color((byte)60,(byte)60,(byte)60,(byte)255));    // footrest
+    // chrome pole
+    Raylib.DrawRectangle(100, 235, 8, 30, new Color((byte)180,(byte)180,(byte)180,(byte)255));
+    Raylib.DrawRectangle(85,  265, 38, 6, new Color((byte)140,(byte)140,(byte)140,(byte)255));  // base
+
+    // ── Mirror above chair 1 ───────────────────────────────────────────────
+    Raylib.DrawRectangle(66,  108, 82, 48, new Color((byte)200,(byte)235,(byte)235,(byte)255));
+    Raylib.DrawRectangleLines(66, 108, 82, 48, new Color((byte)20,(byte)140,(byte)120,(byte)255));
+    Raylib.DrawRectangle(68,  110, 78, 4,  new Color((byte)230,(byte)250,(byte)248,(byte)200)); // highlight
+
+    // ── Barber chair 2 ─────────────────────────────────────────────────────
+    Raylib.DrawRectangle(210, 160, 80, 65, new Color((byte)180,(byte)30,(byte)30,(byte)255));
+    Raylib.DrawRectangle(270, 160, 14, 65, new Color((byte)140,(byte)20,(byte)20,(byte)255));
+    Raylib.DrawRectangle(204, 185, 10, 24, new Color((byte)80,(byte)80,(byte)80,(byte)255));
+    Raylib.DrawRectangle(282, 185, 10, 24, new Color((byte)80,(byte)80,(byte)80,(byte)255));
+    Raylib.DrawRectangle(218, 225, 50, 10, new Color((byte)60,(byte)60,(byte)60,(byte)255));
+    Raylib.DrawRectangle(240, 235, 8, 30, new Color((byte)180,(byte)180,(byte)180,(byte)255));
+    Raylib.DrawRectangle(225, 265, 38, 6, new Color((byte)140,(byte)140,(byte)140,(byte)255));
+
+    // ── Mirror above chair 2 ───────────────────────────────────────────────
+    Raylib.DrawRectangle(206, 108, 82, 48, new Color((byte)200,(byte)235,(byte)235,(byte)255));
+    Raylib.DrawRectangleLines(206, 108, 82, 48, new Color((byte)20,(byte)140,(byte)120,(byte)255));
+    Raylib.DrawRectangle(208, 110, 78, 4,  new Color((byte)230,(byte)250,(byte)248,(byte)200));
+
+    // ── Waiting area (right side) ──────────────────────────────────────────
+    // bench
+    Raylib.DrawRectangle(700, 120, 200, 50, new Color((byte)160,(byte)130,(byte)90,(byte)255));
+    Raylib.DrawRectangle(700, 120, 200, 6,  new Color((byte)190,(byte)160,(byte)115,(byte)255));
+    // seat cushions
+    Raylib.DrawRectangle(706, 130, 56, 32, new Color((byte)20,(byte)140,(byte)120,(byte)255));
+    Raylib.DrawRectangle(772, 130, 56, 32, new Color((byte)20,(byte)140,(byte)120,(byte)255));
+    Raylib.DrawRectangle(838, 130, 56, 32, new Color((byte)20,(byte)140,(byte)120,(byte)255));
+    // magazine table
+    Raylib.DrawRectangle(700, 200, 200, 10, new Color((byte)180,(byte)150,(byte)100,(byte)255));
+    Raylib.DrawText("NZ Life", 720, 183, 14, new Color((byte)40,(byte)120,(byte)100,(byte)255));
+    Raylib.DrawText("Rugby Weekly", 800, 183, 14, new Color((byte)40,(byte)120,(byte)100,(byte)255));
+
+    // ── Barber pole (left wall, decorative) ───────────────────────────────
+    Raylib.DrawRectangle(28, 120, 10, 80, Color.White);
+    Raylib.DrawRectangle(28, 120, 10, 14, Color.Red);
+    Raylib.DrawRectangle(28, 148, 10, 14, Color.Red);
+    Raylib.DrawRectangle(28, 176, 10, 14, Color.Red);
+    Raylib.DrawRectangle(26, 116, 14, 5,  new Color((byte)180,(byte)180,(byte)180,(byte)255));
+    Raylib.DrawRectangle(26, 200, 14, 5,  new Color((byte)180,(byte)180,(byte)180,(byte)255));
+
+    // ── Exit door (bottom-centre, at the entry/exit point) ────────────────
+    Raylib.DrawRectangle(600, 680, 80, 40, new Color((byte)20,(byte)140,(byte)120,(byte)255));
+    Raylib.DrawRectangleLines(600, 680, 80, 40, new Color((byte)40,(byte)200,(byte)170,(byte)255));
+    Raylib.DrawText("EXIT", 626, 692, 16, Color.White);
+}
+
+// HUD text (already screen-space)
+Raylib.DrawText($"Player: {(int)player.Position.X}, {(int)player.Position.Y}", 20, 50, 24, Color.White);
+// ... rest of HUD draws ...
+
+if (currentBuilding.BuildingName == "Hallensteins")
+{
+    // floor
+    Raylib.DrawRectangle(0, 0, 1400, 1000, new Color((byte)18,(byte)18,(byte)18,(byte)255));
+    Raylib.DrawRectangle(0, 0, 1400, 6, new Color((byte)180,(byte)140,(byte)20,(byte)255)); // gold top trim
+
+    // front counter
+    Raylib.DrawRectangle(60, 120, 500, 30, new Color((byte)30,(byte)30,(byte)30,(byte)255));
+    Raylib.DrawRectangle(60, 120, 500, 6, new Color((byte)180,(byte)140,(byte)20,(byte)255));
+    Raylib.DrawText("HALLENSTEINS", 200, 130, 22, new Color((byte)180,(byte)140,(byte)20,(byte)255));
+
+    // clothing racks
+    Color rackCol = new Color((byte)60,(byte)60,(byte)60,(byte)255);
+    int[] rackX = { 60, 260, 460 };
+    foreach (int rx in rackX)
+    {
+        Raylib.DrawRectangle(rx, 190, 120, 8, rackCol);   // rail
+        Raylib.DrawRectangle(rx + 4, 198, 8, 200, rackCol); // left post
+        Raylib.DrawRectangle(rx + 108, 198, 8, 200, rackCol); // right post
+        // hanging items
+        for (int h = rx + 14; h < rx + 110; h += 18)
+        {
+            Color itemCol = new Color((byte)Raylib.GetRandomValue(20,200),(byte)Raylib.GetRandomValue(20,200),(byte)Raylib.GetRandomValue(20,200),(byte)255);
+            Raylib.DrawRectangle(h, 198, 12, 40, itemCol);
+        }
+    }
+
+    // fitting rooms
+    Raylib.DrawRectangle(700, 150, 8, 400, new Color((byte)40,(byte)40,(byte)40,(byte)255)); // divider
+    Raylib.DrawRectangle(720, 180, 80, 100, new Color((byte)25,(byte)25,(byte)25,(byte)255));
+    Raylib.DrawRectangleLines(720, 180, 80, 100, rackCol);
+    Raylib.DrawText("FITTING", 732, 220, 14, Color.DarkGray);
+    Raylib.DrawRectangle(820, 180, 80, 100, new Color((byte)25,(byte)25,(byte)25,(byte)255));
+    Raylib.DrawRectangleLines(820, 180, 80, 100, rackCol);
+    Raylib.DrawText("FITTING", 832, 220, 14, Color.DarkGray);
+
+    // shop interaction
+    if (Vector2.Distance(player.Center, new Vector2(310, 135)) < 150)
+    {
+        Raylib.DrawRectangle(0, 620, 1280, 100, new Color((byte)0,(byte)0,(byte)0,(byte)180));
+        Raylib.DrawText("HALLENSTEINS", 20, 630, 30, new Color((byte)180,(byte)140,(byte)20,(byte)255));
+        Raylib.DrawText("E = Browse clothes", 20, 670, 24, Color.White);
+
+        if (Raylib.IsKeyPressed(KeyboardKey.E))
+            hallensteinShopOpen = !hallensteinShopOpen;
+    }
+}
+// AA Interior
+if (currentBuilding.BuildingName == "AA")
+{
+    Color aaBlue = new Color((byte)0,(byte)80,(byte)160,(byte)255);
+    // floor
+    Raylib.DrawRectangle(0, 0, 1400, 1000, new Color((byte)230,(byte)235,(byte)240,(byte)255));
+    for (int gx = 0; gx < 1400; gx += 100) Raylib.DrawRectangle(gx, 0, 2, 1000, new Color((byte)210,(byte)215,(byte)220,(byte)255));
+    for (int gy = 0; gy < 1000; gy += 100) Raylib.DrawRectangle(0, gy, 1400, 2, new Color((byte)210,(byte)215,(byte)220,(byte)255));
+
+    // counter
+    Raylib.DrawRectangle(400, 100, 400, 40, aaBlue);
+    Raylib.DrawRectangle(400, 100, 400, 8, new Color((byte)0,(byte)120,(byte)220,(byte)255));
+    Raylib.DrawText("AA DRIVING SERVICES", 460, 113, 20, Color.White);
+
+    // licence display board
+    string[] licClasses = { "D  Lv 1-19", "C  Lv 20-39", "B  Lv 40-59", "A  Lv 60-79", "S  Lv 80-100" };
+    bool[] theoryDone   = { hasTheoryD, hasTheoryC, hasTheoryB, hasTheoryA, hasTheoryS };
+    bool[] practDone    = { hasPracticalD, hasPracticalC, hasPracticalB, hasPracticalA, hasPracticalS };
+    for (int i = 0; i < 5; i++)
+    {
+        int bx2 = 100 + i * 240;
+        Raylib.DrawRectangle(bx2, 200, 200, 90, new Color((byte)10,(byte)40,(byte)80,(byte)255));
+        Raylib.DrawRectangleLines(bx2, 200, 200, 90, aaBlue);
+        Raylib.DrawText(licClasses[i], bx2 + 10, 210, 18, Color.White);
+        Raylib.DrawText($"Theory: {(theoryDone[i] ? "✓" : "✗")}", bx2 + 10, 234, 15, theoryDone[i] ? Color.Green : Color.Red);
+        Raylib.DrawText($"Practical: {(practDone[i] ? "✓" : "✗")}", bx2 + 10, 254, 15, practDone[i] ? Color.Green : Color.Red);
+        if (i == (int)CurrentLicenceClass - 1)
+            Raylib.DrawRectangleLines(bx2, 200, 200, 90, Color.Gold);
+    }
+
+    Raylib.DrawText($"Your Level: {player.DrivingLevel}  |  Class: {CurrentLicenceClass}  |  Wallet: ${player.Money}", 100, 310, 18, Color.DarkGray);
+
+    // counter interaction
+    if (Vector2.Distance(player.Center, new Vector2(600, 120)) < 160)
+    {
+        Raylib.DrawRectangle(0, 620, 1280, 100, new Color((byte)0,(byte)0,(byte)0,(byte)180));
+        Raylib.DrawText("AA COUNTER", 20, 630, 28, new Color((byte)0,(byte)160,(byte)255,(byte)255));
+        Raylib.DrawText("E = Open Licence Menu", 20, 668, 22, Color.White);
+        if (Raylib.IsKeyPressed(KeyboardKey.E)) aaMenuOpen = !aaMenuOpen;
+    }
+}
+
+// Airport Interior
+if (currentBuilding.BuildingName == "Airport")
+{
+    // floor — grey tiles
+    Raylib.DrawRectangle(0, 0, 1400, 1000, new Color((byte)200,(byte)205,(byte)210,(byte)255));
+    for (int tx = 0; tx < 1400; tx += 80)
+        Raylib.DrawLine(tx, 0, tx, 1000, new Color((byte)185,(byte)190,(byte)195,(byte)255));
+    for (int ty = 0; ty < 1000; ty += 80)
+        Raylib.DrawLine(0, ty, 1400, ty, new Color((byte)185,(byte)190,(byte)195,(byte)255));
+
+    // check-in counter
+    Raylib.DrawRectangle(400, 100, 400, 40, new Color((byte)60,(byte)80,(byte)100,(byte)255));
+    Raylib.DrawRectangle(400, 100, 400, 8, new Color((byte)80,(byte)110,(byte)140,(byte)255));
+    Raylib.DrawText("CHECK-IN", 555, 112, 20, Color.White);
+
+    // security
+    Raylib.DrawRectangle(100, 200, 200, 40, new Color((byte)80,(byte)80,(byte)90,(byte)255));
+    Raylib.DrawText("SECURITY", 130, 212, 18, Color.White);
+    // x-ray belt
+    Raylib.DrawRectangle(100, 240, 200, 16, new Color((byte)50,(byte)50,(byte)60,(byte)255));
+    for (int b = 0; b < 5; b++)
+        Raylib.DrawRectangle(106 + b * 38, 244, 30, 8, new Color((byte)30,(byte)30,(byte)40,(byte)255));
+
+    // departure gates
+    Raylib.DrawRectangle(750, 180, 180, 50, new Color((byte)40,(byte)60,(byte)80,(byte)255));
+    Raylib.DrawText("GATE A", 800, 196, 20, Color.White);
+    Raylib.DrawRectangle(970, 180, 180, 50, new Color((byte)40,(byte)60,(byte)80,(byte)255));
+    Raylib.DrawText("GATE B", 1020, 196, 20, Color.White);
+
+    // seating
+    Color seatCol = new Color((byte)60,(byte)80,(byte)140,(byte)255);
+    int[] seatX = { 100, 300, 700, 900 };
+    foreach (int sx in seatX)
+    {
+        Raylib.DrawRectangle(sx, 480, 120, 80, seatCol);
+        Raylib.DrawRectangle(sx, 476, 120, 8, new Color((byte)40,(byte)55,(byte)110,(byte)255));
+        for (int si = 0; si < 3; si++)
+            Raylib.DrawRectangle(sx + 8 + si * 38, 488, 28, 60, new Color((byte)70,(byte)95,(byte)160,(byte)255));
+    }
+
+    // departures board
+    Raylib.DrawRectangle(450, 60, 500, 36, new Color((byte)10,(byte)10,(byte)15,(byte)255));
+    Raylib.DrawRectangleLines(450, 60, 500, 36, new Color((byte)40,(byte)100,(byte)160,(byte)255));
+    Raylib.DrawText("DEPARTURES", 490, 66, 14, new Color((byte)40,(byte)200,(byte)255,(byte)255));
+    Raylib.DrawText("SAFE ZONE  DESERT  SNOW  BEACH  MOUNTAINS", 455, 82, 11, new Color((byte)180,(byte)240,(byte)255,(byte)255));
+
+    // check-in interaction
+    if (Vector2.Distance(player.Center, new Vector2(600, 120)) < 160)
+    {
+        Raylib.DrawRectangle(0, 620, 1280, 100, new Color((byte)0,(byte)0,(byte)0,(byte)180));
+        Raylib.DrawText("CHECK-IN DESK", 20, 630, 28, new Color((byte)40,(byte)180,(byte)255,(byte)255));
+        Raylib.DrawText("E = Choose destination", 20, 668, 22, Color.White);
+        if (Raylib.IsKeyPressed(KeyboardKey.E)) airportMenuOpen = !airportMenuOpen;
+    }
+}
+if (currentBuilding.BuildingName == "Casino")
+{
+    // floor — dark carpet with pattern
+    Raylib.DrawRectangle(0, 0, 1400, 1000, new Color((byte)40,(byte)5,(byte)40,(byte)255));
+    for (int gx = 0; gx < 1400; gx += 120)
+        Raylib.DrawRectangle(gx, 0, 2, 1000, new Color((byte)55,(byte)10,(byte)55,(byte)255));
+    for (int gy = 0; gy < 1000; gy += 120)
+        Raylib.DrawRectangle(0, gy, 1400, 2, new Color((byte)55,(byte)10,(byte)55,(byte)255));
+
+    // chip desk
+    Raylib.DrawRectangle(500, 80, 400, 40, new Color((byte)140,(byte)100,(byte)20,(byte)255));
+    Raylib.DrawRectangle(500, 80, 400, 8, new Color((byte)180,(byte)140,(byte)30,(byte)255));
+    Raylib.DrawText("CHIP COUNTER", 605, 93, 20, Color.Black);
+
+    // blackjack tables
+    foreach (int tx in new[]{ 100, 400 })
+    {
+        Raylib.DrawEllipse(tx + 100, 360, 110, 65, new Color((byte)0,(byte)100,(byte)20,(byte)255));
+        Raylib.DrawEllipseLines(tx + 100, 360, 110, 65, new Color((byte)200,(byte)160,(byte)20,(byte)255));
+        Raylib.DrawText("BLACKJACK", tx + 42, 350, 18, new Color((byte)200,(byte)160,(byte)20,(byte)255));
+        Raylib.DrawText("$10 min", tx + 60, 370, 14, Color.LightGray);
+    }
+
+    // roulette table
+    Raylib.DrawRectangle(780, 260, 260, 180, new Color((byte)0,(byte)80,(byte)20,(byte)255));
+    Raylib.DrawRectangleLines(780, 260, 260, 180, new Color((byte)200,(byte)160,(byte)20,(byte)255));
+    Raylib.DrawCircle(910, 350, 55, new Color((byte)10,(byte)10,(byte)10,(byte)255));
+    Raylib.DrawCircleLines(910, 350, 55, new Color((byte)200,(byte)160,(byte)20,(byte)255));
+    // roulette number segments (simplified)
+    for (int seg = 0; seg < 12; seg++)
+    {
+        float angle = seg * (MathF.PI * 2f / 12f);
+        Color segCol = seg % 2 == 0 ? new Color((byte)180,(byte)10,(byte)10,(byte)255) : Color.Black;
+        Raylib.DrawTriangle(
+            new Vector2(910, 350),
+            new Vector2(910 + MathF.Cos(angle) * 52, 350 + MathF.Sin(angle) * 52),
+            new Vector2(910 + MathF.Cos(angle + MathF.PI/6f) * 52, 350 + MathF.Sin(angle + MathF.PI/6f) * 52),
+            segCol);
+    }
+    Raylib.DrawCircle(910, 350, 12, new Color((byte)220,(byte)200,(byte)160,(byte)255));
+    Raylib.DrawText("ROULETTE", 848, 262, 16, new Color((byte)200,(byte)160,(byte)20,(byte)255));
+
+    // casino pokies (reuse pokie positions)
+    foreach (int px2 in new[]{ 100, 220, 340 })
+    {
+        Raylib.DrawRectangle(px2, 580, 70, 90, new Color((byte)60,(byte)10,(byte)60,(byte)255));
+        Raylib.DrawRectangleLines(px2, 580, 70, 90, new Color((byte)180,(byte)20,(byte)180,(byte)255));
+        Raylib.DrawText("POKIE", px2 + 8, 618, 13, new Color((byte)255,(byte)50,(byte)255,(byte)255));
+    }
+
+    // chip desk interaction
+    if (Vector2.Distance(player.Center, new Vector2(700, 100)) < 150)
+    {
+        Raylib.DrawRectangle(0, 620, 1280, 100, new Color((byte)0,(byte)0,(byte)0,(byte)180));
+        Raylib.DrawText("CHIP COUNTER", 20, 630, 28, new Color((byte)255,(byte)180,(byte)20,(byte)255));
+        Raylib.DrawText($"Chips: {playerChips}  |  E = Buy/Cash Out", 20, 668, 22, Color.White);
+        if (Raylib.IsKeyPressed(KeyboardKey.E)) casinoChipMenuOpen = !casinoChipMenuOpen;
+    }
+
+    // blackjack interaction
+    Vector2[] bjPos = { new Vector2(200, 360), new Vector2(500, 360) };
+    foreach (var bp in bjPos)
+    {
+        if (Vector2.Distance(player.Center, bp) < 100)
+        {
+            Raylib.DrawRectangle(0, 620, 1280, 100, new Color((byte)0,(byte)0,(byte)0,(byte)180));
+            Raylib.DrawText("BLACKJACK TABLE", 20, 630, 28, new Color((byte)0,(byte)200,(byte)60,(byte)255));
+            Raylib.DrawText($"Chips: {playerChips}  |  E = Play ($10 min)", 20, 668, 22, Color.White);
+            if (Raylib.IsKeyPressed(KeyboardKey.E) && !blackjackOpen) { blackjackOpen = true; BjStartRound(); }
+        }
+    }
+
+    // roulette interaction
+    if (Vector2.Distance(player.Center, new Vector2(910, 350)) < 120)
+    {
+        Raylib.DrawRectangle(0, 620, 1280, 100, new Color((byte)0,(byte)0,(byte)0,(byte)180));
+        Raylib.DrawText("ROULETTE TABLE", 20, 630, 28, new Color((byte)200,(byte)60,(byte)0,(byte)255));
+        Raylib.DrawText($"Chips: {playerChips}  |  E = Play", 20, 668, 22, Color.White);
+        if (Raylib.IsKeyPressed(KeyboardKey.E) && !rouletteOpen) rouletteOpen = true;
+    }
+
+    // pokie interaction
+    Vector2[] casinoPokie = { new Vector2(135,625), new Vector2(255,625), new Vector2(375,625) };
+    for (int i = 0; i < casinoPokie.Length; i++)
+    {
+        if (Vector2.Distance(player.Center, casinoPokie[i]) < 70 && Raylib.IsKeyPressed(KeyboardKey.Space))
+        {
+            activePokieMachine.Open(i);
+            activeMinigameType = MinigameType.Pokie;
+            currentScene = SceneState.Minigame;
+        }
+    }
 }
 
     if (currentBuilding.BuildingName == "DBar")
@@ -13988,7 +17792,7 @@ Raylib.DrawText("WELCOME", 610, 940, 22, new Color((byte)180, (byte)220, (byte)1
     if (gymCounterNPC != null)
     {
         gymCounterNPC.Draw();
-        if (Vector2.Distance(player.Position, gymCounterNPC.Position) < 120)
+        if (Vector2.Distance(player.Center, gymCounterNPC.Position) < 120)
             DrawSpeechBubble(gymCounterNPC.Position, gymCounterNPC.Dialogue,
                 new Color((byte)50,(byte)100,(byte)180,(byte)255));
     }
@@ -14987,7 +18791,7 @@ Raylib.DrawText("FACILITIES", 1312, 172, 14, Color.LightGray);
     foreach (NPC npc in dbarTableNPCs)
     {
         npc.Draw();
-        if (Vector2.Distance(player.Position, npc.Position) < 120)
+        if (Vector2.Distance(player.Center, npc.Position) < 120)
             DrawSpeechBubble(npc.Position, npc.Dialogue, 
                 new Color((byte)80,(byte)40,(byte)10,(byte)255));
     }
@@ -14995,9 +18799,24 @@ Raylib.DrawText("FACILITIES", 1312, 172, 14, Color.LightGray);
     if (dbarPokieNPC != null)
     {
         dbarPokieNPC.Draw();
-        if (Vector2.Distance(player.Position, dbarPokieNPC.Position) < 120)
+        if (Vector2.Distance(player.Center, dbarPokieNPC.Position) < 120)
             DrawSpeechBubble(dbarPokieNPC.Position, dbarPokieNPC.Dialogue,
                 new Color((byte)180,(byte)50,(byte)50,(byte)255));
+    }
+}
+if (currentBuilding.BuildingName == "KiwiCuts")
+{
+    kiwiCutsBarber.Draw();
+    if (Vector2.Distance(player.Center, kiwiCutsBarber.Position) < 120)
+        DrawSpeechBubble(kiwiCutsBarber.Position, kiwiCutsBarber.Dialogue,
+            new Color((byte)20,(byte)140,(byte)120,(byte)255));
+
+    foreach (NPC npc in kiwiCutsWaitingNPCs)
+    {
+        npc.Draw();
+        if (Vector2.Distance(player.Center, npc.Position) < 100)
+            DrawSpeechBubble(npc.Position, npc.Dialogue,
+                new Color((byte)80,(byte)100,(byte)80,(byte)255));
     }
 }
 if (!player.Hidden)
@@ -15144,7 +18963,7 @@ if (currentBuilding.BuildingName == "BurgerKing" && mcdonaldsMessageTimer > 0)
 
     for (int i = 0; i < boothPositions.Length; i++)
     {
-        if (Vector2.Distance(player.Position, boothPositions[i]) < 130)
+        if (Vector2.Distance(player.Center, boothPositions[i]) < 130)
         {
             Raylib.DrawRectangle(0, 620, 1280, 100, new Color((byte)0, (byte)0, (byte)0, (byte)180));
             Raylib.DrawText(tellerNames[i], 20, 630, 30, Color.Gold);
@@ -15172,8 +18991,8 @@ if (currentBuilding.BuildingName == "BurgerKing" && mcdonaldsMessageTimer > 0)
 {
     Vector2 dumbbellPos = new Vector2(250, 210);
     Vector2 benchPos    = new Vector2(590, 330);
-    bool nearDumbbells  = Vector2.Distance(player.Position, dumbbellPos) < 120;
-    bool nearBench      = Vector2.Distance(player.Position, benchPos) < 120;
+    bool nearDumbbells  = Vector2.Distance(player.Center, dumbbellPos) < 120;
+    bool nearBench      = Vector2.Distance(player.Center, benchPos) < 120;
 
     if (nearDumbbells || nearBench || strengthMinigameActive)
     {
@@ -15262,6 +19081,7 @@ if (currentBuilding.BuildingName == "BurgerKing" && mcdonaldsMessageTimer > 0)
         }
     }
 }
+
         if (currentBuilding.BuildingName == "DBar")
 {
     Vector2[] pokiePositions = {
@@ -15277,7 +19097,7 @@ if (currentBuilding.BuildingName == "BurgerKing" && mcdonaldsMessageTimer > 0)
 
     foreach (Vector2 pokiePos in pokiePositions)
     {
-        if (Vector2.Distance(player.Position, pokiePos) < 80)
+        if (Vector2.Distance(player.Center, pokiePos) < 80)
         {
             Raylib.DrawRectangle(0, 620, 1280, 100, new Color((byte)0, (byte)0, (byte)0, (byte)180));
             Raylib.DrawText("POKIE MACHINE", 20, 630, 30, Color.Gold);
@@ -15286,14 +19106,14 @@ if (currentBuilding.BuildingName == "BurgerKing" && mcdonaldsMessageTimer > 0)
     }
 
     // occupied pokie machine 4
-if (Vector2.Distance(player.Position, new Vector2(910, 365)) < 80)
+if (Vector2.Distance(player.Center, new Vector2(910, 365)) < 80)
 {
     Raylib.DrawRectangle(0, 620, 1280, 100, new Color((byte)0,(byte)0,(byte)0,(byte)180));
     Raylib.DrawText("POKIE MACHINE", 20, 630, 30, Color.Gold);
     Raylib.DrawText("This machine is taken! That bloke won't budge.", 20, 670, 24, Color.Orange);
 }
 // Darts board
-if (Vector2.Distance(player.Position, new Vector2(1250, 80)) < 80)
+if (Vector2.Distance(player.Center, new Vector2(1250, 80)) < 80)
 {
     Raylib.DrawRectangle(0, 620, 1280, 100, new Color((byte)0,(byte)0,(byte)0,(byte)180));
     Raylib.DrawText("Dart board", 20, 630, 30, Color.Gold);
@@ -15302,7 +19122,7 @@ if (Vector2.Distance(player.Position, new Vector2(1250, 80)) < 80)
 
     foreach (Vector2 tablePos in poolTablePositions)
     {
-        if (Vector2.Distance(player.Position, tablePos) < 100)
+        if (Vector2.Distance(player.Center, tablePos) < 100)
         {
             Raylib.DrawRectangle(0, 620, 1280, 100, new Color((byte)0, (byte)0, (byte)0, (byte)180));
             Raylib.DrawText("POOL TABLE", 20, 630, 30, Color.Gold);
@@ -15311,7 +19131,7 @@ if (Vector2.Distance(player.Position, new Vector2(1250, 80)) < 80)
     }
 }
 
-        if (Vector2.Distance(player.Position, currentBuilding.InteriorNPC.Position) < 120)
+        if (Vector2.Distance(player.Center, currentBuilding.InteriorNPC.Position) < 120)
         {
         Raylib.DrawRectangle(0, 620, 1280, 100, new Color((byte)0, (byte)0, (byte)0, (byte)180));
         Raylib.DrawText(currentBuilding.BuildingName, 20, 630, 30, Color.Gold);
@@ -15352,7 +19172,7 @@ if (Vector2.Distance(player.Position, new Vector2(1250, 80)) < 80)
                 new Vector2(950, 370)
             };
             bool nearBooth = boothPositions.Any(bp =>
-                Vector2.Distance(player.Position, bp) < 130);
+                Vector2.Distance(player.Center, bp) < 130);
 
             if (nearBooth)
                 Raylib.DrawText($"Z = Deposit $10 | X = Withdraw $10 | Balance: ${player.BankBalance}", 20, 600, 22, Color.LightGray);
@@ -15364,16 +19184,308 @@ if (Vector2.Distance(player.Position, new Vector2(1250, 80)) < 80)
             Vector2 chestPos    = new Vector2(872, 915);
             Vector2 bedPos      = new Vector2(1180, 585);
 
-            if (Vector2.Distance(player.Position, wardrobePos) < 200)
+            if (Vector2.Distance(player.Center, wardrobePos) < 100)
                 Raylib.DrawText("E = Open Wardrobe", 20, 600, 22, Color.LightGray);
-            else if (Vector2.Distance(player.Position, chestPos) < 200)
+            else if (Vector2.Distance(player.Center, chestPos) < 100)
                 Raylib.DrawText("E = Open Chest", 20, 600, 22, Color.LightGray);
-            else if (Vector2.Distance(player.Position, bedPos) < 200)
+            else if (Vector2.Distance(player.Center, bedPos) < 100)
                 Raylib.DrawText("Z = Sleep (restore health + sober up)", 20, 600, 22, Color.LightGray);
     
         }
 
     }
+    if (currentBuilding.BuildingName == "Airport" && airportMenuOpen)
+{
+    (string name, Vector2 dest, int price)[] flights = {
+        ("Safe Zone",  new Vector2(400, 600),    50),
+        ("Desert",     new Vector2(14000, 600),  80),
+        ("Snow Zone",  new Vector2(-32000, 600), 80),
+        ("Beach",      new Vector2(24000, 600),  70),
+        ("Mountains",  new Vector2(-28000,-4000),90),
+        ("Volcano",    new Vector2(30000,-4000), 100),
+        ("Farm",       new Vector2(-1900,-9800), 60),
+    };
+
+    int px = ScreenWidth/2 - 280, py = 80;
+    Raylib.DrawRectangle(px, py, 560, 520, new Color((byte)10,(byte)20,(byte)30,(byte)245));
+    Raylib.DrawRectangleLines(px, py, 560, 520, new Color((byte)40,(byte)160,(byte)220,(byte)255));
+    Raylib.DrawText("BOOK A FLIGHT", px + 145, py + 12, 26, new Color((byte)40,(byte)200,(byte)255,(byte)255));
+    Raylib.DrawText($"Wallet: ${player.Money}", px + 190, py + 46, 18, Color.Gold);
+
+    Vector2 mouse = Raylib.GetMousePosition();
+    for (int i = 0; i < flights.Length; i++)
+    {
+        Rectangle btn = new Rectangle(px + 20, py + 76 + i * 56, 520, 48);
+        bool hover = Raylib.CheckCollisionPointRec(mouse, btn);
+        Raylib.DrawRectangleRec(btn, new Color((byte)20,(byte)40,(byte)60,(byte)255));
+        Raylib.DrawRectangleLinesEx(btn, 2, hover ? new Color((byte)40,(byte)200,(byte)255,(byte)255) : new Color((byte)40,(byte)60,(byte)80,(byte)255));
+        // plane icon
+        Raylib.DrawText("✈", px + 32, py + 89 + i * 56, 20, new Color((byte)40,(byte)200,(byte)255,(byte)255));
+        Raylib.DrawText(flights[i].name, px + 60, py + 90 + i * 56, 20, hover ? new Color((byte)40,(byte)200,(byte)255,(byte)255) : Color.White);
+        Raylib.DrawText($"${flights[i].price}", px + 460, py + 90 + i * 56, 20, Color.Gold);
+
+        if (hover && Raylib.IsMouseButtonPressed(MouseButton.Left))
+        {
+            if (player.Money >= flights[i].price)
+            {
+                player.Money -= flights[i].price;
+                airportMenuOpen = false;
+                currentScene = SceneState.World;
+                player.Position = flights[i].dest;
+                shopMessage = $"Safe travels bro! Arrived at {flights[i].name}.";
+                shopMessageTimer = 3f;
+                lastZoneMusic = default;
+                CheckZoneMusic();
+            }
+            else { shopMessage = "Not enough cash bro!"; shopMessageTimer = 1.5f; }
+        }
+    }
+    Raylib.DrawText("Q = Close", px + 228, py + 492, 18, Color.DarkGray);
+    if (Raylib.IsKeyPressed(KeyboardKey.Q)) airportMenuOpen = false;
+}
+
+if (currentBuilding.BuildingName == "Casino" && casinoChipMenuOpen)
+{
+    int px = ScreenWidth/2 - 220, py = 120;
+    Raylib.DrawRectangle(px, py, 440, 320, new Color((byte)20,(byte)5,(byte)20,(byte)245));
+    Raylib.DrawRectangleLines(px, py, 440, 320, new Color((byte)200,(byte)160,(byte)20,(byte)255));
+    Raylib.DrawText("CHIP COUNTER", px + 120, py + 12, 26, new Color((byte)255,(byte)180,(byte)20,(byte)255));
+    Raylib.DrawText($"Cash: ${player.Money}   Chips: {playerChips}", px + 60, py + 48, 18, Color.LightGray);
+
+    (string label, int chips, int cost)[] buyOptions = {
+        ("10 chips",  10,  10),
+        ("50 chips",  50,  50),
+        ("100 chips", 100, 100),
+        ("500 chips", 500, 500),
+    };
+    Vector2 mouse = Raylib.GetMousePosition();
+    for (int i = 0; i < buyOptions.Length; i++)
+    {
+        Rectangle btn = new Rectangle(px + 20, py + 80 + i * 44, 180, 36);
+        bool hover = Raylib.CheckCollisionPointRec(mouse, btn);
+        Raylib.DrawRectangleRec(btn, new Color((byte)40,(byte)20,(byte)40,(byte)255));
+        Raylib.DrawRectangleLinesEx(btn, 1, hover ? Color.Gold : new Color((byte)120,(byte)80,(byte)10,(byte)255));
+        Raylib.DrawText($"Buy {buyOptions[i].label}", px + 28, py + 91 + i * 44, 16, hover ? Color.Gold : Color.White);
+        if (hover && Raylib.IsMouseButtonPressed(MouseButton.Left) && player.Money >= buyOptions[i].cost)
+        { player.Money -= buyOptions[i].cost; playerChips += buyOptions[i].chips; }
+    }
+    // cash out
+    Rectangle cashBtn = new Rectangle(px + 220, py + 80, 200, 36);
+    bool hCash = Raylib.CheckCollisionPointRec(mouse, cashBtn);
+    Raylib.DrawRectangleRec(cashBtn, new Color((byte)40,(byte)60,(byte)10,(byte)255));
+    Raylib.DrawRectangleLinesEx(cashBtn, 1, hCash ? Color.Gold : Color.Green);
+    Raylib.DrawText($"Cash Out ({playerChips} chips)", px + 228, py + 91, 14, hCash ? Color.Gold : Color.Green);
+    if (hCash && Raylib.IsMouseButtonPressed(MouseButton.Left) && playerChips > 0)
+    { player.Money += playerChips; playerChips = 0; }
+
+    Raylib.DrawText("Q = Close", px + 180, py + 290, 18, Color.DarkGray);
+    if (Raylib.IsKeyPressed(KeyboardKey.Q)) casinoChipMenuOpen = false;
+}
+
+if (currentBuilding.BuildingName == "Casino" && blackjackOpen)
+{
+    int px = ScreenWidth/2 - 340, py = 50;
+    Raylib.DrawRectangle(px, py, 680, 580, new Color((byte)0,(byte)60,(byte)15,(byte)245));
+    Raylib.DrawRectangleLines(px, py, 680, 580, new Color((byte)200,(byte)160,(byte)20,(byte)255));
+    Raylib.DrawText("BLACKJACK", px + 255, py + 10, 30, new Color((byte)200,(byte)160,(byte)20,(byte)255));
+    Raylib.DrawText($"Chips: {playerChips}  |  Bet: {bjBet}", px + 200, py + 50, 18, Color.LightGray);
+
+    // dealer hand
+    Raylib.DrawText("DEALER:", px + 20, py + 90, 20, Color.LightGray);
+    for (int i = 0; i < bjDealerHand.Count; i++)
+    {
+        bool hide = i == 1 && !bjDealerRevealed;
+        int cx = px + 20 + i * 70, cy = py + 115;
+        Color cardBg = hide ? new Color((byte)60,(byte)20,(byte)100,(byte)255) : Color.White;
+        Raylib.DrawRectangle(cx, cy, 60, 90, cardBg);
+        Raylib.DrawRectangleLines(cx, cy, 60, 90, Color.Black);
+        if (!hide)
+        {
+            string cn = BjCardName(bjDealerHand[i]);
+            bool red = bjDealerHand[i] / 13 == 1 || bjDealerHand[i] / 13 == 2;
+            Raylib.DrawText(cn, cx + 6, cy + 8, 20, red ? Color.Red : Color.Black);
+        }
+        else Raylib.DrawText("?", cx + 20, cy + 30, 28, Color.LightGray);
+    }
+    if (bjDealerRevealed)
+        Raylib.DrawText($"= {BjHandValue(bjDealerHand)}", px + 20 + bjDealerHand.Count * 70 + 8, py + 148, 20, Color.White);
+
+    // player hand
+    Raylib.DrawText("YOU:", px + 20, py + 230, 20, Color.LightGray);
+    for (int i = 0; i < bjPlayerHand.Count; i++)
+    {
+        int cx = px + 20 + i * 70, cy = py + 255;
+        Raylib.DrawRectangle(cx, cy, 60, 90, Color.White);
+        Raylib.DrawRectangleLines(cx, cy, 60, 90, Color.Black);
+        string cn = BjCardName(bjPlayerHand[i]);
+        bool red = bjPlayerHand[i] / 13 == 1 || bjPlayerHand[i] / 13 == 2;
+        Raylib.DrawText(cn, cx + 6, cy + 8, 20, red ? Color.Red : Color.Black);
+    }
+    Raylib.DrawText($"= {BjHandValue(bjPlayerHand)}", px + 20 + bjPlayerHand.Count * 70 + 8, py + 288, 20, Color.White);
+
+    // message
+    if (bjMessageTimer > 0)
+    {
+        bjMessageTimer -= Raylib.GetFrameTime();
+        int mw = Raylib.MeasureText(bjMessage, 24);
+        Raylib.DrawText(bjMessage, px + 340 - mw/2, py + 390, 24, Color.Gold);
+    }
+
+    // bet adjustment
+    Raylib.DrawText($"Bet: {bjBet}", px + 270, py + 430, 22, Color.White);
+    Rectangle betDown = new Rectangle(px + 230, py + 428, 34, 26);
+    Rectangle betUp   = new Rectangle(px + 416, py + 428, 34, 26);
+    bool hBD = Raylib.CheckCollisionPointRec(Raylib.GetMousePosition(), betDown);
+    bool hBU = Raylib.CheckCollisionPointRec(Raylib.GetMousePosition(), betUp);
+    Raylib.DrawRectangleRec(betDown, new Color((byte)40,(byte)40,(byte)40,(byte)255));
+    Raylib.DrawRectangleRec(betUp,   new Color((byte)40,(byte)40,(byte)40,(byte)255));
+    Raylib.DrawText("-", px + 242, py + 430, 22, hBD ? Color.Gold : Color.White);
+    Raylib.DrawText("+", px + 424, py + 430, 22, hBU ? Color.Gold : Color.White);
+    if (hBD && Raylib.IsMouseButtonPressed(MouseButton.Left)) bjBet = Math.Max(10, bjBet - 10);
+    if (hBU && Raylib.IsMouseButtonPressed(MouseButton.Left)) bjBet = Math.Min(playerChips, bjBet + 10);
+
+    // action buttons
+    Vector2 mouse = Raylib.GetMousePosition();
+    string[] actions = bjRoundOver ? new[]{ "Deal Again", "Leave" } : new[]{ "Hit", "Stand", "Leave" };
+    for (int i = 0; i < actions.Length; i++)
+    {
+        Rectangle ab = new Rectangle(px + 80 + i * 180, py + 470, 160, 44);
+        bool hover = Raylib.CheckCollisionPointRec(mouse, ab);
+        Raylib.DrawRectangleRec(ab, new Color((byte)0,(byte)80,(byte)20,(byte)255));
+        Raylib.DrawRectangleLinesEx(ab, 2, hover ? Color.Gold : new Color((byte)200,(byte)160,(byte)20,(byte)255));
+        int tw = Raylib.MeasureText(actions[i], 20);
+        Raylib.DrawText(actions[i], (int)ab.X + 80 - tw/2, (int)ab.Y + 12, 20, hover ? Color.Gold : Color.White);
+
+        if (hover && Raylib.IsMouseButtonPressed(MouseButton.Left))
+        {
+            if      (actions[i] == "Hit")        BjHit();
+            else if (actions[i] == "Stand")      BjStand();
+            else if (actions[i] == "Deal Again") BjStartRound();
+            else if (actions[i] == "Leave")      blackjackOpen = false;
+        }
+    }
+}
+
+if (currentBuilding.BuildingName == "Casino" && rouletteOpen)
+{
+    string[] betTypes  = { "Red","Black","Even","Odd","1-12","13-24","25-36" };
+    int[] betPayouts   = { 2,    2,      2,     2,    3,      3,      3 };
+
+    int px = ScreenWidth/2 - 360, py = 50;
+    Raylib.DrawRectangle(px, py, 720, 580, new Color((byte)0,(byte)50,(byte)10,(byte)245));
+    Raylib.DrawRectangleLines(px, py, 720, 580, new Color((byte)200,(byte)160,(byte)20,(byte)255));
+    Raylib.DrawText("ROULETTE", px + 280, py + 10, 30, new Color((byte)200,(byte)160,(byte)20,(byte)255));
+    Raylib.DrawText($"Chips: {playerChips}  |  Bet: {rouletteBet}", px + 210, py + 50, 18, Color.LightGray);
+
+    // spinning wheel visual
+    float spinAngle = rouletteSpinning ? rouletteSpinTimer * 300f : (rouletteResult >= 0 ? rouletteResult * 9.73f : 0f);
+    int wx = px + 360, wy = py + 220;
+    for (int seg = 0; seg < 37; seg++)
+    {
+        float a = seg * (MathF.PI * 2f / 37f) + spinAngle * MathF.PI / 180f;
+        Color sc = seg == 0 ? Color.Green : (seg % 2 == 0 ? new Color((byte)180,(byte)10,(byte)10,(byte)255) : Color.Black);
+        Raylib.DrawTriangle(
+            new Vector2(wx, wy),
+            new Vector2(wx + MathF.Cos(a) * 100, wy + MathF.Sin(a) * 100),
+            new Vector2(wx + MathF.Cos(a + MathF.PI*2f/37f) * 100, wy + MathF.Sin(a + MathF.PI*2f/37f) * 100),
+            sc);
+    }
+    Raylib.DrawCircleLines(wx, wy, 100, new Color((byte)200,(byte)160,(byte)20,(byte)255));
+    Raylib.DrawCircle(wx, wy, 12, new Color((byte)220,(byte)200,(byte)160,(byte)255));
+    if (rouletteResult >= 0 && !rouletteSpinning)
+        Raylib.DrawText($"{rouletteResult}", wx - 8, wy - 10, 20, Color.Black);
+
+    // spin update
+    if (rouletteSpinning)
+    {
+        rouletteSpinTimer += Raylib.GetFrameTime();
+        if (rouletteSpinTimer >= 2.5f)
+        {
+            rouletteSpinning = false;
+            rouletteResult = Raylib.GetRandomValue(0, 36);
+            // evaluate bet
+            bool win = rouletteBetType switch {
+                "Red"   => rouletteResult != 0 && rouletteResult % 2 == 0,
+                "Black" => rouletteResult != 0 && rouletteResult % 2 == 1,
+                "Even"  => rouletteResult != 0 && rouletteResult % 2 == 0,
+                "Odd"   => rouletteResult % 2 == 1,
+                "1-12"  => rouletteResult >= 1  && rouletteResult <= 12,
+                "13-24" => rouletteResult >= 13 && rouletteResult <= 24,
+                "25-36" => rouletteResult >= 25 && rouletteResult <= 36,
+                _ => false
+            };
+            int payout = betPayouts[Array.IndexOf(betTypes, rouletteBetType)];
+            if (win) { playerChips += rouletteBet * payout; rouletteMessage = $"WIN! {rouletteResult} — +{rouletteBet * payout} chips!"; }
+            else     {                                        rouletteMessage = $"Lose. {rouletteResult}. Better luck next time bro."; }
+            rouletteMessageTimer = 3f;
+            player.AddGamblingXP(5);
+        }
+    }
+
+    // bet type selector
+    Raylib.DrawText("BET TYPE:", px + 20, py + 370, 18, Color.LightGray);
+    Vector2 mouse = Raylib.GetMousePosition();
+    for (int i = 0; i < betTypes.Length; i++)
+    {
+        Rectangle bt = new Rectangle(px + 20 + i * 100, py + 396, 92, 32);
+        bool sel = rouletteBetType == betTypes[i];
+        bool hover = Raylib.CheckCollisionPointRec(mouse, bt);
+        Raylib.DrawRectangleRec(bt, sel ? new Color((byte)120,(byte)80,(byte)10,(byte)255) : new Color((byte)30,(byte)30,(byte)30,(byte)255));
+        Raylib.DrawRectangleLinesEx(bt, 1, sel ? Color.Gold : (hover ? Color.Gold : new Color((byte)80,(byte)80,(byte)80,(byte)255)));
+        int tw = Raylib.MeasureText(betTypes[i], 14);
+        Raylib.DrawText(betTypes[i], (int)bt.X + 46 - tw/2, (int)bt.Y + 9, 14, sel ? Color.Gold : Color.White);
+        if (hover && Raylib.IsMouseButtonPressed(MouseButton.Left)) rouletteBetType = betTypes[i];
+    }
+
+    // bet amount
+    Raylib.DrawText($"Bet: {rouletteBet}", px + 290, py + 446, 20, Color.White);
+    Rectangle rBD = new Rectangle(px + 250, py + 444, 34, 26);
+    Rectangle rBU = new Rectangle(px + 430, py + 444, 34, 26);
+    bool rhBD = Raylib.CheckCollisionPointRec(mouse, rBD);
+    bool rhBU = Raylib.CheckCollisionPointRec(mouse, rBU);
+    Raylib.DrawRectangleRec(rBD, new Color((byte)40,(byte)40,(byte)40,(byte)255));
+    Raylib.DrawRectangleRec(rBU, new Color((byte)40,(byte)40,(byte)40,(byte)255));
+    Raylib.DrawText("-", px + 262, py + 446, 20, rhBD ? Color.Gold : Color.White);
+    Raylib.DrawText("+", px + 440, py + 446, 20, rhBU ? Color.Gold : Color.White);
+    if (rhBD && Raylib.IsMouseButtonPressed(MouseButton.Left)) rouletteBet = Math.Max(5, rouletteBet - 5);
+    if (rhBU && Raylib.IsMouseButtonPressed(MouseButton.Left)) rouletteBet = Math.Min(playerChips, rouletteBet + 5);
+
+    // message
+    if (rouletteMessageTimer > 0)
+    {
+        rouletteMessageTimer -= Raylib.GetFrameTime();
+        int mw = Raylib.MeasureText(rouletteMessage, 20);
+        Raylib.DrawText(rouletteMessage, px + 360 - mw/2, py + 340, 20, Color.Gold);
+    }
+
+    // spin + leave buttons
+    Rectangle spinBtn  = new Rectangle(px + 160, py + 500, 200, 44);
+    Rectangle leaveBtn = new Rectangle(px + 380, py + 500, 160, 44);
+    bool hSpin  = Raylib.CheckCollisionPointRec(mouse, spinBtn);
+    bool hLeave = Raylib.CheckCollisionPointRec(mouse, leaveBtn);
+
+    Raylib.DrawRectangleRec(spinBtn,  new Color((byte)0,(byte)80,(byte)20,(byte)255));
+    Raylib.DrawRectangleLinesEx(spinBtn, 2, hSpin ? Color.Gold : new Color((byte)200,(byte)160,(byte)20,(byte)255));
+    Raylib.DrawText(rouletteSpinning ? "Spinning..." : "SPIN", px + 218, py + 514, 20, hSpin ? Color.Gold : Color.White);
+
+    Raylib.DrawRectangleRec(leaveBtn, new Color((byte)60,(byte)10,(byte)10,(byte)255));
+    Raylib.DrawRectangleLinesEx(leaveBtn, 2, hLeave ? Color.Red : Color.DarkGray);
+    Raylib.DrawText("Leave", px + 418, py + 514, 20, hLeave ? Color.Red : Color.White);
+
+    if (hSpin && !rouletteSpinning && Raylib.IsMouseButtonPressed(MouseButton.Left))
+    {
+        if (playerChips >= rouletteBet)
+        {
+            playerChips -= rouletteBet;
+            rouletteSpinning = true;
+            rouletteSpinTimer = 0f;
+            rouletteResult = -1;
+            rouletteMessage = "";
+        }
+        else { rouletteMessage = "Not enough chips bro!"; rouletteMessageTimer = 2f; }
+    }
+    if (hLeave && Raylib.IsMouseButtonPressed(MouseButton.Left)) rouletteOpen = false;
+}
 
     if (currentBuilding.BuildingName == "DBar" && barMenuOpen)
 {
@@ -15414,7 +19526,7 @@ if (Vector2.Distance(player.Position, new Vector2(1250, 80)) < 80)
 
        if (hover && Raylib.IsMouseButtonPressed(MouseButton.Left))
 {
-    if (Vector2.Distance(player.Position, barCounterPos) < 120)
+    if (Vector2.Distance(player.Center, barCounterPos) < 120)
     {
         if (player.Money >= 5)
         {
@@ -15441,29 +19553,230 @@ if (Vector2.Distance(player.Position, new Vector2(1250, 80)) < 80)
     Raylib.DrawText("Q = Close", panelX + 190, panelY + 375, 20, Color.LightGray);
 }
 
+// ── FOOD MENU POPUP ────────────────────────────────────────────────
+    if (dropZoneFoodMenuOpen)
+    {
+        Raylib.DrawRectangle(ScreenWidth / 2 - 180, 150, 360, 240, new Color((byte)0, (byte)0, (byte)0, (byte)230));
+        Raylib.DrawRectangleLines(ScreenWidth / 2 - 180, 150, 360, 240, Color.Gold);
+        Raylib.DrawText("SNACK BAR", ScreenWidth / 2 - 70, 165, 26, Color.Gold);
+        Raylib.DrawText("1. Hot Dog  - $6  (+18 HP)", ScreenWidth / 2 - 160, 210, 20, Color.White);
+        Raylib.DrawText("2. Nachos   - $7  (+20 HP)", ScreenWidth / 2 - 160, 245, 20, Color.White);
+        Raylib.DrawText("3. Soda     - $4  (+12 HP)", ScreenWidth / 2 - 160, 280, 20, Color.White);
+        Raylib.DrawText("4. Slushie  - $5  (+14 HP)", ScreenWidth / 2 - 160, 315, 20, Color.White);
+        Raylib.DrawText("E = Close", ScreenWidth / 2 - 50, 355, 18, Color.Gray);
+    }
+
+if (currentBuilding.BuildingName == "KiwiCuts" && hairMenuOpen)
+{
+    int panelX = ScreenWidth / 2 - 300;
+    int panelY = 60;
+    int panelW = 600; int panelH = 520;
+
+    Raylib.DrawRectangle(panelX, panelY, panelW, panelH, new Color((byte)20,(byte)30,(byte)25,(byte)245));
+    Raylib.DrawRectangleLines(panelX, panelY, panelW, panelH, new Color((byte)40,(byte)220,(byte)180,(byte)255));
+    Raylib.DrawText("KIWI CUTS", panelX + 200, panelY + 12, 30, new Color((byte)40,(byte)220,(byte)180,(byte)255));
+    Raylib.DrawText($"Wallet: ${player.Money}", panelX + 220, panelY + 46, 18, Color.Gold);
+
+    // ── Tabs ──
+    string[] tabs = { "Hairstyle", "Hair Colour", "Facial Hair", "Beard Colour" };
+    for (int t = 0; t < tabs.Length; t++)
+    {
+        bool active = barberMenuTab == t;
+        Rectangle tab = new Rectangle(panelX + 10 + t * 147, panelY + 70, 142, 34);
+        Raylib.DrawRectangleRec(tab, active ? new Color((byte)40,(byte)220,(byte)180,(byte)255) : new Color((byte)30,(byte)45,(byte)40,(byte)255));
+        Raylib.DrawRectangleLinesEx(tab, 1, Color.White);
+        Raylib.DrawText(tabs[t], (int)tab.X + 8, (int)tab.Y + 9, 15, active ? Color.Black : Color.White);
+        if (Raylib.CheckCollisionPointRec(Raylib.GetMousePosition(), tab) && Raylib.IsMouseButtonPressed(MouseButton.Left))
+            barberMenuTab = t;
+    }
+
+    Vector2 mouse = Raylib.GetMousePosition();
+
+    // ── Tab 0: Hairstyle ──
+    if (barberMenuTab == 0)
+    {
+        string[] haircuts = { "Buzz Cut", "Flow", "Curtains", "Mohawk", "Bald" };
+        int[]    prices   = { 8, 12, 15, 20, 5 };
+        Raylib.DrawText($"Current: {playerHairStyle}", panelX + 20, panelY + 112, 17, Color.LightGray);
+        for (int i = 0; i < haircuts.Length; i++)
+        {
+            Rectangle btn = new Rectangle(panelX + 20, panelY + 136 + i * 50, 560, 42);
+            bool hover = Raylib.CheckCollisionPointRec(mouse, btn);
+            Raylib.DrawRectangleRec(btn, new Color((byte)30,(byte)45,(byte)40,(byte)255));
+            Raylib.DrawRectangleLinesEx(btn, 2, hover ? new Color((byte)40,(byte)220,(byte)180,(byte)255) : Color.White);
+            Raylib.DrawText(haircuts[i], panelX + 40, panelY + 149 + i * 50, 20, hover ? new Color((byte)40,(byte)220,(byte)180,(byte)255) : Color.White);
+            Raylib.DrawText($"${prices[i]}", panelX + 520, panelY + 149 + i * 50, 20, Color.Gold);
+            if (hover && Raylib.IsMouseButtonPressed(MouseButton.Left))
+            {
+                if (player.Money >= prices[i]) { player.Money -= prices[i]; playerHairStyle = haircuts[i]; shopMessage = $"Sweet! Rocking the {haircuts[i]} now bro."; shopMessageTimer = 2f; }
+                else { shopMessage = "Not enough cash bro!"; shopMessageTimer = 1.5f; }
+            }
+        }
+    }
+
+    // ── Tab 1: Hair Colour ──
+    else if (barberMenuTab == 1)
+    {
+        (string name, Color col)[] hairColors = {
+            ("Black",    new Color((byte)20, (byte)15, (byte)10, (byte)255)),
+            ("Dark Brown",new Color((byte)60,(byte)35,(byte)15,(byte)255)),
+            ("Brown",    new Color((byte)80, (byte)50, (byte)20, (byte)255)),
+            ("Auburn",   new Color((byte)110,(byte)45,(byte)20,(byte)255)),
+            ("Blonde",   new Color((byte)200,(byte)165,(byte)80,(byte)255)),
+            ("Platinum", new Color((byte)230,(byte)225,(byte)210,(byte)255)),
+            ("Ginger",   new Color((byte)185,(byte)80, (byte)25,(byte)255)),
+            ("Grey",     new Color((byte)140,(byte)135,(byte)130,(byte)255)),
+            ("Red",      new Color((byte)190,(byte)20, (byte)20,(byte)255)),
+            ("Blue",     new Color((byte)30, (byte)60, (byte)180,(byte)255)),
+            ("Purple",   new Color((byte)120,(byte)30,(byte)160,(byte)255)),
+            ("Green",    new Color((byte)20, (byte)130,(byte)50, (byte)255)),
+        };
+        Raylib.DrawText("Pick a hair colour — $3 each", panelX + 20, panelY + 112, 17, Color.LightGray);
+        for (int i = 0; i < hairColors.Length; i++)
+        {
+            int cx = panelX + 20 + (i % 4) * 145;
+            int cy = panelY + 140 + (i / 4) * 110;
+            bool hover = Raylib.CheckCollisionPointRec(mouse, new Rectangle(cx, cy, 130, 70));
+            Raylib.DrawRectangle(cx, cy, 130, 70, hairColors[i].col);
+            Raylib.DrawRectangleLinesEx(new Rectangle(cx, cy, 130, 70), hover ? 3 : 1, hover ? Color.Gold : Color.White);
+            Raylib.DrawText(hairColors[i].name, cx + 4, cy + 75, 14, Color.LightGray);
+            if (hover && Raylib.IsMouseButtonPressed(MouseButton.Left))
+            {
+                if (player.Money >= 3) { player.Money -= 3; playerHairColor = hairColors[i].col; shopMessage = $"{hairColors[i].name} hair, choice bro!"; shopMessageTimer = 2f; }
+                else { shopMessage = "Not enough cash bro!"; shopMessageTimer = 1.5f; }
+            }
+        }
+    }
+
+    // ── Tab 2: Facial Hair ──
+    else if (barberMenuTab == 2)
+    {
+        string[] facialStyles = { "None", "Stubble", "Moustache", "Goatee", "Full Beard" };
+        int[]    fPrices      = { 0, 5, 8, 10, 15 };
+        Raylib.DrawText($"Current: {playerFacialHair}", panelX + 20, panelY + 112, 17, Color.LightGray);
+        for (int i = 0; i < facialStyles.Length; i++)
+        {
+            Rectangle btn = new Rectangle(panelX + 20, panelY + 136 + i * 50, 560, 42);
+            bool hover = Raylib.CheckCollisionPointRec(mouse, btn);
+            Raylib.DrawRectangleRec(btn, new Color((byte)30,(byte)45,(byte)40,(byte)255));
+            Raylib.DrawRectangleLinesEx(btn, 2, hover ? new Color((byte)40,(byte)220,(byte)180,(byte)255) : Color.White);
+            Raylib.DrawText(facialStyles[i], panelX + 40, panelY + 149 + i * 50, 20, hover ? new Color((byte)40,(byte)220,(byte)180,(byte)255) : Color.White);
+            string priceLabel = fPrices[i] == 0 ? "Free" : $"${fPrices[i]}";
+            Raylib.DrawText(priceLabel, panelX + 520, panelY + 149 + i * 50, 20, Color.Gold);
+            if (hover && Raylib.IsMouseButtonPressed(MouseButton.Left))
+            {
+                if (player.Money >= fPrices[i]) { player.Money -= fPrices[i]; playerFacialHair = facialStyles[i]; shopMessage = $"Lookin sharp with {facialStyles[i]}, bro!"; shopMessageTimer = 2f; }
+                else { shopMessage = "Not enough cash bro!"; shopMessageTimer = 1.5f; }
+            }
+        }
+    }
+
+    // ── Tab 3: Beard Colour ──
+    else if (barberMenuTab == 3)
+    {
+        (string name, Color col)[] beardColors = {
+            ("Black",     new Color((byte)20, (byte)15, (byte)10, (byte)255)),
+            ("Dark Brown",new Color((byte)60, (byte)35, (byte)15, (byte)255)),
+            ("Brown",     new Color((byte)80, (byte)50, (byte)20, (byte)255)),
+            ("Auburn",    new Color((byte)110,(byte)45, (byte)20, (byte)255)),
+            ("Blonde",    new Color((byte)200,(byte)165,(byte)80, (byte)255)),
+            ("Grey",      new Color((byte)140,(byte)135,(byte)130,(byte)255)),
+            ("Ginger",    new Color((byte)185,(byte)80, (byte)25, (byte)255)),
+            ("White",     new Color((byte)230,(byte)228,(byte)225,(byte)255)),
+        };
+        Raylib.DrawText("Pick a beard colour — $3 each", panelX + 20, panelY + 112, 17, Color.LightGray);
+        for (int i = 0; i < beardColors.Length; i++)
+        {
+            int cx = panelX + 20 + (i % 4) * 145;
+            int cy = panelY + 140 + (i / 4) * 110;
+            bool hover = Raylib.CheckCollisionPointRec(mouse, new Rectangle(cx, cy, 130, 70));
+            Raylib.DrawRectangle(cx, cy, 130, 70, beardColors[i].col);
+            Raylib.DrawRectangleLinesEx(new Rectangle(cx, cy, 130, 70), hover ? 3 : 1, hover ? Color.Gold : Color.White);
+            Raylib.DrawText(beardColors[i].name, cx + 4, cy + 75, 14, Color.LightGray);
+            if (hover && Raylib.IsMouseButtonPressed(MouseButton.Left))
+            {
+                if (player.Money >= 3) { player.Money -= 3; playerFacialHairColor = beardColors[i].col; shopMessage = $"{beardColors[i].name} beard, mint bro!"; shopMessageTimer = 2f; }
+                else { shopMessage = "Not enough cash bro!"; shopMessageTimer = 1.5f; }
+            }
+        }
+    }
+
+    Raylib.DrawText("Q = Close", panelX + 255, panelY + 488, 18, Color.LightGray);
+}
+
 
   if (currentBuilding.BuildingName == "SUPERMARKET")
 {
-    bool nearCashier = Vector2.Distance(player.Position, currentBuilding.InteriorNPC.Position) < 120;
+   bool nearCashier = Vector2.Distance(player.Center, currentBuilding.InteriorNPC.Position) < 120;
 
-    if (!nearCashier && (player.HasTrolley || player.HasBasket))
+if (nearCashier && (player.HasTrolley || player.HasBasket))
+{
+    var cartInv = player.HasTrolley ? trolleyInventory : basketInventory;
+    int itemCount = cartInv.Count(s => s != null);
+    int totalCost = GetTotalCartCost();
+
+    Raylib.DrawRectangle(0, 620, 1280, 100, new Color((byte)0,(byte)0,(byte)0,(byte)180));
+    Raylib.DrawText("CHECKOUT", 20, 630, 28, new Color((byte)80,(byte)200,(byte)80,(byte)255));
+
+    if (itemCount == 0)
     {
-        Raylib.DrawRectangle(0, 620, 1280, 100, new Color((byte)0,(byte)0,(byte)0,(byte)180));
-        if (player.HasTrolley)
+        Raylib.DrawText("Your cart is empty bro!", 20, 668, 22, Color.LightGray);
+    }
+    else
+    {
+        Raylib.DrawText($"{itemCount} items — Total: ${totalCost}  |  E = Pay  |  Wallet: ${player.Money}", 20, 668, 22, Color.White);
+
+        if (Raylib.IsKeyPressed(KeyboardKey.E))
         {
-            Raylib.DrawText("TROLLEY", 20, 630, 30, Color.Gold);
-            Raylib.DrawText("I = Open Inventory | Space = Put Down near entrance", 20, 670, 24, Color.White);
-        }
-        else
-        {
-            Raylib.DrawText("BASKET", 20, 630, 30, Color.Gold);
-            Raylib.DrawText("I = Open Inventory | Space = Put Down near entrance", 20, 670, 24, Color.White);
+            // inventory space check — 1 slot for the shopping bag
+            // REMOVE inventory space check entirely or check if all 8 slots are full
+            if (toolbarSlots.All(s => s != null))
+            {
+                shopMessage = "Your toolbar is full! Can't hold any items.";
+                shopMessageTimer = 3f;
+            }
+            else if (player.Money < totalCost)
+            {
+                shopMessage = $"Not enough cash bro! Need ${totalCost}.";
+                shopMessageTimer = 2f;
+            }
+            else
+            {
+                // record what was in the bag
+                groceryBagContents.Clear();
+                foreach (string s in cartInv)
+                    if (s != null) groceryBagContents.Add(s);
+
+                player.Money -= totalCost;
+                playerGroceryBags++;
+
+                // clear the cart
+                for (int s = 0; s < cartInv.Count; s++) cartInv[s] = null;
+
+                // Adds shopping bag
+                int bagsFailed = 0;
+                foreach (string gi in groceryBagContents)
+                    if (!AddOneItemToToolbar(gi)) bagsFailed++;
+                groceryBagContents.Clear();
+                playerGroceryBags = 0; // no longer needed as bag
+
+                string msg = bagsFailed > 0
+                    ? $"Paid ${totalCost}. {bagsFailed} items couldn't fit in toolbar!"
+                    : $"Paid ${totalCost}. Items added to toolbar!";
+                shopMessage = msg;
+                shopMessageTimer = 2.5f;
+
+                shopMessage = $"Paid ${totalCost}. Shopping bag added to toolbar!";
+                shopMessageTimer = 2.5f;
+                groceryShopOpen = false;
+            }
         }
     }
 }
+}
 
 if (currentBuilding.BuildingName == "McDONALD'S" &&
-    Vector2.Distance(player.Position, currentBuilding.InteriorNPC.Position) < 120)
+    Vector2.Distance(player.Center, currentBuilding.InteriorNPC.Position) < 120)
 {
     Raylib.DrawRectangle(0, 620, 1280, 100, new Color((byte)0,(byte)0,(byte)0,(byte)180));
     Raylib.DrawText("McDONALD'S", 20, 630, 30, new Color((byte)255,(byte)220,(byte)0,(byte)255));
@@ -15473,12 +19786,19 @@ if (currentBuilding.BuildingName == "McDONALD'S" &&
     DrawChestUI();
     DrawWardrobe();
     DrawShopUI();
+    DrawAAMenu();
+    DrawAATheoryTest();
     DrawSupermarketInventoryUI();
+    DrawGroceryShopPanel();
     DrawMcDonaldsMenu();
     DrawKFCMenu();
     DrawDominosMenu();
     DrawBurgerKingMenu();
     DrawDealerUI();
+    DrawHallensteinShop();
+    DrawFridgeUI();
+    DrawCupboardUI();
+    DrawCookingMenu();
 }
 
         static void DrawHUD()
@@ -15489,6 +19809,7 @@ if (currentBuilding.BuildingName == "McDONALD'S" &&
             DrawTutorialHUD();
             DrawDropConfirm();
             DrawDropQuantity();
+            DrawSkillCheatPanel();
 
             // Coordinates display with background
             string coordText = $"X: {(int)player.Position.X}  Y: {(int)player.Position.Y}";
@@ -15528,6 +19849,41 @@ if (currentBuilding.BuildingName == "McDONALD'S" &&
                     }
                 }
             }
+if (busMenuOpen && busOperating)
+{
+    Color busBlue = new Color((byte)20,(byte)60,(byte)160,(byte)255);
+    int px = ScreenWidth/2 - 220, py = 80;
+    Raylib.DrawRectangle(px, py, 440, 80 + busStops.Length * 52, new Color((byte)10,(byte)15,(byte)30,(byte)245));
+    Raylib.DrawRectangleLines(px, py, 440, 80 + busStops.Length * 52, busBlue);
+    Raylib.DrawText("BUS ROUTES — $2 each", px + 60, py + 12, 22, Color.White);
+    Raylib.DrawText($"Currently at: {busStops[busCurrentStop].Name}", px + 40, py + 40, 16, Color.LightGray);
+
+    Vector2 mouse = Raylib.GetMousePosition();
+    for (int i = 0; i < busStops.Length; i++)
+    {
+        if (i == busCurrentStop) continue; // can't travel to current stop
+        Rectangle btn = new Rectangle(px + 20, py + 64 + i * 52, 400, 44);
+        bool hover = Raylib.CheckCollisionPointRec(mouse, btn);
+        Raylib.DrawRectangleRec(btn, new Color((byte)20,(byte)30,(byte)60,(byte)255));
+        Raylib.DrawRectangleLinesEx(btn, 2, hover ? Color.Gold : new Color((byte)40,(byte)60,(byte)100,(byte)255));
+        Raylib.DrawText(busStops[i].Name, px + 40, py + 78 + i * 52, 20, hover ? Color.Gold : Color.White);
+        Raylib.DrawText("$2", px + 380, py + 78 + i * 52, 20, Color.Gold);
+
+        if (hover && Raylib.IsMouseButtonPressed(MouseButton.Left))
+        {
+            if (player.Money >= 2)
+            {
+                player.Money -= 2;
+                player.Position = busStops[i].WorldPos + new Vector2(60, 0);
+                busMenuOpen = false;
+                ShowNotification($"Hopped off at {busStops[i].Name} bro!");
+                lastZoneMusic = default;
+                CheckZoneMusic();
+            }
+            else { ShowNotification("Not enough cash for the bus bro!"); busMenuOpen = false; }
+        }
+    }
+}
 
             foreach (Rideable rideable in rideables)
 {
@@ -15768,26 +20124,9 @@ dungeonEntrances.Add((new Vector2(-18000, 300),   "Snow",    "Ice Cavern"));
 dungeonEntrances.Add((new Vector2(14000,  400),   "Desert",  "Desert Ruins"));
 dungeonEntrances.Add((new Vector2(32000, -4000),  "Volcano", "Lava Cavern"));
 
+// BUILDING INTERIOR AND NPCS
 
-//Dbars
-AddDBar(1700, 410);
-AddDBar(-4000, 410);
-
-//DropZone
-AddDropZone(-50, 1800);
-
-//Mini golf
-AddMiniGolf(450, 2000);
-
-//Banks
-AddBank(1200, 380);
-AddBank(-9850, -700); 
-
-// Add dealers (exterior + interior)
-AddDealerBuilding(340, 800, "BIKE DEALER", DealerType.Bike);
-AddDealerBuilding(-258, -848, "CAR DEALER", DealerType.Car);
-AddDealerBuilding(-1380, -445, "BARN DEALER", DealerType.Barn);
-
+//-- Dbar --
 // table 1 - left side of bar
 dbarTableNPCs.Add(new NPC(new Vector2(120, 430), "Patron", "Cheers bro!"));
 dbarTableNPCs.Add(new NPC(new Vector2(165, 470), "Patron", "Another round?"));
@@ -15802,11 +20141,64 @@ dbarTableNPCs.Add(new NPC(new Vector2(605, 470), "Patron", "Yeah nah yeah."));
 
 dbarPokieNPC = new NPC(new Vector2(882, 340), "Bloke", "Oi back off, I'm on a winning streak bro!");
 
+//-- Kiwi Cuts --
+kiwiCutsWaitingNPCs.Add(new NPC(new Vector2(557, 215), "Patron", "Just a trim thanks."));
+kiwiCutsWaitingNPCs.Add(new NPC(new Vector2(602, 215), "Patron", "Short back and sides bro."));
+
+// DECORATIVE BUILDINGS
+// Residential neighbourhood
+AddCottage(-160, 450);
+AddCottage(0, 450);
+AddTownhouse(1180, 330);
+AddTownhouse(1480, 330);
+AddApartmentBlock(710, 800);
+AddApartmentBlock(960, 800);
+
+// INTERACTIVE BUILDINGS
+
+//Dbars
+AddDBar(1700, 410);
+AddDBar(-4000, 410);
+
+//AA buildings
+AddAA(-1400, 120);       // safe zone
+AddAA(14000, 5600);     // city of Hamiltron
+AddAA(-15800, 4700);    // Rotoaira town
+
+//Airports
+AddAirport(5000, -500);
+
+//Casinos
+AddCasino(1500, -200);
+
+//KiwiCuts
+AddKiwiCuts(1700, 100);
+
+//Hallensteins
+AddHallensteins(2000, 100);
+
+//DropZone
+AddDropZone(-50, 1800);
+
+//Mini golf
+AddMiniGolf(450, 2000);
+
+//Banks
+AddBank(720, 360);
+AddBank(-9850, -700); 
+
+// Add dealers (exterior + interior)
+AddDealerBuilding(340, 800, "BIKE DEALER", DealerType.Bike);
+AddDealerBuilding(-258, -848, "CAR DEALER", DealerType.Car);
+AddDealerBuilding(-1380, -445, "BARN DEALER", DealerType.Barn);
+
+
+
 AddStore(-1000, 410);
 
 AddHospital(340, -200);
 
-AddWeapons(640, 150);
+AddWeapons(640, 100);
 
 AddMyHouse(-400, 410);
 AddMyHouse(-2090, -9855);
@@ -15838,6 +20230,60 @@ AddDominos(-2572, 386);
 gymCounterNPC = new NPC(new Vector2(780, 130), "Staff", "Grab a protein shake bro, $3 each.");
 
 AddPoliceStation(3200, 410);
+
+// ── CITY OF HAMILTRON ────────────────────────────────────────────────────────
+// NW block
+AddBank(12000, 4100);
+AddHospital(12400, 4100);
+AddPoliceStation(12000, 5800);
+AddGym(12400, 5800);
+AddSupermarket(13000, 4100);
+AddKFC(13000, 5800);
+AddMcDonalds(13600, 4100);
+AddCasino(13600, 5800);
+
+// Central (north avenue corridor)
+AddAirport(15100, 3200);          // large footprint north of boulevard
+AddGasStation(15100, 5800);
+AddHallensteins(15500, 4100);
+AddKiwiCuts(15900, 4100);
+AddDropZone(16000, 5800);
+AddBank(16700, 4100);
+
+// East block
+AddStore(17000, 4100);
+AddDBar(17000, 5800);
+AddWeapons(17400, 4100);
+AddBurgerKing(17400, 5800);
+
+// Extra houses — residential block south
+for (int hx = 12100; hx < 17800; hx += 300)
+    AddMyHouse(hx, 7400);
+
+// ── COUNTRY TOWN OF ROTOAIRA ─────────────────────────────────────────────────
+AddStore(-17600, 3400);
+AddMyHouse(-17200, 3400);
+AddMyHouse(-16800, 3400);
+AddMyHouse(-16400, 3400);
+AddMyHouse(-16000, 3400);
+AddMyHouse(-15600, 3400);
+AddGasStation(-17600, 4600);
+AddBank(-17000, 4600);
+AddHospital(-16400, 4600);
+AddKiwiCuts(-15800, 4600);
+AddPoliceStation(-15200, 4600);
+AddMyHouse(-17600, 5500);
+AddMyHouse(-17200, 5500);
+AddMyHouse(-16800, 5500);
+AddMyHouse(-16400, 5500);
+AddMyHouse(-16000, 5500);
+AddDBar(-15400, 5500);
+AddMarae(-14600, 4400);
+
+// Town NPCs
+npcs.Add(new NPC(new Vector2(-17400, 5200), "Local", "Quiet little town but we love it bro."));
+npcs.Add(new NPC(new Vector2(-16200, 5200), "Farmer", "Just came in from the farm eh."));
+npcs.Add(new NPC(new Vector2(-15000, 4800), "Elder",  "This land has stories older than roads."));
 
             npcs.Add(new NPC(
                 new Vector2(500,500),
@@ -15898,14 +20344,33 @@ AddPoliceStation(3200, 410);
             rocks.Add(RockObject.Stone(new Vector2(-1797, -6221)));
             rocks.Add(RockObject.Stone(new Vector2(-1761, -6164)));
             rocks.Add(RockObject.Stone(new Vector2(-1761, -6212)));
+
+            // Campfires
+            campfirePositions.Add(new Vector2(-800,  800));
+            campfirePositions.Add(new Vector2(2000, 1800));
+            campfirePositions.Add(new Vector2(-5000, 600));
+            campfirePositions.Add(new Vector2(6000,  800));
+            campfirePositions.Add(new Vector2(-14000,5000));  // near country town
+            campfirePositions.Add(new Vector2(15000, 6000));  // near city
             
             //vehicles
             vehicles.Add(new Vehicle(new Vector2(100,  800), Color.Red,      650, Vehicle.VehicleType.Sedan));
-            vehicles.Add(new Vehicle(new Vector2(1200, 700), Color.Yellow,   900, Vehicle.VehicleType.Truck));
+            vehicles.Add(new Vehicle(new Vector2(1200, 650), Color.Yellow,   900, Vehicle.VehicleType.Truck));
             vehicles.Add(new Vehicle(new Vector2(-400, 650), Color.DarkBlue, 500, Vehicle.VehicleType.SUV));
             vehicles.Add(new Vehicle(new Vector2(3082, 458), Color.Black, 500, Vehicle.VehicleType.PoliceCar));
             vehicles.Add(new Vehicle(new Vector2(3082, 758), Color.Red, 500, Vehicle.VehicleType.FireTruck));
             vehicles.Add(new Vehicle(new Vector2(510, -189), Color.White, 500, Vehicle.VehicleType.Ambulance));
+
+            // City traffic
+            vehicles.Add(new Vehicle(new Vector2(12400, 5560), new Color((byte)40,(byte)80,(byte)160,(byte)255), 280f, Vehicle.VehicleType.Sedan));
+            vehicles.Add(new Vehicle(new Vector2(15200, 3960), new Color((byte)160,(byte)40,(byte)40,(byte)255), 260f, Vehicle.VehicleType.Sedan));
+            vehicles.Add(new Vehicle(new Vector2(16800, 5560), new Color((byte)40,(byte)140,(byte)40,(byte)255), 300f, Vehicle.VehicleType.SUV));
+            vehicles.Add(new Vehicle(new Vector2(14900, 7260), new Color((byte)120,(byte)120,(byte)120,(byte)255), 240f, Vehicle.VehicleType.Sedan));
+            // Police cruiser patrolling city
+            vehicles.Add(new Vehicle(new Vector2(13200, 5560), new Color((byte)20,(byte)20,(byte)180,(byte)255), 320f, Vehicle.VehicleType.PoliceCar));
+            // Town traffic
+            vehicles.Add(new Vehicle(new Vector2(-17000, 4460), new Color((byte)140,(byte)100,(byte)40,(byte)255), 200f, Vehicle.VehicleType.Sedan));
+            vehicles.Add(new Vehicle(new Vector2(-15800, 4460), new Color((byte)80,(byte)60,(byte)30,(byte)255),  180f, Vehicle.VehicleType.Truck));
 
 
             // Mountain bikes - safe zone and grasslands
@@ -15916,7 +20381,7 @@ AddPoliceStation(3200, 410);
             // BMX bikes - safe zone
             rideables.Add(new Rideable(new Vector2(800, 650),  Rideable.RideableType.BMX, new Color((byte)220,(byte)50,(byte)50,(byte)255)));
             rideables.Add(new Rideable(new Vector2(-300, 700), Rideable.RideableType.BMX, new Color((byte)200,(byte)150,(byte)0,(byte)255)));
-            rideables.Add(new Rideable(new Vector2(1500, 800), Rideable.RideableType.BMX, new Color((byte)150,(byte)0,(byte)200,(byte)255)));
+            rideables.Add(new Rideable(new Vector2(1087, 1207), Rideable.RideableType.BMX, new Color((byte)150,(byte)0,(byte)200,(byte)255)));
 
             // Horses - grasslands and safe zone outskirts
             rideables.Add(new Rideable(new Vector2(4500, 400),  Rideable.RideableType.Horse, new Color((byte)139,(byte)90,(byte)43,(byte)255)));
@@ -16007,6 +20472,7 @@ AddPoliceStation(3200, 410);
 dealerBikeOptions.Clear();
 dealerBarnOptions.Clear();
 dealerVehicleOptions.Clear();
+
 
 // Bikes: take rideables that are BMX or MountainBike
 var bikeProtos = rideables
@@ -16101,6 +20567,58 @@ foreach (var v in vehicles.Take(4))
             case "Bear Pelt":
                 Raylib.DrawRectangle((int)Position.X - 8, (int)Position.Y - 8, 16, 16, new Color((byte)100, (byte)100, (byte)120, (byte)255));
                 break;
+            case "Dog Fang":
+            case "Snake Fang":
+            case "Croc Tooth":
+            case "Shark Tooth":
+                Raylib.DrawTriangle(
+                    new Vector2(Position.X, Position.Y - 9),
+                    new Vector2(Position.X - 4, Position.Y + 6),
+                    new Vector2(Position.X + 4, Position.Y + 6),
+                    Color.White);
+                break;
+            case "Wolf Claw":
+            case "Bear Claw":
+            case "Crab Claw":
+            case "Eagle Talon":
+                Raylib.DrawLineEx(new Vector2(Position.X - 5, Position.Y + 6), new Vector2(Position.X + 5, Position.Y - 6), 3, new Color((byte)230,(byte)230,(byte)210,(byte)255));
+                break;
+            case "Venom Sac":
+                Raylib.DrawCircle((int)Position.X, (int)Position.Y, 7, new Color((byte)80,(byte)200,(byte)80,(byte)255));
+                break;
+            case "Crab Shell":
+            case "Croc Scale":
+            case "Lizard Scale":
+                Raylib.DrawRectangle((int)Position.X - 7, (int)Position.Y - 6, 14, 12, new Color((byte)120,(byte)160,(byte)90,(byte)255));
+                break;
+            case "Shark Fin":
+                Raylib.DrawTriangle(
+                    new Vector2(Position.X, Position.Y - 9),
+                    new Vector2(Position.X - 7, Position.Y + 7),
+                    new Vector2(Position.X + 7, Position.Y + 7),
+                    new Color((byte)150,(byte)150,(byte)170,(byte)255));
+                break;
+            case "Snake Skin":
+                Raylib.DrawRectangle((int)Position.X - 6, (int)Position.Y - 6, 12, 12, new Color((byte)110,(byte)160,(byte)70,(byte)255));
+                break;
+            case "Ember Stone":
+            case "Lava Core":
+                Raylib.DrawCircle((int)Position.X, (int)Position.Y, 7, new Color((byte)255,(byte)100,(byte)0,(byte)255));
+                break;
+            case "Magma Shard":
+                Raylib.DrawTriangle(
+                    new Vector2(Position.X, Position.Y - 8),
+                    new Vector2(Position.X - 6, Position.Y + 6),
+                    new Vector2(Position.X + 6, Position.Y + 6),
+                    new Color((byte)200,(byte)60,(byte)20,(byte)255));
+                break;
+            case "Feather":
+                Raylib.DrawLineEx(new Vector2(Position.X, Position.Y - 8), new Vector2(Position.X, Position.Y + 8), 3, new Color((byte)220,(byte)220,(byte)240,(byte)255));
+                break;
+            case "Horn":
+            case "Goat Hoof":
+                Raylib.DrawRectangle((int)Position.X - 4, (int)Position.Y - 8, 8, 16, new Color((byte)200,(byte)190,(byte)160,(byte)255));
+                break;
         }
     }
 }
@@ -16120,6 +20638,8 @@ foreach (var v in vehicles.Take(4))
 
     public Rectangle Bounds =>
         new Rectangle(Position.X, Position.Y, 40, 40);
+
+    public Vector2 Center => new Vector2(Position.X + 20, Position.Y + 20);
 
     public Enemy(Vector2 pos, string type, int health, Color color)
     {
@@ -16830,6 +21350,9 @@ private void DrawMountainGoat(int x, int y)
         public FacingDirection Facing = FacingDirection.Down;
         float walkTimer = 0f;
         float bobOffset = 0f;
+        public bool isSwinging = false;
+        public float swingTimer = 0f;
+        public float swingDuration = 0.3f;   // how long one swing takes
         bool walkFrame = false; // alternates legs
         bool isMoving = false;
         float chopAnimAngle = 0f;
@@ -16837,6 +21360,14 @@ private void DrawMountainGoat(int x, int y)
         bool isMining = false;
         public static bool isFishing = false;
         public Dictionary<string, int> FishCaught = new Dictionary<string, int>();
+        float GetSwingAngle()
+        {
+            if (!isSwinging) return 0f;
+            float t = swingTimer / swingDuration;        // 0..1
+            // ease out and back: sin curve peaks at the middle
+            float arc = MathF.Sin(t * MathF.PI);          // 0 → 1 → 0
+            return arc * 90f;                             // up to 90 degrees
+        }
         public void AddFish(string species, int count = 1)
         {
             if (!FishCaught.ContainsKey(species)) FishCaught[species] = 0;
@@ -16878,6 +21409,25 @@ private void DrawMountainGoat(int x, int y)
         public int Stingers = 0;
         public int BearPelts = 0;
         public int DogFangs = 0;
+        public int WolfClaws = 0;
+        public int VenomSacs = 0;
+        public int CrabClaws = 0;
+        public int BearClaws = 0;
+        public int CrabShells = 0;
+        public int SharkFins = 0;
+        public int SharkTeeth = 0;
+        public int SnakeSkins = 0;
+        public int SnakeFangs = 0;
+        public int CrocScales = 0;
+        public int CrocTeeth = 0;
+        public int LizardScales = 0;
+        public int EmberStones = 0;
+        public int MagmaShards = 0;
+        public int LavaCores = 0;
+        public int Feathers = 0;
+        public int EagleTalons = 0;
+        public int Horns = 0;
+        public int GoatHooves = 0;
         public int Health = 100;
         public int MaxHealth = 100;
         public int CombatLevel = 1;
@@ -16922,6 +21472,8 @@ private void DrawMountainGoat(int x, int y)
         public int MysticalXP = 0;   
         public int StrengthLevel = 1;
         public int StrengthXP = 0;
+        public  int playerCookingLevel = 1;
+        public  int playerCookingXP    = 0;
         public int GamblingLevel = 1;
         public int GamblingXP = 0;
         public int PlushPrizes = 0;
@@ -16940,6 +21492,20 @@ private void DrawMountainGoat(int x, int y)
         public float DrunkTimer = 0f;
         public float DrunkSpeedMultiplier => DrunkLevel == 0 ? 1f : Math.Max(0.3f, 1f - (DrunkLevel * 0.15f));
         public List<string> OwnedGear = new List<string>();
+        Color ArmorColor(string item, Color fallback)
+        {
+            if (item == null) return fallback;
+            foreach (string mat in Program.armorMaterials)
+                if (item.Contains(mat)) return Program.MaterialColor(mat);
+            return fallback;
+        }
+        Color WeaponColor(string item, Color fallback)
+        {
+            if (item == null) return fallback;
+            foreach (string mat in Program.armorMaterials)
+                if (item.Contains(mat)) return Program.MaterialColor(mat);
+            return fallback;
+        }
         public bool OwnsGear(string item) => OwnedGear.Contains(item);
         public void AddGear(string item)
         {
@@ -16953,10 +21519,54 @@ private void DrawMountainGoat(int x, int y)
         public Rectangle Bounds =>
             new Rectangle(Position.X, Position.Y, 40, 60);
 
+        public Vector2 Center => new Vector2(Position.X + 20, Position.Y + 30);
+
         public Player(Vector2 position)
         {
             Position = position;
         }
+    
+    void DrawHorn(float baseX, float baseY, int dir, Color col)
+{
+    // dir = -1 for left horn, +1 for right horn
+    // build a curve of points: out, up, then curl inward
+    int segments = 6;
+    Vector2[] pts = new Vector2[segments + 1];
+    for (int i = 0; i <= segments; i++)
+    {
+        float t = i / (float)segments;          // 0..1 along the horn
+        // x: sweep out then curl back in (parabola)
+        float outward = MathF.Sin(t * MathF.PI) * 10f;     // peaks mid-horn
+        float curlIn  = t * t * 6f;                         // pulls back in near tip
+        float px = baseX + dir * (outward - curlIn);
+        // y: rise upward, faster near the tip
+        float py = baseY - t * 22f;
+        pts[i] = new Vector2(px, py);
+    }
+
+    // draw the horn as quads between consecutive points, tapering width
+    for (int i = 0; i < segments; i++)
+    {
+        float w1 = 5f * (1f - i / (float)segments) + 1f;     // width tapers toward tip
+        float w2 = 5f * (1f - (i + 1) / (float)segments) + 1f;
+
+        Vector2 a = pts[i];
+        Vector2 b = pts[i + 1];
+
+        // perpendicular offset for width
+        Vector2 dirVec = Vector2.Normalize(b - a);
+        Vector2 perp = new Vector2(-dirVec.Y, dirVec.X);
+
+        Vector2 a1 = a + perp * w1;
+        Vector2 a2 = a - perp * w1;
+        Vector2 b1 = b + perp * w2;
+        Vector2 b2 = b - perp * w2;
+
+        // two triangles per quad (wound CCW)
+        Raylib.DrawTriangle(a2, a1, b1, col);
+        Raylib.DrawTriangle(a2, b1, b2, col);
+    }
+}
         
      void DrawPickaxeSwingLeft(int x, int y)
 {
@@ -17087,6 +21697,18 @@ private void DrawMountainGoat(int x, int y)
     damageCooldown = 1f;
     if (Health < 0) Health = 0;
 }
+void DrawStar(int cx, int cy, float size, Color col)
+{
+    // 4-point star: two crossed triangles / diamonds
+    Raylib.DrawTriangle(
+        new Vector2(cx, cy - size), new Vector2(cx - size*0.4f, cy), new Vector2(cx + size*0.4f, cy), col);
+    Raylib.DrawTriangle(
+        new Vector2(cx, cy + size), new Vector2(cx + size*0.4f, cy), new Vector2(cx - size*0.4f, cy), col);
+    Raylib.DrawTriangle(
+        new Vector2(cx - size, cy), new Vector2(cx, cy - size*0.4f), new Vector2(cx, cy + size*0.4f), col);
+    Raylib.DrawTriangle(
+        new Vector2(cx + size, cy), new Vector2(cx, cy + size*0.4f), new Vector2(cx, cy - size*0.4f), col);
+}
 
         public void UpdateHealth(float dt)
         {
@@ -17112,11 +21734,21 @@ private void DrawMountainGoat(int x, int y)
             }
         }
 
-       public void Update(float dt, List<Building> buildings, List<TreeObject> trees, List<Vehicle> vehicles,  List<Lake> lakes)
+       public void Update(float dt, List<Building> buildings, List<TreeObject> trees, List<Vehicle> vehicles,  List<Lake> lakes, List<DecorativeBuilding> decorativeBuildings)
     {
         Vector2 move = GetInput();
         Vector2 oldPos = Position;
         Position += move * speed * dt;
+
+        if (isSwinging)
+        {
+            swingTimer += dt;
+            if (swingTimer >= swingDuration)
+            {
+                isSwinging = false;
+                swingTimer = 0f;
+            }
+        }
 
         foreach (Building building in buildings)
         {
@@ -17124,7 +21756,7 @@ private void DrawMountainGoat(int x, int y)
                 building.Bounds.X,
                 building.Bounds.Y,
                 building.Bounds.Width,
-                building.Bounds.Height - 90
+                building.Bounds.Height - 40
             );
 
             if (Raylib.CheckCollisionRecs(Bounds, collisionBox))
@@ -17133,7 +21765,22 @@ private void DrawMountainGoat(int x, int y)
             }
         }
 
-        // in Player.Update(), after the buildings loop:
+      foreach (DecorativeBuilding building in decorativeBuildings)
+{
+    Rectangle collisionBox = new Rectangle(
+        building.Bounds.X,
+        building.Bounds.Y,
+        building.Bounds.Width,
+        Math.Max(building.Bounds.Height -40, 30)  // never shrink below 30px
+    );
+
+    if (Raylib.CheckCollisionRecs(Bounds, collisionBox))
+    {
+        Position = oldPos;
+    }
+}
+
+        
 foreach (Rectangle fenceRect in Program.fenceManager.GetCollisionRects())
 {
     if (Raylib.CheckCollisionRecs(Bounds, fenceRect))
@@ -17469,6 +22116,18 @@ public void AddRangedXP(int xp)
         Program.ShowLevelUp("Ranged", RangedLevel);
     }
 }
+public void AddCookingXP(int xp)
+{
+    if (CookingLevel >= 100) return;
+    CookingXP += xp;
+    int required = CookingLevel * CookingLevel * 40;
+    if (CookingXP >= required)
+    {
+        CookingXP = 0;
+        CookingLevel++;
+        Program.ShowLevelUp("Cooking", CookingLevel);
+    }
+}
 public void TriggerChopAnim()  { isChopping = true; chopAnimAngle = 0f; }
 public void TriggerMineAnim()  { isMining  = true; chopAnimAngle = 0f; }
 
@@ -17518,6 +22177,8 @@ float chopBob = (isChopping || isMining)
 int x = (int)Position.X;
 int y = (int)(Position.Y + chopBob);
 
+DrawArmorAura(x, y);
+
 switch (Facing)
 {
     case FacingDirection.Down:
@@ -17535,6 +22196,7 @@ switch (Facing)
     case FacingDirection.Right:
         DrawFacingRight(x, y);
         DrawHeldItem(x, y, Program.GetActiveItem());
+        DrawShieldRight(x, y); 
         break;
 }
     // draw held item on top of player
@@ -17542,87 +22204,104 @@ switch (Facing)
         DrawHeldBasket(x, y);
     else if (HasTrolley)
         DrawPushedTrolley(x, y);
+
+    // center indicaor for the player
+    //Raylib.DrawCircle((int)Center.X, (int)Center.Y, 4, Color.Red);
 }
 
 void DrawFacingDown(int x, int y)
 {
+    int armSwing = isMoving ? (walkFrame ? 4 : -4) : 0;
+
+    // cape (behind everything)
+    if (Program.armorCape != null)
+    {
+        Color cc = ArmorColor(Program.armorCape, new Color((byte)140,(byte)60,(byte)60,(byte)255));
+        Raylib.DrawRectangle(x + 11, y + 24, 18, 30, cc);
+    }
+
     // head
     Raylib.DrawCircle(x + 20, y + 12, 12, SkinColor);
-
-    // eyes
     Raylib.DrawCircle(x + 15, y + 11, 2, Color.Black);
     Raylib.DrawCircle(x + 25, y + 11, 2, Color.Black);
+    Raylib.DrawRectangle(x + 15, y + 17, 10, 2, new Color((byte)150,(byte)80,(byte)80,(byte)255));
 
-        if (Program.armorHelmet != null)
+    // Facial hair
+if (Program.armorHelmet == null)
 {
-    Color hc = new Color((byte)120, (byte)80, (byte)30, (byte)255);
-    if (Program.armorHelmet.Contains("Iron"))  hc = new Color((byte)120, (byte)120, (byte)130, (byte)255);
-    if (Program.armorHelmet.Contains("Steel")) hc = new Color((byte)160, (byte)165, (byte)175, (byte)255);
-
-    // dome over top of head
-    Raylib.DrawRectangle(x + 10, y + 2, 20, 10, hc);
-    // visor brim
-    Raylib.DrawRectangle(x + 8, y + 11, 24, 4, hc);
-    // cheek guards
-    Raylib.DrawRectangle(x + 8,  y + 10, 5, 8, hc);
-    Raylib.DrawRectangle(x + 27, y + 10, 5, 8, hc);
+Color fc = Program.playerFacialHairColor;
+switch (Program.playerFacialHair)
+{
+    case "Stubble":
+        Raylib.DrawRectangle(x + 13, y + 17, 14, 4, new Color(fc.R, fc.G, fc.B, (byte)140)); // semi-transparent stubble
+        break;
+    case "Moustache":
+        Raylib.DrawRectangle(x + 13, y + 16, 14, 3, fc);
+        break;
+    case "Goatee":
+        Raylib.DrawRectangle(x + 13, y + 16, 14, 3, fc);  // moustache
+        Raylib.DrawRectangle(x + 16, y + 19, 8,  5, fc);  // chin strip
+        break;
+    case "Full Beard":
+        Raylib.DrawRectangle(x + 11, y + 16, 18, 3, fc);  // moustache
+        Raylib.DrawRectangle(x + 10, y + 19, 20, 6, fc);  // full jaw
+        break;
+}
 }
 
-    // mouth
+    //Mouth
     Raylib.DrawRectangle(x + 15, y + 17, 10, 2, new Color((byte)150,(byte)80,(byte)80,(byte)255));
+
+    // Hair — drawn after head, before helmet
+if (Program.armorHelmet == null)
+{
+    switch (Program.playerHairStyle)
+    {
+        case "Buzz Cut":
+            Raylib.DrawRectangle(x + 9, y -2, 22, 6, Program.playerHairColor);
+            break;
+        case "Flow":
+            Raylib.DrawRectangle(x + 8, y + 2, 24, 8, Program.playerHairColor);
+            Raylib.DrawRectangle(x + 6, y + 8, 6, 14, Program.playerHairColor);  // left flow
+            Raylib.DrawRectangle(x + 28, y + 8, 6, 14, Program.playerHairColor);  // right flow
+            break;
+        case "Curtains":
+            Raylib.DrawRectangle(x + 8, y - 2, 24, 7, Program.playerHairColor);
+            Raylib.DrawRectangle(x + 8, y + 4, 8, 10, Program.playerHairColor);   // left curtain
+            Raylib.DrawRectangle(x + 24, y + 4, 8, 10, Program.playerHairColor);  // right curtain
+            break;
+        case "Mohawk":
+            Raylib.DrawRectangle(x + 17, y - 8, 6, 14, Program.playerHairColor);
+            break;
+        case "Bald":
+            // no hair drawn
+            break;
+    }
+}
+
     // body/shirt
     Raylib.DrawRectangle(x + 10, y + 24, 20, 30, ShirtColor);
-    // arms - swing when walking
-    int armSwing = isMoving ? (walkFrame ? 4 : -4) : 0;
-    Raylib.DrawRectangle(x + 2,  y + 26 + armSwing, 8, 18, SkinColor);  // left arm
-    Raylib.DrawRectangle(x + 30, y + 26 - armSwing, 8, 18, SkinColor);  // right arm
-    // legs - alternate
-    if (isMoving)
-    {
-        if (walkFrame)
-        {
-            Raylib.DrawRectangle(x + 10, y + 54,     8, 16, PantsColor); // left forward
-            Raylib.DrawRectangle(x + 22, y + 54 - 6, 8, 16, PantsColor); // right back
-        }
-        else
-        {
-            Raylib.DrawRectangle(x + 10, y + 54 - 6, 8, 16, PantsColor); // left back
-            Raylib.DrawRectangle(x + 22, y + 54,     8, 16, PantsColor); // right forward
-        }
-    }
-    else
-    {
-        Raylib.DrawRectangle(x + 10, y + 54, 8, 12, PantsColor);
-        Raylib.DrawRectangle(x + 22, y + 54, 8, 12, PantsColor);
-    }
-    if (Program.armorBoots != null)
-{
-    Color bc = new Color((byte)100, (byte)65, (byte)25, (byte)255);
-    if (Program.armorBoots.Contains("Iron")) bc = new Color((byte)120, (byte)120, (byte)130, (byte)255);
-    if (Program.armorBoots.Contains("Steel")) bc = new Color((byte)160, (byte)165, (byte)175, (byte)255);
 
-    // left boot
-    Raylib.DrawRectangle(x + 9, y + 63, 10, 7, bc);
-    // right boot
-    Raylib.DrawRectangle(x + 21, y + 63, 10, 7, bc);
-}
-}
+    // body armor over shirt
+    if (Program.armorBody != null)
+    {
+        Color col = ArmorColor(Program.armorBody, new Color((byte)120,(byte)80,(byte)30,(byte)255));
+        Raylib.DrawRectangle(x + 10, y + 24, 20, 30, col);
+        Raylib.DrawRectangle(x + 13, y + 28, 14, 10, new Color((byte)Math.Max(0,col.R-25),(byte)Math.Max(0,col.G-25),(byte)Math.Max(0,col.B-25),(byte)255));
+    }
 
-void DrawFacingUp(int x, int y)
-{
-    // head (back of head - slightly darker)
-    Raylib.DrawCircle(x + 20, y + 12, 12, 
-        new Color((byte)Math.Max(0, SkinColor.R - 30),
-                  (byte)Math.Max(0, SkinColor.G - 30),
-                  (byte)Math.Max(0, SkinColor.B - 30), (byte)255));
-    // hair/top of head detail
-    Raylib.DrawRectangle(x + 10, y + 2, 20, 8, new Color((byte)60,(byte)40,(byte)20,(byte)255));
-    // body/shirt back
-    Raylib.DrawRectangle(x + 10, y + 24, 20, 30, ShirtColor);
-    // arms swing
-    int armSwing = isMoving ? (walkFrame ? 4 : -4) : 0;
+    // arms
     Raylib.DrawRectangle(x + 2,  y + 26 + armSwing, 8, 18, SkinColor);
     Raylib.DrawRectangle(x + 30, y + 26 - armSwing, 8, 18, SkinColor);
+
+    // gloves
+    if (Program.armorGloves != null)
+    {
+        Color col = ArmorColor(Program.armorGloves, new Color((byte)120,(byte)80,(byte)30,(byte)255));
+        Raylib.DrawRectangle(x + 2,  y + 38 + armSwing, 8, 8, col);
+        Raylib.DrawRectangle(x + 30, y + 38 - armSwing, 8, 8, col);
+    }
+
     // legs
     if (isMoving)
     {
@@ -17642,37 +22321,387 @@ void DrawFacingUp(int x, int y)
         Raylib.DrawRectangle(x + 10, y + 54, 8, 12, PantsColor);
         Raylib.DrawRectangle(x + 22, y + 54, 8, 12, PantsColor);
     }
+
+    // leg armor
+        if (Program.armorLegs != null)
+        {
+            Color col = ArmorColor(Program.armorLegs, new Color((byte)90,(byte)90,(byte)100,(byte)255));
+            if (isMoving)
+            {
+                if (walkFrame)
+                {
+                    Raylib.DrawRectangle(x + 10, y + 54,     8, 10, col);
+                    Raylib.DrawRectangle(x + 22, y + 54 - 6, 8, 10, col);
+                }
+                else
+                {
+                    Raylib.DrawRectangle(x + 10, y + 54 - 6, 8, 10, col);
+                    Raylib.DrawRectangle(x + 22, y + 54,     8, 10, col);
+                }
+            }
+            else
+            {
+                Raylib.DrawRectangle(x + 10, y + 54, 8, 10, col);
+                Raylib.DrawRectangle(x + 22, y + 54, 8, 10, col);
+            }
+        }
+
+    // boots — follow the walk cycle
+    if (Program.armorBoots != null)
+    {
+        Color bc = ArmorColor(Program.armorBoots, new Color((byte)100,(byte)65,(byte)25,(byte)255));
+        if (isMoving)
+        {
+            if (walkFrame)
+            {
+                Raylib.DrawRectangle(x + 9,  y + 63,     10, 7, bc);
+                Raylib.DrawRectangle(x + 21, y + 63 - 6, 10, 7, bc);
+            }
+            else
+            {
+                Raylib.DrawRectangle(x + 9,  y + 63 - 6, 10, 7, bc);
+                Raylib.DrawRectangle(x + 21, y + 63,     10, 7, bc);
+            }
+        }
+        else
+        {
+            Raylib.DrawRectangle(x + 9,  y + 63, 10, 7, bc);
+            Raylib.DrawRectangle(x + 21, y + 63, 10, 7, bc);
+        }
+    }
+
+    // helmet — covers top and sides of face, leaves chin/mouth exposed
+if (Program.armorHelmet != null)
+{
+    Color hc = ArmorColor(Program.armorHelmet, new Color((byte)120,(byte)80,(byte)30,(byte)255));
+
+    // dome over the top of the head
+    Raylib.DrawCircle(x + 20, y + 8, 13, hc);
+    // square off the top so it sits like a helm
+    Raylib.DrawRectangle(x + 7, y + 2, 26, 8, hc);
+
+    // side cheek guards down the sides of the face
+    Raylib.DrawRectangle(x + 7,  y + 8, 6, 10, hc);   // left guard
+    Raylib.DrawRectangle(x + 27, y + 8, 6, 10, hc);   // right guard
+
+    // brow brim across the forehead (just above the eyes)
+    Raylib.DrawRectangle(x + 7, y + 7, 26, 4, new Color((byte)Math.Max(0,hc.R-25),(byte)Math.Max(0,hc.G-25),(byte)Math.Max(0,hc.B-25),(byte)255));
+
+    // spike on top — skip for Mystical and Magic
+    if (!Program.armorHelmet.Contains("Mystical") && !Program.armorHelmet.Contains("Magic") && !Program.armorHelmet.Contains("Infernal"))
+    {
+        Color spikeCol = new Color((byte)Math.Min(255,hc.R+30),(byte)Math.Min(255,hc.G+30),(byte)Math.Min(255,hc.B+30),(byte)255);
+        Raylib.DrawTriangle(
+            new Vector2(x + 17, y + 1),
+            new Vector2(x + 23, y + 1),
+            new Vector2(x + 20, y - 7),
+            spikeCol);
+    }
 }
 
-void DrawFacingLeft(int x, int y)
+// Mystical helmet 
+if (Program.armorHelmet != null && Program.armorHelmet.Contains("Mystical"))
 {
-    // head - side profile
-    Raylib.DrawCircle(x + 18, y + 12, 12, SkinColor);
-    // eye
-    Raylib.DrawCircle(x + 12, y + 10, 2, Color.Black);
-    // nose
-    Raylib.DrawRectangle(x + 8, y + 14, 4, 3, 
-        new Color((byte)Math.Max(0, SkinColor.R - 20),
-                  (byte)Math.Max(0, SkinColor.G - 20),
-                  (byte)Math.Max(0, SkinColor.B - 20), (byte)255));
-    // body - narrower side view
-    Raylib.DrawRectangle(x + 12, y + 24, 14, 30, ShirtColor);
-    // visible arm (front arm swings)
-    int armSwing = isMoving ? (walkFrame ? 6 : -2) : 0;
-    Raylib.DrawRectangle(x + 10, y + 26 + armSwing, 8, 16, SkinColor);
-    // legs - side walk cycle
+    Color horn = new Color((byte)255, (byte)215, (byte)0, (byte)255);
+
+    // LEFT horn — segments overlap and step out/up
+    Raylib.DrawRectangle(x + 4, y + 2, 6, 5, horn);        // base
+    Raylib.DrawRectangle(x + 1, y - 2, 6, 5, horn);        // mid (overlaps base)
+    Raylib.DrawTriangle(                                     // tip
+        new Vector2(x + 1, y - 2),
+        new Vector2(x + 6, y - 2),
+        new Vector2(x + 2, y - 11),
+        horn);
+
+    // RIGHT horn
+    Raylib.DrawRectangle(x + 30, y + 2, 6, 5, horn);
+    Raylib.DrawRectangle(x + 33, y - 2, 6, 5, horn);
+    Raylib.DrawTriangle(
+        new Vector2(x + 33, y - 2),
+        new Vector2(x + 38, y - 2),
+        new Vector2(x + 37, y - 11),
+        horn);
+}
+
+// infernal helmet horns — smooth curved horns from angled quads (FacingDown test)
+if (Program.armorHelmet != null && Program.armorHelmet.Contains("Infernal"))
+{
+    Color horn = new Color((byte)30,(byte)25,(byte)25,(byte)255);
+
+    DrawHorn(x + 12, y + 6, -1, horn);   // left horn (sweeps left, curls in)
+    DrawHorn(x + 28, y + 6, +1, horn);   // right horn (mirrored)
+}
+
+
+    // Shield
+    if (Program.armorShield != null && !Program.IsTwoHandedWeapon(Program.armorWeapon))
+    {
+        Color col = ArmorColor(Program.armorShield, new Color((byte)100,(byte)80,(byte)40,(byte)255));
+        Raylib.DrawRectangle(x + 4, y + 30 + armSwing, 8, 16, col);
+    }
+}
+
+void DrawFacingUp(int x, int y)
+{
+    int armSwing = isMoving ? (walkFrame ? 4 : -4) : 0;
+
+    // head (back, darker)
+    Raylib.DrawCircle(x + 20, y + 12, 12,
+        new Color((byte)Math.Max(0,SkinColor.R-30),(byte)Math.Max(0,SkinColor.G-30),(byte)Math.Max(0,SkinColor.B-30),(byte)255));
+    
+    if (Program.armorHelmet == null)
+{
+    switch (Program.playerHairStyle)
+    {
+        case "Buzz Cut":
+            Raylib.DrawRectangle(x + 9, y + 2, 22, 6, Program.playerHairColor);
+            break;
+        case "Flow":
+            Raylib.DrawRectangle(x + 8, y + 2, 24, 8, Program.playerHairColor);
+            Raylib.DrawRectangle(x + 6, y + 8, 6, 12, Program.playerHairColor);   // left flow (visible from behind)
+            Raylib.DrawRectangle(x + 28, y + 8, 6, 12, Program.playerHairColor);  // right flow
+            break;
+        case "Curtains":
+            Raylib.DrawRectangle(x + 8, y + 2, 24, 7, Program.playerHairColor);
+            Raylib.DrawRectangle(x + 8, y + 8, 7, 10, Program.playerHairColor);   // left curtain
+            Raylib.DrawRectangle(x + 25, y + 8, 7, 10, Program.playerHairColor);  // right curtain
+            break;
+        case "Mohawk":
+            Raylib.DrawRectangle(x + 17, y - 4, 6, 14, Program.playerHairColor);
+            break;
+        case "Bald":
+            // no hair drawn
+            break;
+        default:
+            Raylib.DrawRectangle(x + 9, y + 2, 22, 6, Program.playerHairColor);
+            break;
+    }
+}
+    
+
+    // shirt
+    Raylib.DrawRectangle(x + 10, y + 24, 20, 30, ShirtColor);
+
+    // body armor
+    if (Program.armorBody != null)
+    {
+        Color col = ArmorColor(Program.armorBody, new Color((byte)120,(byte)80,(byte)30,(byte)255));
+        Raylib.DrawRectangle(x + 10, y + 24, 20, 30, col);
+    }
+
+    // arms
+    Raylib.DrawRectangle(x + 2,  y + 26 + armSwing, 8, 18, SkinColor);
+    Raylib.DrawRectangle(x + 30, y + 26 - armSwing, 8, 18, SkinColor);
+
+    // gloves
+    if (Program.armorGloves != null)
+    {
+        Color col = ArmorColor(Program.armorGloves, new Color((byte)120,(byte)80,(byte)30,(byte)255));
+        Raylib.DrawRectangle(x + 2,  y + 38 + armSwing, 8, 8, col);
+        Raylib.DrawRectangle(x + 30, y + 38 - armSwing, 8, 8, col);
+    }
+
+    // legs
     if (isMoving)
     {
         if (walkFrame)
         {
-            // left leg forward (toward screen left)
-            Raylib.DrawRectangle(x + 8,  y + 54,      8, 16, PantsColor);
-            Raylib.DrawRectangle(x + 16, y + 54 - 8,  8, 16, PantsColor);
+            Raylib.DrawRectangle(x + 10, y + 54,     8, 16, PantsColor);
+            Raylib.DrawRectangle(x + 22, y + 54 - 6, 8, 16, PantsColor);
         }
         else
         {
-            Raylib.DrawRectangle(x + 8,  y + 54 - 8,  8, 16, PantsColor);
-            Raylib.DrawRectangle(x + 16, y + 54,       8, 16, PantsColor);
+            Raylib.DrawRectangle(x + 10, y + 54 - 6, 8, 16, PantsColor);
+            Raylib.DrawRectangle(x + 22, y + 54,     8, 16, PantsColor);
+        }
+    }
+    else
+    {
+        Raylib.DrawRectangle(x + 10, y + 54, 8, 12, PantsColor);
+        Raylib.DrawRectangle(x + 22, y + 54, 8, 12, PantsColor);
+    }
+
+    // leg armor — follows the walk cycle
+    if (Program.armorLegs != null)
+    {
+        Color col = ArmorColor(Program.armorLegs, new Color((byte)90,(byte)90,(byte)100,(byte)255));
+        if (isMoving)
+        {
+            if (walkFrame)
+            {
+                Raylib.DrawRectangle(x + 10, y + 54,     8, 10, col);
+                Raylib.DrawRectangle(x + 22, y + 54 - 6, 8, 10, col);
+            }
+            else
+            {
+                Raylib.DrawRectangle(x + 10, y + 54 - 6, 8, 10, col);
+                Raylib.DrawRectangle(x + 22, y + 54,     8, 10, col);
+            }
+        }
+        else
+        {
+            Raylib.DrawRectangle(x + 10, y + 54, 8, 10, col);
+            Raylib.DrawRectangle(x + 22, y + 54, 8, 10, col);
+        }
+    }
+
+    // boots — follow the walk cycle
+        if (Program.armorBoots != null)
+        {
+            Color bc = ArmorColor(Program.armorBoots, new Color((byte)100,(byte)65,(byte)25,(byte)255));
+            if (isMoving)
+            {
+                if (walkFrame)
+                {
+                    Raylib.DrawRectangle(x + 9,  y + 63,     10, 7, bc);
+                    Raylib.DrawRectangle(x + 21, y + 63 - 6, 10, 7, bc);
+                }
+                else
+                {
+                    Raylib.DrawRectangle(x + 9,  y + 63 - 6, 10, 7, bc);
+                    Raylib.DrawRectangle(x + 21, y + 63,     10, 7, bc);
+                }
+            }
+            else
+            {
+                Raylib.DrawRectangle(x + 9,  y + 63, 10, 7, bc);
+                Raylib.DrawRectangle(x + 21, y + 63, 10, 7, bc);
+            }
+        }
+
+        // helmet — back view, fully covers the head
+if (Program.armorHelmet != null)
+{
+    Color hc = ArmorColor(Program.armorHelmet, new Color((byte)120,(byte)80,(byte)30,(byte)255));
+
+    // dome covering the whole back of the head
+    Raylib.DrawCircle(x + 20, y + 10, 13, hc);
+    // square off the top
+    Raylib.DrawRectangle(x + 7, y + 2, 26, 9, hc);
+
+    // side guards wrapping down both sides
+    Raylib.DrawRectangle(x + 7,  y + 10, 6, 9, hc);   // left
+    Raylib.DrawRectangle(x + 27, y + 10, 6, 9, hc);   // right
+
+    // neck guard at the bottom (back of neck)
+    Raylib.DrawRectangle(x + 11, y + 16, 18, 5, new Color((byte)Math.Max(0,hc.R-25),(byte)Math.Max(0,hc.G-25),(byte)Math.Max(0,hc.B-25),(byte)255));
+
+   // spike on top
+   if (!Program.armorHelmet.Contains("Mystical") && !Program.armorHelmet.Contains("Magic") && !Program.armorHelmet.Contains("Infernal"))
+    {
+    Color spikeCol = new Color((byte)Math.Min(255,hc.R+30),(byte)Math.Min(255,hc.G+30),(byte)Math.Min(255,hc.B+30),(byte)255);
+    Raylib.DrawTriangle(
+        new Vector2(x + 17, y + 1),
+        new Vector2(x + 23, y + 1),
+        new Vector2(x + 20, y - 7),
+        spikeCol);
+    }
+}
+if (Program.armorHelmet != null && Program.armorHelmet.Contains("Mystical"))
+{
+    Color horn = new Color((byte)255, (byte)215, (byte)0, (byte)255);
+    // left
+    Raylib.DrawRectangle(x + 4, y + 2, 6, 5, horn);
+    Raylib.DrawRectangle(x + 1, y - 2, 6, 5, horn);
+    Raylib.DrawTriangle(new Vector2(x + 1, y - 2), new Vector2(x + 6, y - 2), new Vector2(x + 2, y - 11), horn);
+    // right
+    Raylib.DrawRectangle(x + 30, y + 2, 6, 5, horn);
+    Raylib.DrawRectangle(x + 33, y - 2, 6, 5, horn);
+    Raylib.DrawTriangle(new Vector2(x + 33, y - 2), new Vector2(x + 38, y - 2), new Vector2(x + 37, y - 11), horn);
+}
+if (Program.armorHelmet != null && Program.armorHelmet.Contains("Infernal"))
+{
+    Color horn = new Color((byte)30,(byte)25,(byte)25,(byte)255);
+    DrawHorn(x + 12, y + 6, -1, horn);   // left
+    DrawHorn(x + 28, y + 6, +1, horn);   // right
+}
+
+     // cape (very visible from behind)
+    if (Program.armorCape != null)
+    {
+        Color cc = ArmorColor(Program.armorCape, new Color((byte)140,(byte)60,(byte)60,(byte)255));
+        Raylib.DrawRectangle(x + 10, y + 22, 20, 34, cc);
+    }
+}
+
+void DrawFacingLeft(int x, int y)
+{
+    int armSwing = isMoving ? (walkFrame ? 6 : -2) : 0;
+
+        // shield (left side, moves with left arm)
+    if (Program.armorShield != null && !Program.IsTwoHandedWeapon(Program.armorWeapon))
+    {
+        Color col = ArmorColor(Program.armorShield, new Color((byte)100,(byte)80,(byte)40,(byte)255));
+        Raylib.DrawRectangle(x - 2, y + 28 + armSwing, 10, 18, col);
+        Raylib.DrawCircle(x + 3, y + 37 + armSwing, 3, new Color((byte)180,(byte)140,(byte)40,(byte)255));
+    }
+
+    // cape (trails behind, to the right when facing left)
+    if (Program.armorCape != null)
+    {
+        Color cc = ArmorColor(Program.armorCape, new Color((byte)140,(byte)60,(byte)60,(byte)255));
+        Raylib.DrawRectangle(x + 18, y + 24, 12, 28, cc);
+    }
+
+    // head
+    Raylib.DrawCircle(x + 18, y + 12, 12, SkinColor);
+    Raylib.DrawCircle(x + 12, y + 10, 2, Color.Black);
+    Raylib.DrawRectangle(x + 8, y + 14, 4, 3,
+        new Color((byte)Math.Max(0,SkinColor.R-20),(byte)Math.Max(0,SkinColor.G-20),(byte)Math.Max(0,SkinColor.B-20),(byte)255));
+
+if (Program.armorHelmet == null)
+{
+    Color fc = Program.playerFacialHairColor;
+    switch (Program.playerFacialHair)
+{
+    case "Stubble":
+        Raylib.DrawRectangle(x + 20, y + 16, 6, 4, new Color(fc.R, fc.G, fc.B, (byte)140));
+        break;
+    case "Moustache":
+        Raylib.DrawRectangle(x + 20, y + 15, 7, 3, fc);
+        break;
+    case "Goatee":
+        Raylib.DrawRectangle(x + 20, y + 15, 7, 3, fc);
+        Raylib.DrawRectangle(x + 21, y + 18, 4, 5, fc);
+        break;
+    case "Full Beard":
+        Raylib.DrawRectangle(x + 18, y + 15, 9, 3, fc);
+        Raylib.DrawRectangle(x + 17, y + 18, 10, 6, fc);
+        break;
+}
+}
+
+    Raylib.DrawRectangle(x + 8, y + 14, 4, 3,
+        new Color((byte)Math.Max(0,SkinColor.R-20),(byte)Math.Max(0,SkinColor.G-20),(byte)Math.Max(0,SkinColor.B-20),(byte)255));
+
+    // body
+    Raylib.DrawRectangle(x + 12, y + 24, 14, 30, ShirtColor);
+    if (Program.armorBody != null)
+    {
+        Color col = ArmorColor(Program.armorBody, new Color((byte)120,(byte)80,(byte)30,(byte)255));
+        Raylib.DrawRectangle(x + 12, y + 24, 14, 30, col);
+    }
+
+    // arm
+    Raylib.DrawRectangle(x + 10, y + 26 + armSwing, 8, 16, SkinColor);
+    if (Program.armorGloves != null)
+    {
+        Color col = ArmorColor(Program.armorGloves, new Color((byte)120,(byte)80,(byte)30,(byte)255));
+        Raylib.DrawRectangle(x + 10, y + 38 + armSwing, 8, 7, col);
+    }
+
+    // legs
+    if (isMoving)
+    {
+        if (walkFrame)
+        {
+            Raylib.DrawRectangle(x + 8,  y + 54,     8, 16, PantsColor);
+            Raylib.DrawRectangle(x + 16, y + 54 - 8, 8, 16, PantsColor);
+        }
+        else
+        {
+            Raylib.DrawRectangle(x + 8,  y + 54 - 8, 8, 16, PantsColor);
+            Raylib.DrawRectangle(x + 16, y + 54,     8, 16, PantsColor);
         }
     }
     else
@@ -17680,54 +22709,151 @@ void DrawFacingLeft(int x, int y)
         Raylib.DrawRectangle(x + 8,  y + 54, 8, 12, PantsColor);
         Raylib.DrawRectangle(x + 16, y + 54, 8, 12, PantsColor);
     }
-    if (Program.armorBoots != null)
-{
-    Color bc = new Color((byte)100, (byte)65, (byte)25, (byte)255);
-    if (Program.armorBoots.Contains("Iron"))  bc = new Color((byte)120, (byte)120, (byte)130, (byte)255);
-    if (Program.armorBoots.Contains("Steel")) bc = new Color((byte)160, (byte)165, (byte)175, (byte)255);
 
+    // leg armor
+    if (Program.armorLegs != null)
+{
+    Color col = ArmorColor(Program.armorLegs, new Color((byte)90,(byte)90,(byte)100,(byte)255));
+    // match the leg positions including the lift, and make taller to cover tops
     if (isMoving)
     {
         if (walkFrame)
         {
-            // left leg forward — boot at bottom of forward leg
-            Raylib.DrawRectangle(x + 6,  y + 56 + 8,  10, 6, bc); // forward foot
-            Raylib.DrawRectangle(x + 14, y + 56 - 8 + 8, 10, 6, bc); // back foot (raised)
+            Raylib.DrawRectangle(x + 8,  y + 54,     8, 14, col);
+            Raylib.DrawRectangle(x + 16, y + 54 - 8, 8, 14, col);
         }
         else
         {
-            // legs swapped
-            Raylib.DrawRectangle(x + 6,  y + 56 - 8 + 8, 10, 6, bc); // back foot (raised)
-            Raylib.DrawRectangle(x + 14, y + 56 + 8,     10, 6, bc); // forward foot
+            Raylib.DrawRectangle(x + 8,  y + 54 - 8, 8, 14, col);
+            Raylib.DrawRectangle(x + 16, y + 54,     8, 14, col);
         }
     }
     else
     {
-        // standing still — boots sit flat at bottom of each leg
-        Raylib.DrawRectangle(x + 6,  y + 62, 10, 6, bc);
-        Raylib.DrawRectangle(x + 14, y + 62, 10, 6, bc);
+        Raylib.DrawRectangle(x + 8,  y + 54, 8, 12, col);
+        Raylib.DrawRectangle(x + 16, y + 54, 8, 12, col);
     }
+}
+
+    // boots
+    if (Program.armorBoots != null)
+    {
+        Color bc = ArmorColor(Program.armorBoots, new Color((byte)100,(byte)65,(byte)25,(byte)255));
+        if (isMoving)
+        {
+            if (walkFrame)
+            {
+                Raylib.DrawRectangle(x + 6,  y + 64, 10, 6, bc);
+                Raylib.DrawRectangle(x + 14, y + 56, 10, 6, bc);
+            }
+            else
+            {
+                Raylib.DrawRectangle(x + 6,  y + 56, 10, 6, bc);
+                Raylib.DrawRectangle(x + 14, y + 64, 10, 6, bc);
+            }
+        }
+        else
+        {
+            Raylib.DrawRectangle(x + 6,  y + 62, 10, 6, bc);
+            Raylib.DrawRectangle(x + 14, y + 62, 10, 6, bc);
+        }
+    }
+
+    // helmet — side profile, covers top/back, exposes lower front face
+if (Program.armorHelmet != null)
+{
+    Color hc = ArmorColor(Program.armorHelmet, new Color((byte)120,(byte)80,(byte)30,(byte)255));
+
+    // dome over the head
+    Raylib.DrawCircle(x + 18, y + 8, 13, hc);
+    Raylib.DrawRectangle(x + 6, y + 2, 26, 8, hc);
+
+    // back of head guard (right side when facing left)
+    Raylib.DrawRectangle(x + 24, y + 8, 6, 11, hc);
+
+    // front cheek guard (partial, down the face — leaves mouth/chin open)
+    Raylib.DrawRectangle(x + 6, y + 8, 5, 7, hc);
+
+    // brow brim
+    Raylib.DrawRectangle(x + 6, y + 7, 26, 4, new Color((byte)Math.Max(0,hc.R-25),(byte)Math.Max(0,hc.G-25),(byte)Math.Max(0,hc.B-25),(byte)255));
+
+    // spike on top
+    if (!Program.armorHelmet.Contains("Mystical") && !Program.armorHelmet.Contains("Magic") && !Program.armorHelmet.Contains("Infernal"))
+    {
+    Color spikeCol = new Color((byte)Math.Min(255,hc.R+30),(byte)Math.Min(255,hc.G+30),(byte)Math.Min(255,hc.B+30),(byte)255);
+    Raylib.DrawTriangle(
+        new Vector2(x + 15, y + 1),
+        new Vector2(x + 21, y + 1),
+        new Vector2(x + 18, y - 7),
+        spikeCol);
+    }
+}
+if (Program.armorHelmet != null && Program.armorHelmet.Contains("Mystical"))
+{
+   Color horn = new Color((byte)255, (byte)215, (byte)0, (byte)255);
+Color hornFar = new Color((byte)255, (byte)225, (byte)0, (byte)255);
+
+// FAR horn (other side) — tip peeking, behind
+Raylib.DrawTriangle(
+    new Vector2(x + 24, y - 2),
+    new Vector2(x + 28, y - 2),
+    new Vector2(x + 38, y - 15),
+    hornFar);
+
+// NEAR horn — full horn curving back-right
+Raylib.DrawRectangle(x + 18, y, 6, 5, horn);
+Raylib.DrawRectangle(x + 22, y - 4, 6, 5, horn);
+Raylib.DrawTriangle(
+    new Vector2(x + 22, y - 4),
+    new Vector2(x + 29, y - 4),
+    new Vector2(x + 33, y - 14),
+    horn);
+}
+if (Program.armorHelmet != null && Program.armorHelmet.Contains("Infernal"))
+{
+    Color horn = new Color((byte)30,(byte)25,(byte)25,(byte)255);
+    Color hornFar = new Color((byte)22,(byte)18,(byte)18,(byte)255);
+
+    // far horn (other side of head) — both sweep back-right
+    DrawHorn(x + 22, y + 5, +1, hornFar);
+    // near horn
+    DrawHorn(x + 18, y + 6, +1, horn);
 }
 }
 
 void DrawFacingRight(int x, int y)
 {
-    // head - side profile (mirrored)
+    int armSwing = isMoving ? (walkFrame ? 6 : -2) : 0;
+
+    // cape (trails behind, to the left when facing right)
+    if (Program.armorCape != null)
+    {
+        Color cc = ArmorColor(Program.armorCape, new Color((byte)140,(byte)60,(byte)60,(byte)255));
+        Raylib.DrawRectangle(x + 10, y + 24, 12, 28, cc);
+    }
+
+    // head
     Raylib.DrawCircle(x + 22, y + 12, 12, SkinColor);
-    // eye
     Raylib.DrawCircle(x + 28, y + 10, 2, Color.Black);
-    // nose
     Raylib.DrawRectangle(x + 28, y + 14, 4, 3,
-        new Color((byte)Math.Max(0, SkinColor.R - 20),
-                  (byte)Math.Max(0, SkinColor.G - 20),
-                  (byte)Math.Max(0, SkinColor.B - 20), (byte)255));
+        new Color((byte)Math.Max(0,SkinColor.R-20),(byte)Math.Max(0,SkinColor.G-20),(byte)Math.Max(0,SkinColor.B-20),(byte)255));
+
     // body
     Raylib.DrawRectangle(x + 14, y + 24, 14, 30, ShirtColor);
-    // visible arm
-    int armSwing = isMoving ? (walkFrame ? 6 : -2) : 0;
-    Raylib.DrawRectangle(x + 22, y + 26 + armSwing, 8, 16, SkinColor);
+    if (Program.armorBody != null)
+    {
+        Color col = ArmorColor(Program.armorBody, new Color((byte)120,(byte)80,(byte)30,(byte)255));
+        Raylib.DrawRectangle(x + 14, y + 24, 14, 30, col);
+    }
 
-    
+    // arm
+    Raylib.DrawRectangle(x + 22, y + 26 + armSwing, 8, 16, SkinColor);
+    if (Program.armorGloves != null)
+    {
+        Color col = ArmorColor(Program.armorGloves, new Color((byte)120,(byte)80,(byte)30,(byte)255));
+        Raylib.DrawRectangle(x + 22, y + 38 + armSwing, 8, 7, col);
+    }
+
     // legs
     if (isMoving)
     {
@@ -17747,326 +22873,676 @@ void DrawFacingRight(int x, int y)
         Raylib.DrawRectangle(x + 16, y + 54, 8, 12, PantsColor);
         Raylib.DrawRectangle(x + 24, y + 54, 8, 12, PantsColor);
     }
+
+    if (Program.armorLegs != null)
+{
+    Color col = ArmorColor(Program.armorLegs, new Color((byte)90,(byte)90,(byte)100,(byte)255));
+    // match the leg positions including the lift, and make taller to cover tops
+    if (isMoving)
+    {
+        if (walkFrame)
+        {
+            Raylib.DrawRectangle(x + 16,  y + 54,     8, 14, col);
+            Raylib.DrawRectangle(x + 24, y + 54 - 8, 8, 14, col);
+        }
+        else
+        {
+            Raylib.DrawRectangle(x + 16,  y + 54 - 8, 8, 14, col);
+            Raylib.DrawRectangle(x + 24, y + 54,     8, 14, col);
+        }
+    }
+    else
+    {
+        Raylib.DrawRectangle(x +16,  y + 54, 8, 12, col);
+        Raylib.DrawRectangle(x + 24, y + 54, 8, 12, col);
+    }
+}
+
+    // boots
+    if (Program.armorBoots != null)
+    {
+        Color bc = ArmorColor(Program.armorBoots, new Color((byte)100,(byte)65,(byte)25,(byte)255));
+        if (isMoving)
+        {
+            if (walkFrame)
+            {
+                Raylib.DrawRectangle(x + 14, y + 64, 10, 6, bc);
+                Raylib.DrawRectangle(x + 22, y + 56, 10, 6, bc);
+            }
+            else
+            {
+                Raylib.DrawRectangle(x + 14, y + 56, 10, 6, bc);
+                Raylib.DrawRectangle(x + 22, y + 64, 10, 6, bc);
+            }
+        }
+        else
+        {
+            Raylib.DrawRectangle(x + 14, y + 62, 10, 6, bc);
+            Raylib.DrawRectangle(x + 22, y + 62, 10, 6, bc);
+        }
+    }
+
+    // helmet — side profile, covers top/back, exposes lower front face
+if (Program.armorHelmet != null)
+{
+    Color hc = ArmorColor(Program.armorHelmet, new Color((byte)120,(byte)80,(byte)30,(byte)255));
+
+    // dome over the head
+    Raylib.DrawCircle(x + 22, y + 8, 13, hc);
+    Raylib.DrawRectangle(x + 9, y + 2, 26, 8, hc);
+
+    // back of head guard (left side when facing right)
+    Raylib.DrawRectangle(x + 10, y + 8, 6, 11, hc);
+
+    // front cheek guard (partial, leaves mouth/chin open)
+    Raylib.DrawRectangle(x + 29, y + 8, 5, 7, hc);
+
+    // brow brim
+    Raylib.DrawRectangle(x + 9, y + 7, 26, 4, new Color((byte)Math.Max(0,hc.R-25),(byte)Math.Max(0,hc.G-25),(byte)Math.Max(0,hc.B-25),(byte)255));
+
+    // spike on top
+    if (!Program.armorHelmet.Contains("Mystical") && !Program.armorHelmet.Contains("Magic") && !Program.armorHelmet.Contains("Infernal"))
+    {
+    Color spikeCol = new Color((byte)Math.Min(255,hc.R+30),(byte)Math.Min(255,hc.G+30),(byte)Math.Min(255,hc.B+30),(byte)255);
+    Raylib.DrawTriangle(
+        new Vector2(x + 19, y + 1),
+        new Vector2(x + 25, y + 1),
+        new Vector2(x + 22, y - 7),
+        spikeCol);
+    }
+}
+if (Program.armorHelmet != null && Program.armorHelmet.Contains("Mystical"))
+{
+    Color horn = new Color((byte)255, (byte)215, (byte)0, (byte)255);
+    Color hornFar = new Color((byte)255, (byte)225, (byte)0, (byte)255);
+
+    // FAR horn (other side) — tip peeking, behind
+    Raylib.DrawTriangle(
+        new Vector2(x + 12, y - 2),
+        new Vector2(x + 17, y - 2),
+        new Vector2(x + 5, y - 15),
+        hornFar);
+
+    // NEAR horn — full horn curving back-left
+    Raylib.DrawRectangle(x + 16, y, 6, 5, horn);
+    Raylib.DrawRectangle(x + 12, y - 4, 6, 5, horn);
+    Raylib.DrawTriangle(
+        new Vector2(x + 12, y - 4),
+        new Vector2(x + 18, y - 4),
+        new Vector2(x + 9, y - 14),
+        horn);
+}
+if (Program.armorHelmet != null && Program.armorHelmet.Contains("Infernal"))
+{
+    Color horn = new Color((byte)30,(byte)25,(byte)25,(byte)255);
+    Color hornFar = new Color((byte)22,(byte)18,(byte)18,(byte)255);
+
+    // far horn (other side) — both sweep back-left
+    DrawHorn(x + 18, y + 5, -1, hornFar);
+    // near horn
+    DrawHorn(x + 22, y + 6, -1, horn);
+}
+}
+void DrawShieldRight(int x, int y)
+{
+    if (Program.armorShield != null && !Program.IsTwoHandedWeapon(Program.armorWeapon))
+    {
+        int armSwing = isMoving ? (walkFrame ? 6 : -2) : 0;
+        Color col = ArmorColor(Program.armorShield, new Color((byte)100,(byte)80,(byte)40,(byte)255));
+        Raylib.DrawRectangle(x + 28, y + 30 + armSwing, 10, 18, col);
+        Raylib.DrawCircle(x + 33, y + 39 + armSwing, 3, new Color((byte)180,(byte)140,(byte)40,(byte)255));
+    }
+}
+void DrawArmorAura(int x, int y)
+{
+    bool hasInfernal = HasMaterial("Infernal");
+    bool hasMagic = HasMaterial("Magic");
+
+    int cx = x + 20;   // player center
+    int cy = y + 35;
+
+    if (hasInfernal)
+{
+    float t = (float)Raylib.GetTime();
+
+    // flames licking up from the body
+    for (int i = 0; i < 10; i++)
+    {
+        float phase = t * 3f + i * 0.9f;
+        float baseX = cx - 18 + (i * 4);                  // spread across the body
+        float flameH = 12 + MathF.Sin(phase * 2f) * 8f;   // flame height varies
+        float sway = MathF.Sin(phase + i) * 3f;
+        float fx = baseX + sway;
+        float fy = cy + 18 - ((phase * 14f) % 40f);        // rise and loop
+
+        float life = (MathF.Sin(phase) + 1f) / 2f;
+        // flame color: bright yellow core fading to red tips
+        byte r = 255;
+        byte g = (byte)(120 + life * 130);
+        byte b = (byte)(life * 30);
+        byte a = (byte)(180 * life);
+        Raylib.DrawCircle((int)fx, (int)fy, 2.5f * life + 1f, new Color(r, g, b, a));
+    }
+
+    // occasional rising embers
+    for (int i = 0; i < 4; i++)
+    {
+        float phase = t * 2f + i * 1.7f;
+        float ex = cx + MathF.Sin(phase * 1.5f + i) * 20f;
+        float ey = cy + 15 - ((phase * 22f) % 55f);
+        float fade = 1f - ((phase * 22f) % 55f) / 55f;
+        Raylib.DrawCircle((int)ex, (int)ey, 1.5f, new Color((byte)255,(byte)160,(byte)40,(byte)(fade * 200)));
+    }
+}
+
+    if (hasMagic)
+    {
+        float t = (float)Raylib.GetTime();
+        // orbiting sparkles
+        for (int i = 0; i < 5; i++)
+        {
+            float ang = t * 2f + i * (MathF.PI * 2f / 5f);
+            float ex = cx + MathF.Cos(ang) * 26f;
+            float ey = cy + MathF.Sin(ang) * 20f;
+            float twinkle = (MathF.Sin(t * 5f + i) + 1f) / 2f;
+            byte a = (byte)(100 + twinkle * 130);
+            Raylib.DrawCircle((int)ex, (int)ey, 1.5f + twinkle * 2f,
+                new Color((byte)(150 + (byte)(twinkle*100)), (byte)80, (byte)255, a));
+        }
+        // pulsing aura ring
+        float pulse = (MathF.Sin(t * 2.5f) + 1f) / 2f;
+        Raylib.DrawCircleLines(cx, cy, 28 + pulse * 5f, new Color((byte)150,(byte)80,(byte)255,(byte)70));
+    }
+    if (HasMaterial("Mystical"))
+{
+    float t = (float)Raylib.GetTime();
+
+    // orbiting stars
+    for (int i = 0; i < 6; i++)
+    {
+        float ang = t * 1.5f + i * (MathF.PI * 2f / 6f);
+        float ex = cx + MathF.Cos(ang) * 28f;
+        float ey = cy + MathF.Sin(ang) * 22f;
+        float twinkle = (MathF.Sin(t * 4f + i) + 1f) / 2f;
+        byte a = (byte)(120 + twinkle * 135);
+        DrawStar((int)ex, (int)ey, 4f + twinkle * 2f, new Color((byte)255,(byte)255,(byte)240, a));
+    }
+
+    // soft white halo
+    float pulse = (MathF.Sin(t * 2f) + 1f) / 2f;
+    Raylib.DrawCircleLines(cx, cy, 30 + pulse * 4f, new Color((byte)255,(byte)255,(byte)255,(byte)70));
+}
+}
+
+bool HasMaterial(string mat)
+{
+    return (Program.armorHelmet != null && Program.armorHelmet.Contains(mat))
+        || (Program.armorBody   != null && Program.armorBody.Contains(mat))
+        || (Program.armorLegs   != null && Program.armorLegs.Contains(mat))
+        || (Program.armorBoots  != null && Program.armorBoots.Contains(mat))
+        || (Program.armorGloves != null && Program.armorGloves.Contains(mat))
+        || (Program.armorCape   != null && Program.armorCape.Contains(mat))
+        || (Program.armorShield != null && Program.armorShield.Contains(mat));
 }
 
 void DrawHeldItem(int x, int y, string tool)
 {
     if (tool == null) return;
 
+    bool isWeapon = tool.Contains("Sword") || tool.Contains("Stick")
+                 || tool.Contains("Bow") || tool.Contains("Crossbow")
+                 || tool.Contains("War Axe") || tool.Contains("Great Sword");
+    bool isChopTool = (tool.Contains("Axe") && !tool.Contains("War Axe"))
+                   || tool.Contains("Pickaxe");
+
+    float swing = GetSwingAngle();
+
+    // pivot point = the player's hand
+    float pivotX = x + 35;
+    float pivotY = y + 40;
+
+    if (Facing == FacingDirection.Left)  pivotX = x + 15;
+    if (Facing == FacingDirection.Right) pivotX = x + 25;
+    if (Facing == FacingDirection.Up)    pivotY = y + 26;
+    if (Facing == FacingDirection.Down)  pivotY = y + 38;
+
+    bool doRotate = isSwinging && (isWeapon || isChopTool);
+    bool sideways = (Facing == FacingDirection.Left || Facing == FacingDirection.Right);
+
+    if (doRotate && sideways)
+    {
+        // rotation swing for left/right (sideways arc)
+        float angle = swing;
+        if (isChopTool) angle = swing * 0.5f;
+        if (Facing == FacingDirection.Left) angle = -angle;
+
+        Rlgl.PushMatrix();
+        Rlgl.Translatef(pivotX, pivotY, 0);
+        Rlgl.Rotatef(angle, 0, 0, 1);
+        Rlgl.Translatef(-pivotX, -pivotY, 0);
+        DrawToolShapes(x, y, tool);
+        Rlgl.PopMatrix();
+    }
+    else if (doRotate && !sideways)
+{
+    // straight thrust toward/away from camera — no rotation
+    float t = swing / 90f;                          // 0..1..0
+    float thrust = MathF.Sin(t * MathF.PI) * 24f;  // how far it stabs
+    int dir = (Facing == FacingDirection.Down) ? 1 : -1;   // down = toward camera
+
+    // optional: grow slightly when thrusting toward camera (facing down)
+    float scale = (Facing == FacingDirection.Down)
+    ? 1f + MathF.Sin(t * MathF.PI) * 0.35f          // grows more dramatically
+    : 1f - MathF.Sin(t * MathF.PI) * 0.2f;    // shrink slightly going away (up)
+
+    Rlgl.PushMatrix();
+    Rlgl.Translatef(pivotX, pivotY, 0);
+    Rlgl.Scalef(scale, scale, 1);
+    Rlgl.Translatef(-pivotX, -pivotY, 0);
+    Rlgl.Translatef(0, thrust * dir, 0);            // straight push along Y
+    DrawToolShapes(x, y, tool);
+    Rlgl.PopMatrix();
+}
+    else
+    {
+        // not swinging — draw normally
+        DrawToolShapes(x, y, tool);
+    }
+}
+void DrawToolShapes(int x, int y, string tool)
+{
     switch (Facing)
     {
-        case FacingDirection.Right:
-        int armSwingRight = isMoving ? (walkFrame ? 3 : -3) : 0; 
-            switch (tool)
-            {
-                case "Axe":
-                    Raylib.DrawLineEx(new Vector2(x + 25, y + 40 + armSwingRight), new Vector2(x + 45, y + 40 + armSwingRight), 5,
-                        new Color((byte)120,(byte)80,(byte)30,(byte)255));
-                    Raylib.DrawLineEx(new Vector2(x + 41 , y + 40 + armSwingRight), new Vector2(x + 41, y + 48 + armSwingRight), 6,
-                        new Color((byte)160,(byte)160,(byte)170,(byte)255));
-                    break;
-                case "Pickaxe":
-                if (isMining)
-                    DrawPickaxeSwingRight(x, y);
-                    else
-                    {
-                    Raylib.DrawLineEx(new Vector2(x + 25, y + 40 + armSwingRight), new Vector2(x + 45, y + 40 + armSwingRight), 5,
-                        new Color((byte)120,(byte)80,(byte)30,(byte)255));
-                    Raylib.DrawLineEx(new Vector2(x + 45, y + 34 + armSwingRight), new Vector2(x + 45, y + 44 + armSwingRight), 3,
-                        new Color((byte)160,(byte)160,(byte)170,(byte)255));
-                    Raylib.DrawTriangle(
-                        new Vector2(x + 46, y + 44 + armSwingRight),
-                        new Vector2(x + 43, y + 44 + armSwingRight),
-                        new Vector2(x + 37, y + 52 + armSwingRight),
-                        new Color((byte)160,(byte)160,(byte)170,(byte)255));
-                    Raylib.DrawTriangle(
-                        new Vector2(x + 43, y + 34 + armSwingRight),
-                        new Vector2(x + 46, y + 34 + armSwingRight),
-                        new Vector2(x + 40, y + 30 + armSwingRight),
-                        new Color((byte)160,(byte)160,(byte)170,(byte)255));
-                    }
-                    break;
-                case "Stick":
-                    Raylib.DrawLineEx(new Vector2(x + 25, y + 40 + armSwingRight), new Vector2(x + 45, y + 40 + armSwingRight), 5,
-                        new Color((byte)120,(byte)80,(byte)30,(byte)255));
-                    break;
-                case "Sword":
-                    Raylib.DrawLineEx(new Vector2(x + 25, y + 40 + armSwingRight), new Vector2(x + 35, y + 40 + armSwingRight), 5,
-                        new Color((byte)120,(byte)80,(byte)30,(byte)255));
-                    Raylib.DrawLineEx(new Vector2(x + 35, y + 40 + armSwingRight), new Vector2(x + 48, y + 40 + armSwingRight), 4,
-                        new Color((byte)180,(byte)190,(byte)200,(byte)255));
-                    Raylib.DrawTriangle(
-                    new Vector2(x + 48, y + 42 + armSwingRight),  
-                    new Vector2(x + 53, y + 40 + armSwingRight),  
-                    new Vector2(x + 48, y + 38 + armSwingRight),  
-                    new Color((byte)200,(byte)210,(byte)220,(byte)255));
-                    Raylib.DrawLineEx(new Vector2(x + 34, y + 36 + armSwingRight), new Vector2(x + 34, y + 44 + armSwingRight), 5,
-                        new Color((byte)180,(byte)140,(byte)40,(byte)255));
-                    break;
-                case "Rod":
-                    Raylib.DrawLineEx(new Vector2(x + 26, y + 40 + armSwingRight), new Vector2(x + 46, y + 26 + armSwingRight), 4,
-                        new Color((byte)120,(byte)80,(byte)30,(byte)255));
-                    Raylib.DrawLineEx(new Vector2(x + 46, y + 26 + armSwingRight), new Vector2(x + 62, y + 40 + armSwingRight), 2,
-                        new Color((byte)200,(byte)200,(byte)200,(byte)255));
-                    Raylib.DrawCircle(x + 62, y + 40 + armSwingRight, 3,
-                        new Color((byte)100,(byte)180,(byte)220,(byte)255));
-                    break;
-                case "Torch":
-                    Raylib.DrawLineEx(new Vector2(x + 36, y + 30 + armSwingRight), new Vector2(x + 50, y + 18 + armSwingRight), 5,
-                        new Color((byte)120,(byte)80,(byte)30,(byte)255));
-                    Raylib.DrawCircle(x + 50, y + 16 + armSwingRight, 5,
-                        new Color((byte)255,(byte)180,(byte)0,(byte)255));
-                    Raylib.DrawCircle(x + 50, y + 16 + armSwingRight, 9,
-                        new Color((byte)255,(byte)100,(byte)0,(byte)60));
-                    break;
-                case "Bow":
-                    Raylib.DrawLineEx(new Vector2(x + 40, y + 30 + armSwingRight), new Vector2(x + 40, y + 50 + armSwingRight), 3,
-                        new Color((byte)140,(byte)90,(byte)40,(byte)255));
-                    Raylib.DrawLineEx(new Vector2(x + 40, y + 30 + armSwingRight), new Vector2(x + 40, y + 50 + armSwingRight), 1,
-                        new Color((byte)220,(byte)220,(byte)220,(byte)255));
-                    break;
-                case "Crossbow":
-                    Raylib.DrawLineEx(new Vector2(x + 28, y + 40 + armSwingRight), new Vector2(x + 48, y + 40 + armSwingRight), 4,
-                        new Color((byte)90,(byte)60,(byte)30,(byte)255));
-                    Raylib.DrawLineEx(new Vector2(x + 40, y + 32 + armSwingRight), new Vector2(x + 40, y + 48 + armSwingRight), 4,
-                        new Color((byte)90,(byte)60,(byte)30,(byte)255));
-                    Raylib.DrawTriangle(
-                        new Vector2(x + 52, y + 40 + armSwingRight),
-                        new Vector2(x + 48, y + 38 + armSwingRight),
-                        new Vector2(x + 48, y + 42 + armSwingRight),
-                        Color.Gray);
-                    break;
-            }
-            break;
+         case FacingDirection.Right:
+    int armSwingRight = isMoving ? (walkFrame ? 3 : -3) : 0;
+
+    if (tool.Contains("Great Sword"))
+    {
+        Color blade = WeaponColor(tool, new Color((byte)180,(byte)190,(byte)200,(byte)255));
+        Raylib.DrawLineEx(new Vector2(x + 25, y + 40 + armSwingRight), new Vector2(x + 38, y + 40 + armSwingRight), 6, new Color((byte)120,(byte)80,(byte)30,(byte)255));
+        Raylib.DrawLineEx(new Vector2(x + 38, y + 40 + armSwingRight), new Vector2(x + 60, y + 40 + armSwingRight), 6, blade);
+        Raylib.DrawTriangle(
+            new Vector2(x + 60, y + 43 + armSwingRight),
+            new Vector2(x + 66, y + 40 + armSwingRight),
+            new Vector2(x + 60, y + 37 + armSwingRight),
+            blade);
+        Raylib.DrawLineEx(new Vector2(x + 37, y + 34 + armSwingRight), new Vector2(x + 37, y + 46 + armSwingRight), 6, new Color((byte)180,(byte)140,(byte)40,(byte)255));
+    }
+    else if (tool.Contains("War Axe"))
+    {
+        Color metal = WeaponColor(tool, new Color((byte)160,(byte)160,(byte)170,(byte)255));
+        Raylib.DrawLineEx(new Vector2(x + 25, y + 40 + armSwingRight), new Vector2(x + 50, y + 40 + armSwingRight), 5, new Color((byte)120,(byte)80,(byte)30,(byte)255));
+        Raylib.DrawTriangle(
+            new Vector2(x + 46, y + 30 + armSwingRight),
+            new Vector2(x + 46, y + 50 + armSwingRight),
+            new Vector2(x + 60, y + 40 + armSwingRight),
+            metal);
+        Raylib.DrawTriangle(
+            new Vector2(x + 46, y + 36 + armSwingRight),
+            new Vector2(x + 38, y + 40 + armSwingRight),
+            new Vector2(x + 46, y + 44 + armSwingRight),
+            metal);
+    }
+    else if (tool.Contains("Sword"))   // plain sword (Great Sword already handled above)
+    {
+        Color blade = WeaponColor(tool, new Color((byte)180,(byte)190,(byte)200,(byte)255));
+        Raylib.DrawLineEx(new Vector2(x + 25, y + 40 + armSwingRight), new Vector2(x + 35, y + 40 + armSwingRight), 5, new Color((byte)120,(byte)80,(byte)30,(byte)255));
+        Raylib.DrawLineEx(new Vector2(x + 35, y + 40 + armSwingRight), new Vector2(x + 48, y + 40 + armSwingRight), 4, blade);
+        Raylib.DrawTriangle(
+            new Vector2(x + 48, y + 42 + armSwingRight),
+            new Vector2(x + 53, y + 40 + armSwingRight),
+            new Vector2(x + 48, y + 38 + armSwingRight),
+            blade);
+        Raylib.DrawLineEx(new Vector2(x + 34, y + 36 + armSwingRight), new Vector2(x + 34, y + 44 + armSwingRight), 5, new Color((byte)180,(byte)140,(byte)40,(byte)255));
+    }
+    else if (tool.Contains("Stick"))
+    {
+        Raylib.DrawLineEx(new Vector2(x + 25, y + 40 + armSwingRight), new Vector2(x + 45, y + 40 + armSwingRight), 5, new Color((byte)120,(byte)80,(byte)30,(byte)255));
+    }
+    else if (tool.Contains("Bow"))
+    {
+        Color limb = WeaponColor(tool, new Color((byte)140,(byte)90,(byte)40,(byte)255));
+        Raylib.DrawLineEx(new Vector2(x + 40, y + 30 + armSwingRight), new Vector2(x + 40, y + 50 + armSwingRight), 3, limb);
+        Raylib.DrawLineEx(new Vector2(x + 40, y + 30 + armSwingRight), new Vector2(x + 40, y + 50 + armSwingRight), 1, new Color((byte)220,(byte)220,(byte)220,(byte)255));
+    }
+    else if (tool.Contains("Crossbow"))
+    {
+        Color limb = WeaponColor(tool, new Color((byte)90,(byte)60,(byte)30,(byte)255));
+        Raylib.DrawLineEx(new Vector2(x + 28, y + 40 + armSwingRight), new Vector2(x + 48, y + 40 + armSwingRight), 4, limb);
+        Raylib.DrawLineEx(new Vector2(x + 40, y + 32 + armSwingRight), new Vector2(x + 40, y + 48 + armSwingRight), 4, limb);
+        Raylib.DrawTriangle(
+            new Vector2(x + 52, y + 40 + armSwingRight),
+            new Vector2(x + 48, y + 38 + armSwingRight),
+            new Vector2(x + 48, y + 42 + armSwingRight),
+            Color.Gray);
+    }
+    else if (tool.Contains("Pickaxe"))
+    {
+        if (isMining)
+            DrawPickaxeSwingRight(x, y);
+        else
+        {
+            Raylib.DrawLineEx(new Vector2(x + 25, y + 40 + armSwingRight), new Vector2(x + 45, y + 40 + armSwingRight), 5,
+                new Color((byte)120,(byte)80,(byte)30,(byte)255));
+            Raylib.DrawLineEx(new Vector2(x + 45, y + 34 + armSwingRight), new Vector2(x + 45, y + 44 + armSwingRight), 3,
+                new Color((byte)160,(byte)160,(byte)170,(byte)255));
+            Raylib.DrawTriangle(
+                new Vector2(x + 46, y + 44 + armSwingRight),
+                new Vector2(x + 43, y + 44 + armSwingRight),
+                new Vector2(x + 37, y + 52 + armSwingRight),
+                new Color((byte)160,(byte)160,(byte)170,(byte)255));
+            Raylib.DrawTriangle(
+                new Vector2(x + 43, y + 34 + armSwingRight),
+                new Vector2(x + 46, y + 34 + armSwingRight),
+                new Vector2(x + 40, y + 30 + armSwingRight),
+                new Color((byte)160,(byte)160,(byte)170,(byte)255));
+        }
+    }
+    else if (tool.Contains("Axe"))   // plain axe (War Axe already handled above)
+    {
+        Raylib.DrawLineEx(new Vector2(x + 25, y + 40 + armSwingRight), new Vector2(x + 45, y + 40 + armSwingRight), 5,
+            new Color((byte)120,(byte)80,(byte)30,(byte)255));
+        Raylib.DrawLineEx(new Vector2(x + 41, y + 40 + armSwingRight), new Vector2(x + 41, y + 48 + armSwingRight), 6,
+            new Color((byte)160,(byte)160,(byte)170,(byte)255));
+    }
+    else if (tool.Contains("Rod"))
+    {
+        Raylib.DrawLineEx(new Vector2(x + 26, y + 40 + armSwingRight), new Vector2(x + 46, y + 26 + armSwingRight), 4,
+            new Color((byte)120,(byte)80,(byte)30,(byte)255));
+        Raylib.DrawLineEx(new Vector2(x + 46, y + 26 + armSwingRight), new Vector2(x + 62, y + 40 + armSwingRight), 2,
+            new Color((byte)200,(byte)200,(byte)200,(byte)255));
+        Raylib.DrawCircle(x + 62, y + 40 + armSwingRight, 3,
+            new Color((byte)100,(byte)180,(byte)220,(byte)255));
+    }
+    else if (tool.Contains("Torch"))
+    {
+        Raylib.DrawLineEx(new Vector2(x + 36, y + 30 + armSwingRight), new Vector2(x + 50, y + 18 + armSwingRight), 5,
+            new Color((byte)120,(byte)80,(byte)30,(byte)255));
+        Raylib.DrawCircle(x + 50, y + 16 + armSwingRight, 5,
+            new Color((byte)255,(byte)180,(byte)0,(byte)255));
+        Raylib.DrawCircle(x + 50, y + 16 + armSwingRight, 9,
+            new Color((byte)255,(byte)100,(byte)0,(byte)60));
+    }
+    break;
 
         case FacingDirection.Left:
-            int armSwingLeft = isMoving ? (walkFrame ? 3 : -3) : 0;
-            switch (tool)
-            {
-                case "Axe":
-                    Raylib.DrawLineEx(new Vector2(x + 15, y + 40 + armSwingLeft), new Vector2(x - 5, y + 40 + armSwingLeft), 5,
-                        new Color((byte)120,(byte)80,(byte)30,(byte)255));
-                    Raylib.DrawLineEx(new Vector2(x - 1 , y + 40 + armSwingLeft), new Vector2(x - 1, y + 48 + armSwingLeft), 6,
-                        new Color((byte)160,(byte)160,(byte)170,(byte)255));
-                    break;
-                case "Pickaxe":
-                if (isMining)
-                    DrawPickaxeSwingLeft(x, y);
-                    else
-                    {
-                    Raylib.DrawLineEx(new Vector2(x + 15, y + 40 + armSwingLeft), new Vector2(x - 5, y + 40 + armSwingLeft), 5,
-                        new Color((byte)120,(byte)80,(byte)30,(byte)255));
-                    Raylib.DrawLineEx(new Vector2(x - 5, y + 34 + armSwingLeft), new Vector2(x - 5, y + 44 + armSwingLeft), 3,
-                        new Color((byte)160,(byte)160,(byte)170,(byte)255));
-                    Raylib.DrawTriangle(
-                        new Vector2(x - 3, y + 44 + armSwingLeft),
-                        new Vector2(x - 6, y + 44 + armSwingLeft),
-                        new Vector2(x + 3, y + 52 + armSwingLeft),
-                        new Color((byte)160,(byte)160,(byte)170,(byte)255));
-                    Raylib.DrawTriangle(
-                        new Vector2(x - 3, y + 34 + armSwingLeft),
-                        new Vector2(x, y + 30 + armSwingLeft),
-                        new Vector2(x - 6, y + 34 + armSwingLeft),  
-                        new Color((byte)160,(byte)160,(byte)170,(byte)255));
-                    }
-                    break;
-                case "Stick":
-                    Raylib.DrawLineEx(new Vector2(x + 15, y + 40 + armSwingLeft), new Vector2(x - 5, y + 40 + armSwingLeft), 5,
-                        new Color((byte)120,(byte)80,(byte)30,(byte)255));
-                    break;
-                case "Sword":
-                    Raylib.DrawLineEx(new Vector2(x + 15, y + 40 + armSwingLeft), new Vector2(x + 5, y + 40 + armSwingLeft), 5,
-                        new Color((byte)120,(byte)80,(byte)30,(byte)255));
-                    Raylib.DrawLineEx(new Vector2(x + 5, y + 40 + armSwingLeft), new Vector2(x - 8, y + 40 + armSwingLeft), 4,
-                        new Color((byte)180,(byte)190,(byte)200,(byte)255));
-                    Raylib.DrawTriangle(
-                    new Vector2(x - 12, y + 40 + armSwingLeft),  
-                    new Vector2(x - 8, y + 42 + armSwingLeft),  
-                    new Vector2(x - 8, y + 38 + armSwingLeft),  
-                    new Color((byte)200,(byte)210,(byte)220,(byte)255));
-                    Raylib.DrawLineEx(new Vector2(x + 6, y + 36 + armSwingLeft ), new Vector2(x + 6, y + 44 + armSwingLeft), 5,
-                        new Color((byte)180,(byte)140,(byte)40,(byte)255));
-                    break;
-                case "Rod":
-                    Raylib.DrawLineEx(new Vector2(x + 14, y + 40 + armSwingLeft), new Vector2(x - 6, y + 26 + armSwingLeft), 4,
-                        new Color((byte)120,(byte)80,(byte)30,(byte)255));
-                    Raylib.DrawLineEx(new Vector2(x - 6, y + 26 + armSwingLeft), new Vector2(x - 22, y + 40 + armSwingLeft), 2,
-                        new Color((byte)200,(byte)200,(byte)200,(byte)255));
-                    Raylib.DrawCircle(x - 22, y + 40 + armSwingLeft, 3,
-                        new Color((byte)100,(byte)180,(byte)220,(byte)255));
-                    break;
-                case "Torch":
-                    Raylib.DrawLineEx(new Vector2(x + 4, y + 30 + armSwingLeft), new Vector2(x - 10, y + 18 + armSwingLeft), 5,
-                        new Color((byte)120,(byte)80,(byte)30,(byte)255));
-                    Raylib.DrawCircle(x - 10, y + 16 + armSwingLeft, 5,
-                        new Color((byte)255,(byte)180,(byte)0,(byte)255));
-                    Raylib.DrawCircle(x - 10, y + 16 + armSwingLeft, 9,
-                        new Color((byte)255,(byte)100,(byte)0,(byte)60));
-                    break;
-                case "Bow":
-                    Raylib.DrawLineEx(new Vector2(x - 0, y + 30 + armSwingLeft), new Vector2(x - 0, y + 50 + armSwingLeft), 3,
-                        new Color((byte)140,(byte)90,(byte)40,(byte)255));
-                    Raylib.DrawLineEx(new Vector2(x - 0, y + 30 + armSwingLeft), new Vector2(x - 0, y + 50 + armSwingLeft), 1,
-                        new Color((byte)220,(byte)220,(byte)220,(byte)255));
-                    break;
-                case "Crossbow":
-                    Raylib.DrawLineEx(new Vector2(x + 12, y + 40 + armSwingLeft), new Vector2(x - 8, y + 40 + armSwingLeft), 4,
-                        new Color((byte)90,(byte)60,(byte)30,(byte)255));
-                    Raylib.DrawLineEx(new Vector2(x + 0, y + 32 + armSwingLeft), new Vector2(x + 0, y + 48 + armSwingLeft), 4,
-                        new Color((byte)90,(byte)60,(byte)30,(byte)255));
-                    Raylib.DrawTriangle(
-                        new Vector2(x - 12, y + 40 + armSwingLeft),
-                        new Vector2(x - 8, y + 38 + armSwingLeft),
-                        new Vector2(x - 8, y + 42 + armSwingLeft),
-                        Color.Gray);
-                    break;
-            }
-            break;
+    int armSwingLeft = isMoving ? (walkFrame ? 3 : -3) : 0;
+
+    if (tool.Contains("Great Sword"))
+    {
+        Color blade = WeaponColor(tool, new Color((byte)180,(byte)190,(byte)200,(byte)255));
+        Raylib.DrawLineEx(new Vector2(x + 15, y + 40 + armSwingLeft), new Vector2(x + 2, y + 40 + armSwingLeft), 6, new Color((byte)120,(byte)80,(byte)30,(byte)255));
+        Raylib.DrawLineEx(new Vector2(x + 2, y + 40 + armSwingLeft), new Vector2(x - 20, y + 40 + armSwingLeft), 6, blade);
+        Raylib.DrawTriangle(
+            new Vector2(x - 20, y + 37 + armSwingLeft),
+            new Vector2(x - 26, y + 40 + armSwingLeft),
+            new Vector2(x - 20, y + 43 + armSwingLeft),
+            blade);
+        Raylib.DrawLineEx(new Vector2(x + 3, y + 34 + armSwingLeft), new Vector2(x + 3, y + 46 + armSwingLeft), 6, new Color((byte)180,(byte)140,(byte)40,(byte)255));
+    }
+    else if (tool.Contains("War Axe"))
+    {
+        Color metal = WeaponColor(tool, new Color((byte)160,(byte)160,(byte)170,(byte)255));
+        Raylib.DrawLineEx(new Vector2(x + 15, y + 40 + armSwingLeft), new Vector2(x - 10, y + 40 + armSwingLeft), 5, new Color((byte)120,(byte)80,(byte)30,(byte)255));
+        Raylib.DrawTriangle(
+            new Vector2(x - 6, y + 50 + armSwingLeft),
+            new Vector2(x - 6, y + 30 + armSwingLeft),
+            new Vector2(x - 20, y + 40 + armSwingLeft),
+            metal);
+        Raylib.DrawTriangle(
+            new Vector2(x - 6, y + 44 + armSwingLeft),
+            new Vector2(x + 2, y + 40 + armSwingLeft),
+            new Vector2(x - 6, y + 36 + armSwingLeft),
+            metal);
+    }
+    else if (tool.Contains("Sword"))
+    {
+        Color blade = WeaponColor(tool, new Color((byte)180,(byte)190,(byte)200,(byte)255));
+        Raylib.DrawLineEx(new Vector2(x + 15, y + 40 + armSwingLeft), new Vector2(x + 5, y + 40 + armSwingLeft), 5, new Color((byte)120,(byte)80,(byte)30,(byte)255));
+        Raylib.DrawLineEx(new Vector2(x + 5, y + 40 + armSwingLeft), new Vector2(x - 8, y + 40 + armSwingLeft), 4, blade);
+        Raylib.DrawTriangle(
+            new Vector2(x - 8, y + 38 + armSwingLeft),
+            new Vector2(x - 13, y + 40 + armSwingLeft),
+            new Vector2(x - 8, y + 42 + armSwingLeft),
+            blade);
+        Raylib.DrawLineEx(new Vector2(x + 6, y + 36 + armSwingLeft), new Vector2(x + 6, y + 44 + armSwingLeft), 5, new Color((byte)180,(byte)140,(byte)40,(byte)255));
+    }
+    else if (tool.Contains("Stick"))
+    {
+        Raylib.DrawLineEx(new Vector2(x + 15, y + 40 + armSwingLeft), new Vector2(x - 5, y + 40 + armSwingLeft), 5, new Color((byte)120,(byte)80,(byte)30,(byte)255));
+    }
+    else if (tool.Contains("Bow"))
+    {
+        Color limb = WeaponColor(tool, new Color((byte)140,(byte)90,(byte)40,(byte)255));
+        Raylib.DrawLineEx(new Vector2(x, y + 30 + armSwingLeft), new Vector2(x, y + 50 + armSwingLeft), 3, limb);
+        Raylib.DrawLineEx(new Vector2(x, y + 30 + armSwingLeft), new Vector2(x, y + 50 + armSwingLeft), 1, new Color((byte)220,(byte)220,(byte)220,(byte)255));
+    }
+    else if (tool.Contains("Crossbow"))
+    {
+        Color limb = WeaponColor(tool, new Color((byte)90,(byte)60,(byte)30,(byte)255));
+        Raylib.DrawLineEx(new Vector2(x + 12, y + 40 + armSwingLeft), new Vector2(x - 8, y + 40 + armSwingLeft), 4, limb);
+        Raylib.DrawLineEx(new Vector2(x, y + 32 + armSwingLeft), new Vector2(x, y + 48 + armSwingLeft), 4, limb);
+        Raylib.DrawTriangle(
+            new Vector2(x - 12, y + 40 + armSwingLeft),
+            new Vector2(x - 8, y + 42 + armSwingLeft),
+            new Vector2(x - 8, y + 38 + armSwingLeft),
+            Color.Gray);
+    }
+    else if (tool.Contains("Pickaxe"))
+    {
+        if (isMining)
+            DrawPickaxeSwingLeft(x, y);
+        else
+        {
+            Raylib.DrawLineEx(new Vector2(x + 15, y + 40 + armSwingLeft), new Vector2(x - 5, y + 40 + armSwingLeft), 5, new Color((byte)120,(byte)80,(byte)30,(byte)255));
+            Raylib.DrawLineEx(new Vector2(x - 5, y + 34 + armSwingLeft), new Vector2(x - 5, y + 44 + armSwingLeft), 3, new Color((byte)160,(byte)160,(byte)170,(byte)255));
+            Raylib.DrawTriangle(
+                new Vector2(x - 3, y + 44 + armSwingLeft),
+                new Vector2(x - 6, y + 44 + armSwingLeft),
+                new Vector2(x + 3, y + 52 + armSwingLeft),
+                new Color((byte)160,(byte)160,(byte)170,(byte)255));
+            Raylib.DrawTriangle(
+                new Vector2(x - 3, y + 34 + armSwingLeft),
+                new Vector2(x, y + 30 + armSwingLeft),
+                new Vector2(x - 6, y + 34 + armSwingLeft),
+                new Color((byte)160,(byte)160,(byte)170,(byte)255));
+        }
+    }
+    else if (tool.Contains("Axe"))
+    {
+        Raylib.DrawLineEx(new Vector2(x + 15, y + 40 + armSwingLeft), new Vector2(x - 5, y + 40 + armSwingLeft), 5, new Color((byte)120,(byte)80,(byte)30,(byte)255));
+        Raylib.DrawLineEx(new Vector2(x - 1, y + 40 + armSwingLeft), new Vector2(x - 1, y + 48 + armSwingLeft), 6, new Color((byte)160,(byte)160,(byte)170,(byte)255));
+    }
+    else if (tool.Contains("Rod"))
+    {
+        Raylib.DrawLineEx(new Vector2(x + 14, y + 40 + armSwingLeft), new Vector2(x - 6, y + 26 + armSwingLeft), 4, new Color((byte)120,(byte)80,(byte)30,(byte)255));
+        Raylib.DrawLineEx(new Vector2(x - 6, y + 26 + armSwingLeft), new Vector2(x - 22, y + 40 + armSwingLeft), 2, new Color((byte)200,(byte)200,(byte)200,(byte)255));
+        Raylib.DrawCircle(x - 22, y + 40 + armSwingLeft, 3, new Color((byte)100,(byte)180,(byte)220,(byte)255));
+    }
+    else if (tool.Contains("Torch"))
+    {
+        Raylib.DrawLineEx(new Vector2(x + 4, y + 30 + armSwingLeft), new Vector2(x - 10, y + 18 + armSwingLeft), 5, new Color((byte)120,(byte)80,(byte)30,(byte)255));
+        Raylib.DrawCircle(x - 10, y + 16 + armSwingLeft, 5, new Color((byte)255,(byte)180,(byte)0,(byte)255));
+        Raylib.DrawCircle(x - 10, y + 16 + armSwingLeft, 9, new Color((byte)255,(byte)100,(byte)0,(byte)60));
+    }
+    break;
 
         case FacingDirection.Down:
-        int armSwingDown = isMoving ? (walkFrame ? -3 : 3) : 0; 
-            switch (tool)
-            {
-                case "Axe":
-                    Raylib.DrawLineEx(new Vector2(x + 35, y + 38 + armSwingDown), new Vector2(x + 35, y + 14 + armSwingDown), 5,
-                        new Color((byte)120,(byte)80,(byte)30,(byte)255));
-                    Raylib.DrawLineEx(new Vector2(x + 35 , y + 15 + armSwingDown), new Vector2(x + 35, y + 21 + armSwingDown), 3,
-                        new Color((byte)160,(byte)160,(byte)170,(byte)255));
-                    break;
-                case "Pickaxe":
-                    Raylib.DrawLineEx(new Vector2(x + 35, y + 38 + armSwingDown), new Vector2(x + 35, y + 14 + armSwingDown), 5,
-                        new Color((byte)120,(byte)80,(byte)30,(byte)255));
-                    Raylib.DrawLineEx(new Vector2(x + 35, y + 14 + armSwingDown), new Vector2(x + 35, y + 18 + armSwingDown), 5,
-                        new Color((byte)160,(byte)160,(byte)170,(byte)255));
-                    Raylib.DrawTriangle(
-                        new Vector2(x + 37, y + 18 + armSwingDown),
-                        new Vector2(x + 33, y + 18 + armSwingDown),
-                        new Vector2(x + 35, y + 28 + armSwingDown),
-                        new Color((byte)160,(byte)160,(byte)170,(byte)255));
-                    
-                    break;
-                case "Stick":
-                    Raylib.DrawLineEx(new Vector2(x + 35, y + 38 + armSwingDown), new Vector2(x + 35, y + 14 + armSwingDown), 5,
-                        new Color((byte)120,(byte)80,(byte)30,(byte)255));
-                    break;
-                case "Sword":
-                    Raylib.DrawLineEx(new Vector2(x + 35, y + 38 + armSwingDown), new Vector2(x + 35, y + 33 + armSwingDown), 5,
-                        new Color((byte)120,(byte)80,(byte)30,(byte)255));
-                    Raylib.DrawLineEx(new Vector2(x + 35, y + 33 + armSwingDown), new Vector2(x + 35, y + 18 + armSwingDown), 3,
-                        new Color((byte)180,(byte)190,(byte)200,(byte)255));
-                    Raylib.DrawTriangle(
-                        new Vector2(x + 34, y + 18 + armSwingDown),
-                        new Vector2(x + 36, y + 18 + armSwingDown),
-                        new Vector2(x + 35, y + 10 + armSwingDown),
-                        new Color((byte)200,(byte)210,(byte)220,(byte)255));
-                    Raylib.DrawLineEx(new Vector2(x + 32, y + 33 + armSwingDown), new Vector2(x + 38, y + 33 + armSwingDown), 4,
-                        new Color((byte)180,(byte)140,(byte)40,(byte)255));
-                    break;
-                case "Rod":
-                    Raylib.DrawLineEx(new Vector2(x + 35, y + 38 + armSwingDown), new Vector2(x + 35, y + 14 + armSwingDown), 5,
-                        new Color((byte)120,(byte)80,(byte)30,(byte)255));
-                    Raylib.DrawLineEx(new Vector2(x + 35 , y + 15 + armSwingDown), new Vector2(x + 35, y + 40 + armSwingDown), 2,
-                        new Color((byte)200,(byte)200,(byte)200,(byte)255));
-                    Raylib.DrawCircle(x + 35, y + 40 + armSwingDown, 3,
-                        new Color((byte)100,(byte)180,(byte)220,(byte)255));
-                    break;
-                case "Torch":
-                    Raylib.DrawLineEx(new Vector2(x + 30, y + 28), new Vector2(x + 44, y + 16), 5,
-                        new Color((byte)120,(byte)80,(byte)30,(byte)255));
-                    Raylib.DrawCircle(x + 44, y + 14, 5,
-                        new Color((byte)255,(byte)180,(byte)0,(byte)255));
-                    Raylib.DrawCircle(x + 44, y + 14, 9,
-                        new Color((byte)255,(byte)100,(byte)0,(byte)60));
-                    break;
-                case "Bow":
-                    Raylib.DrawLineEx(new Vector2(x + 35, y + 14 + armSwingDown), new Vector2(x + 35, y + 38 + armSwingDown), 3,
-                        new Color((byte)140,(byte)90,(byte)40,(byte)255));
-                    Raylib.DrawLineEx(new Vector2(x + 35, y + 14 + armSwingDown), new Vector2(x + 35, y + 38 + armSwingDown), 1,
-                        new Color((byte)220,(byte)220,(byte)220,(byte)255));
-                    break;
-                case "Crossbow":
-                    Raylib.DrawLineEx(new Vector2(x + 27, y + 26 + armSwingDown), new Vector2(x + 43, y + 26 + armSwingDown), 4,
-                        new Color((byte)90,(byte)60,(byte)30,(byte)255));
-                    Raylib.DrawLineEx(new Vector2(x + 35, y + 18 + armSwingDown), new Vector2(x + 35, y + 34 + armSwingDown), 4,
-                        new Color((byte)90,(byte)60,(byte)30,(byte)255));
-                    Raylib.DrawTriangle(
-                        new Vector2(x + 35, y + 14 + armSwingDown),
-                        new Vector2(x + 33, y + 18 + armSwingDown),
-                        new Vector2(x + 37, y + 18 + armSwingDown),
-                        Color.Gray);
-                    break;
-            }
-            break;
+    int armSwingDown = isMoving ? (walkFrame ? -3 : 3) : 0;
+
+    if (tool.Contains("Great Sword"))
+    {
+        Color blade = WeaponColor(tool, new Color((byte)180,(byte)190,(byte)200,(byte)255));
+        Raylib.DrawLineEx(new Vector2(x + 35, y + 38 + armSwingDown), new Vector2(x + 35, y + 25 + armSwingDown), 6, new Color((byte)120,(byte)80,(byte)30,(byte)255));
+        Raylib.DrawLineEx(new Vector2(x + 35, y + 25 + armSwingDown), new Vector2(x + 35, y + 2 + armSwingDown), 6, blade);
+        Raylib.DrawTriangle(
+            new Vector2(x + 32, y + 2 + armSwingDown),
+            new Vector2(x + 35, y - 5 + armSwingDown),
+            new Vector2(x + 38, y + 2 + armSwingDown),
+            blade);
+        Raylib.DrawLineEx(new Vector2(x + 29, y + 25 + armSwingDown), new Vector2(x + 41, y + 25 + armSwingDown), 6, new Color((byte)180,(byte)140,(byte)40,(byte)255));
+    }
+    else if (tool.Contains("War Axe"))
+    {
+        Color metal = WeaponColor(tool, new Color((byte)160,(byte)160,(byte)170,(byte)255));
+        Raylib.DrawLineEx(new Vector2(x + 35, y + 38 + armSwingDown), new Vector2(x + 35, y + 14 + armSwingDown), 5, new Color((byte)120,(byte)80,(byte)30,(byte)255));
+        Raylib.DrawTriangle(
+            new Vector2(x + 25, y + 18 + armSwingDown),
+            new Vector2(x + 45, y + 18 + armSwingDown),
+            new Vector2(x + 35, y + 30 + armSwingDown),
+            metal);
+        Raylib.DrawTriangle(
+            new Vector2(x + 31, y + 18 + armSwingDown),
+            new Vector2(x + 39, y + 18 + armSwingDown),
+            new Vector2(x + 35, y + 10 + armSwingDown),
+            metal);
+    }
+    else if (tool.Contains("Sword"))
+    {
+        Color blade = WeaponColor(tool, new Color((byte)180,(byte)190,(byte)200,(byte)255));
+        Raylib.DrawLineEx(new Vector2(x + 35, y + 38 + armSwingDown), new Vector2(x + 35, y + 33 + armSwingDown), 5, new Color((byte)120,(byte)80,(byte)30,(byte)255));
+        Raylib.DrawLineEx(new Vector2(x + 35, y + 33 + armSwingDown), new Vector2(x + 35, y + 18 + armSwingDown), 3, blade);
+        Raylib.DrawTriangle(
+            new Vector2(x + 34, y + 18 + armSwingDown),
+            new Vector2(x + 36, y + 18 + armSwingDown),
+            new Vector2(x + 35, y + 10 + armSwingDown),
+            blade);
+        Raylib.DrawLineEx(new Vector2(x + 32, y + 33 + armSwingDown), new Vector2(x + 38, y + 33 + armSwingDown), 4, new Color((byte)180,(byte)140,(byte)40,(byte)255));
+    }
+    else if (tool.Contains("Stick"))
+    {
+        Raylib.DrawLineEx(new Vector2(x + 35, y + 38 + armSwingDown), new Vector2(x + 35, y + 14 + armSwingDown), 5, new Color((byte)120,(byte)80,(byte)30,(byte)255));
+    }
+    else if (tool.Contains("Bow"))
+    {
+        Color limb = WeaponColor(tool, new Color((byte)140,(byte)90,(byte)40,(byte)255));
+        Raylib.DrawLineEx(new Vector2(x + 35, y + 14 + armSwingDown), new Vector2(x + 35, y + 38 + armSwingDown), 3, limb);
+        Raylib.DrawLineEx(new Vector2(x + 35, y + 14 + armSwingDown), new Vector2(x + 35, y + 38 + armSwingDown), 1, new Color((byte)220,(byte)220,(byte)220,(byte)255));
+    }
+    else if (tool.Contains("Crossbow"))
+    {
+        Color limb = WeaponColor(tool, new Color((byte)90,(byte)60,(byte)30,(byte)255));
+        Raylib.DrawLineEx(new Vector2(x + 27, y + 26 + armSwingDown), new Vector2(x + 43, y + 26 + armSwingDown), 4, limb);
+        Raylib.DrawLineEx(new Vector2(x + 35, y + 18 + armSwingDown), new Vector2(x + 35, y + 34 + armSwingDown), 4, limb);
+        Raylib.DrawTriangle(
+            new Vector2(x + 35, y + 14 + armSwingDown),
+            new Vector2(x + 33, y + 18 + armSwingDown),
+            new Vector2(x + 37, y + 18 + armSwingDown),
+            Color.Gray);
+    }
+    else if (tool.Contains("Pickaxe"))
+    {
+        Raylib.DrawLineEx(new Vector2(x + 35, y + 38 + armSwingDown), new Vector2(x + 35, y + 14 + armSwingDown), 5, new Color((byte)120,(byte)80,(byte)30,(byte)255));
+        Raylib.DrawLineEx(new Vector2(x + 35, y + 14 + armSwingDown), new Vector2(x + 35, y + 18 + armSwingDown), 5, new Color((byte)160,(byte)160,(byte)170,(byte)255));
+        Raylib.DrawTriangle(
+            new Vector2(x + 37, y + 18 + armSwingDown),
+            new Vector2(x + 33, y + 18 + armSwingDown),
+            new Vector2(x + 35, y + 28 + armSwingDown),
+            new Color((byte)160,(byte)160,(byte)170,(byte)255));
+    }
+    else if (tool.Contains("Axe"))
+    {
+        Raylib.DrawLineEx(new Vector2(x + 35, y + 38 + armSwingDown), new Vector2(x + 35, y + 14 + armSwingDown), 5, new Color((byte)120,(byte)80,(byte)30,(byte)255));
+        Raylib.DrawLineEx(new Vector2(x + 35, y + 15 + armSwingDown), new Vector2(x + 35, y + 21 + armSwingDown), 3, new Color((byte)160,(byte)160,(byte)170,(byte)255));
+    }
+    else if (tool.Contains("Rod"))
+    {
+        Raylib.DrawLineEx(new Vector2(x + 35, y + 38 + armSwingDown), new Vector2(x + 35, y + 14 + armSwingDown), 5, new Color((byte)120,(byte)80,(byte)30,(byte)255));
+        Raylib.DrawLineEx(new Vector2(x + 35, y + 15 + armSwingDown), new Vector2(x + 35, y + 40 + armSwingDown), 2, new Color((byte)200,(byte)200,(byte)200,(byte)255));
+        Raylib.DrawCircle(x + 35, y + 40 + armSwingDown, 3, new Color((byte)100,(byte)180,(byte)220,(byte)255));
+    }
+    else if (tool.Contains("Torch"))
+    {
+        Raylib.DrawLineEx(new Vector2(x + 30, y + 28), new Vector2(x + 44, y + 16), 5, new Color((byte)120,(byte)80,(byte)30,(byte)255));
+        Raylib.DrawCircle(x + 44, y + 14, 5, new Color((byte)255,(byte)180,(byte)0,(byte)255));
+        Raylib.DrawCircle(x + 44, y + 14, 9, new Color((byte)255,(byte)100,(byte)0,(byte)60));
+    }
+    break;
 
         case FacingDirection.Up:
-        int armSwingUp = isMoving ? (walkFrame ? 3 : -3) : 0; // + armSwingUp
-            switch (tool)
-            {
-                case "Axe":
-                    Raylib.DrawLineEx(new Vector2(x + 5, y + 26 + armSwingUp), new Vector2(x + 5, y + 15 + armSwingUp), 4,
-                        new Color((byte)120,(byte)80,(byte)30,(byte)255));
-                    Raylib.DrawLineEx(new Vector2(x + 5, y + 15 + armSwingUp), new Vector2(x + 5, y + 18 + armSwingUp), 4,
-                        new Color((byte)160,(byte)160,(byte)170,(byte)255));
-                    break;
-                case "Pickaxe":
-                    Raylib.DrawLineEx(new Vector2(x + 5, y + 26 + armSwingUp), new Vector2(x + 5, y + 15 + armSwingUp), 4,
-                        new Color((byte)120,(byte)80,(byte)30,(byte)255));
-                    Raylib.DrawLineEx(new Vector2(x + 5, y + 15 + armSwingUp), new Vector2(x + 5, y + 12 + armSwingUp), 4,
-                        new Color((byte)160,(byte)160,(byte)170,(byte)255));
-                    Raylib.DrawTriangle(
-                        new Vector2(x + 7, y + 15 + armSwingUp),
-                        new Vector2(x + 3, y + 15 + armSwingUp),
-                        new Vector2(x + 5, y + 22 + armSwingUp),
-                        new Color((byte)160,(byte)160,(byte)170,(byte)255));
-                    break;
-                case "Stick":
-                    Raylib.DrawLineEx(new Vector2(x + 5, y + 26 + armSwingUp), new Vector2(x + 5, y + 14 + armSwingUp), 4,
-                        new Color((byte)120,(byte)80,(byte)30,(byte)255));
-                    break;
-                case "Sword":
-                    Raylib.DrawLineEx(new Vector2(x + 5, y + 26 + armSwingUp), new Vector2(x + 5, y + 14 + armSwingUp), 4,
-                        new Color((byte)180,(byte)190,(byte)200,(byte)255));
-                    Raylib.DrawTriangle(
-                        new Vector2(x + 3, y + 14 + armSwingUp),
-                        new Vector2(x + 7, y + 14 + armSwingUp),
-                        new Vector2(x + 5, y + 10 + armSwingUp),
-                        new Color((byte)200,(byte)210,(byte)220,(byte)255));
-                    break;
-                case "Rod":
-                    Raylib.DrawLineEx(new Vector2(x + 5, y + 26 + armSwingUp), new Vector2(x + 5, y + 14 + armSwingUp), 4,
-                        new Color((byte)120,(byte)80,(byte)30,(byte)255));
-                    Raylib.DrawLineEx(new Vector2(x + 7, y + 14 + armSwingUp), new Vector2(x + 7, y + 26 + armSwingUp), 1,
-                        new Color((byte)200,(byte)200,(byte)200,(byte)255));
-                    Raylib.DrawCircle(x + 5, y + 48 + armSwingUp, 3,
-                        new Color((byte)100,(byte)180,(byte)220,(byte)255));
-                    break;
-                case "Torch":
-                    Raylib.DrawLineEx(new Vector2(x + 10, y + 30), new Vector2(x - 4, y + 18), 5,
-                        new Color((byte)120,(byte)80,(byte)30,(byte)255));
-                    Raylib.DrawCircle(x - 4, y + 16, 5,
-                        new Color((byte)255,(byte)180,(byte)0,(byte)255));
-                    Raylib.DrawCircle(x - 4, y + 16, 9,
-                        new Color((byte)255,(byte)100,(byte)0,(byte)60));
-                    break;
-                case "Bow":
-                    Raylib.DrawLineEx(new Vector2(x + 5, y + 14 + armSwingUp), new Vector2(x + 5, y + 28 + armSwingUp), 3,
-                        new Color((byte)140,(byte)90,(byte)40,(byte)255));
-                    Raylib.DrawLineEx(new Vector2(x + 5, y + 14 + armSwingUp), new Vector2(x + 5, y + 28 + armSwingUp), 1,
-                        new Color((byte)220,(byte)220,(byte)220,(byte)255));
-                    break;
-                case "Crossbow":
-                    Raylib.DrawLineEx(new Vector2(x - 3, y + 20 + armSwingUp), new Vector2(x + 13, y + 20 + armSwingUp), 4,
-                        new Color((byte)90,(byte)60,(byte)30,(byte)255));
-                    Raylib.DrawLineEx(new Vector2(x + 5, y + 14 + armSwingUp), new Vector2(x + 5, y + 28 + armSwingUp), 4,
-                        new Color((byte)90,(byte)60,(byte)30,(byte)255));
-                    Raylib.DrawTriangle(
-                        new Vector2(x + 5, y + 10 + armSwingUp),
-                        new Vector2(x + 3, y + 14 + armSwingUp),
-                        new Vector2(x + 7, y + 14 + armSwingUp),
-                        Color.Gray);
-                    break;
-            }
-            break;
+    int armSwingUp = isMoving ? (walkFrame ? 3 : -3) : 0;
+
+    if (tool.Contains("Great Sword"))
+    {
+        Color blade = WeaponColor(tool, new Color((byte)180,(byte)190,(byte)200,(byte)255));
+        Raylib.DrawLineEx(new Vector2(x + 5, y + 26 + armSwingUp), new Vector2(x + 5, y + 12 + armSwingUp), 6, new Color((byte)120,(byte)80,(byte)30,(byte)255));
+        Raylib.DrawLineEx(new Vector2(x + 5, y + 12 + armSwingUp), new Vector2(x + 5, y - 8 + armSwingUp), 6, blade);
+        Raylib.DrawTriangle(
+            new Vector2(x + 2, y - 8 + armSwingUp),
+            new Vector2(x + 5, y - 14 + armSwingUp),
+            new Vector2(x + 8, y - 8 + armSwingUp),
+            blade);
+        Raylib.DrawLineEx(new Vector2(x - 1, y + 12 + armSwingUp), new Vector2(x + 11, y + 12 + armSwingUp), 5, new Color((byte)180,(byte)140,(byte)40,(byte)255));
+    }
+    else if (tool.Contains("War Axe"))
+    {
+        Color metal = WeaponColor(tool, new Color((byte)160,(byte)160,(byte)170,(byte)255));
+        Raylib.DrawLineEx(new Vector2(x + 5, y + 26 + armSwingUp), new Vector2(x + 5, y + 4 + armSwingUp), 5, new Color((byte)120,(byte)80,(byte)30,(byte)255));
+        Raylib.DrawTriangle(
+            new Vector2(x - 4, y + 8 + armSwingUp),
+            new Vector2(x + 14, y + 8 + armSwingUp),
+            new Vector2(x + 5, y + 18 + armSwingUp),
+            metal);
+    }
+    else if (tool.Contains("Sword"))
+    {
+        Color blade = WeaponColor(tool, new Color((byte)180,(byte)190,(byte)200,(byte)255));
+        Raylib.DrawLineEx(new Vector2(x + 5, y + 26 + armSwingUp), new Vector2(x + 5, y + 14 + armSwingUp), 4, blade);
+        Raylib.DrawTriangle(
+            new Vector2(x + 3, y + 14 + armSwingUp),
+            new Vector2(x + 7, y + 14 + armSwingUp),
+            new Vector2(x + 5, y + 10 + armSwingUp),
+            blade);
+    }
+    else if (tool.Contains("Stick"))
+    {
+        Raylib.DrawLineEx(new Vector2(x + 5, y + 26 + armSwingUp), new Vector2(x + 5, y + 14 + armSwingUp), 4, new Color((byte)120,(byte)80,(byte)30,(byte)255));
+    }
+    else if (tool.Contains("Bow"))
+    {
+        Color limb = WeaponColor(tool, new Color((byte)140,(byte)90,(byte)40,(byte)255));
+        Raylib.DrawLineEx(new Vector2(x + 5, y + 14 + armSwingUp), new Vector2(x + 5, y + 28 + armSwingUp), 3, limb);
+        Raylib.DrawLineEx(new Vector2(x + 5, y + 14 + armSwingUp), new Vector2(x + 5, y + 28 + armSwingUp), 1, new Color((byte)220,(byte)220,(byte)220,(byte)255));
+    }
+    else if (tool.Contains("Crossbow"))
+    {
+        Color limb = WeaponColor(tool, new Color((byte)90,(byte)60,(byte)30,(byte)255));
+        Raylib.DrawLineEx(new Vector2(x - 3, y + 20 + armSwingUp), new Vector2(x + 13, y + 20 + armSwingUp), 4, limb);
+        Raylib.DrawLineEx(new Vector2(x + 5, y + 14 + armSwingUp), new Vector2(x + 5, y + 28 + armSwingUp), 4, limb);
+        Raylib.DrawTriangle(
+            new Vector2(x + 5, y + 10 + armSwingUp),
+            new Vector2(x + 3, y + 14 + armSwingUp),
+            new Vector2(x + 7, y + 14 + armSwingUp),
+            Color.Gray);
+    }
+    else if (tool.Contains("Pickaxe"))
+    {
+        Raylib.DrawLineEx(new Vector2(x + 5, y + 26 + armSwingUp), new Vector2(x + 5, y + 15 + armSwingUp), 4, new Color((byte)120,(byte)80,(byte)30,(byte)255));
+        Raylib.DrawLineEx(new Vector2(x + 5, y + 15 + armSwingUp), new Vector2(x + 5, y + 12 + armSwingUp), 4, new Color((byte)160,(byte)160,(byte)170,(byte)255));
+        Raylib.DrawTriangle(
+            new Vector2(x + 7, y + 15 + armSwingUp),
+            new Vector2(x + 3, y + 15 + armSwingUp),
+            new Vector2(x + 5, y + 22 + armSwingUp),
+            new Color((byte)160,(byte)160,(byte)170,(byte)255));
+    }
+    else if (tool.Contains("Axe"))
+    {
+        Raylib.DrawLineEx(new Vector2(x + 5, y + 26 + armSwingUp), new Vector2(x + 5, y + 15 + armSwingUp), 4, new Color((byte)120,(byte)80,(byte)30,(byte)255));
+        Raylib.DrawLineEx(new Vector2(x + 5, y + 15 + armSwingUp), new Vector2(x + 5, y + 18 + armSwingUp), 4, new Color((byte)160,(byte)160,(byte)170,(byte)255));
+    }
+    else if (tool.Contains("Rod"))
+    {
+        Raylib.DrawLineEx(new Vector2(x + 5, y + 26 + armSwingUp), new Vector2(x + 5, y + 14 + armSwingUp), 4, new Color((byte)120,(byte)80,(byte)30,(byte)255));
+        Raylib.DrawLineEx(new Vector2(x + 7, y + 14 + armSwingUp), new Vector2(x + 7, y + 26 + armSwingUp), 1, new Color((byte)200,(byte)200,(byte)200,(byte)255));
+        Raylib.DrawCircle(x + 5, y + 48 + armSwingUp, 3, new Color((byte)100,(byte)180,(byte)220,(byte)255));
+    }
+    else if (tool.Contains("Torch"))
+    {
+        Raylib.DrawLineEx(new Vector2(x + 10, y + 30), new Vector2(x - 4, y + 18), 5, new Color((byte)120,(byte)80,(byte)30,(byte)255));
+        Raylib.DrawCircle(x - 4, y + 16, 5, new Color((byte)255,(byte)180,(byte)0,(byte)255));
+        Raylib.DrawCircle(x - 4, y + 16, 9, new Color((byte)255,(byte)100,(byte)0,(byte)60));
+    }
+    break;
     }
 }
 void DrawHeldBasket(int x, int y)
@@ -18196,6 +23672,7 @@ void DrawPushedTrolley(int x, int y)
 
     public Rectangle Bounds =>
         new Rectangle(Position.X, Position.Y, 60, 80);
+    public Vector2 Center => new Vector2(Position.X + 30, Position.Y + 40);
 
     public static TreeObject Normal(Vector2 pos) => new TreeObject(pos, "Normal", 3, 1, 25, "Logs");
     public static TreeObject Birch(Vector2 pos) => new TreeObject(pos, "Birch", 4, 3, 40, "Birch Logs");
@@ -18716,7 +24193,7 @@ class Rideable
         };
     }
 
-    public void Update(float dt, List<Building> buildings, List<TreeObject> trees, List<Vehicle> vehicles, List<Rideable> allRideables)
+    public void Update(float dt, List<Building> buildings, List<TreeObject> trees, List<Vehicle> vehicles, List<Rideable> allRideables, List<DecorativeBuilding> decorativeBuildings)
     {
         if (!Riding) return;
 
@@ -18775,6 +24252,10 @@ else
         Position += velocity * dt;
 
         foreach (Building b in buildings)
+            if (Raylib.CheckCollisionRecs(Bounds, new Rectangle(b.Bounds.X, b.Bounds.Y, b.Bounds.Width, b.Bounds.Height - 90)))
+            { Position = oldPos; velocity = Vector2.Zero; }
+
+        foreach (DecorativeBuilding b in decorativeBuildings)
             if (Raylib.CheckCollisionRecs(Bounds, new Rectangle(b.Bounds.X, b.Bounds.Y, b.Bounds.Width, b.Bounds.Height - 90)))
             { Position = oldPos; velocity = Vector2.Zero; }
 
@@ -19234,7 +24715,7 @@ public NPC(Vector2 pos)
         Facing = FacingDirection.Right;
     }
 
-    public void Update(float dt, List<Building> buildings, List<TreeObject> trees, List<Vehicle> allVehicles)
+    public void Update(float dt, List<Building> buildings, List<TreeObject> trees, List<Vehicle> allVehicles, List<DecorativeBuilding> decorativeBuildings, List<RockObject> rocks)
     {
         if (!Driving) return;
         if (FuelLocked)
@@ -19292,9 +24773,22 @@ public NPC(Vector2 pos)
             { Position = oldPos; velocity = Vector2.Zero; }
         }
 
+         foreach (DecorativeBuilding decorativeBuilding in decorativeBuildings)
+        {
+            Rectangle collisionBox = new Rectangle(
+                decorativeBuilding.Bounds.X, decorativeBuilding.Bounds.Y,
+                decorativeBuilding.Bounds.Width, decorativeBuilding.Bounds.Height);
+            if (Raylib.CheckCollisionRecs(Bounds, collisionBox))
+            { Position = oldPos; velocity = Vector2.Zero; }
+        }
+
 
         foreach (TreeObject tree in trees)
             if (!tree.Chopped && Raylib.CheckCollisionRecs(Bounds, tree.Bounds))
+            { Position = oldPos; velocity *= -0.3f; }
+
+        foreach (RockObject rock in rocks)
+            if (!rock.Broken && Raylib.CheckCollisionRecs(Bounds, rock.Bounds))
             { Position = oldPos; velocity *= -0.3f; }
 
         foreach (Vehicle other in allVehicles)
@@ -23495,4 +28989,142 @@ class Dungeon
     );
 }
     }
+    class DecorativeBuilding
+{
+    public Rectangle Bounds;
+    public string BuildingName;
+
+    public DecorativeBuilding(Rectangle bounds, string buildingName)
+    {
+        Bounds = bounds;
+        BuildingName = buildingName;
+    }
+
+    public void Draw()
+    {
+        float bx = Bounds.X;
+        float by = Bounds.Y;
+
+        // ── COTTAGE ───────────────────────────────────────────────────────
+        if (BuildingName == "Cottage")
+        {
+            Raylib.DrawRectangle((int)bx, (int)by, 120, 90, new Color((byte)242,(byte)232,(byte)200,(byte)255));
+            Raylib.DrawRectangle((int)bx + 118, (int)by + 4, 6, 86, new Color((byte)200,(byte)184,(byte)122,(byte)128));
+            Raylib.DrawRectangle((int)bx - 8, (int)by - 14, 136, 16, new Color((byte)122,(byte)140,(byte)154,(byte)255));
+            Raylib.DrawRectangle((int)bx - 8, (int)by - 14, 136, 5, new Color((byte)154,(byte)174,(byte)187,(byte)255));
+            Raylib.DrawRectangle((int)bx + 88, (int)by - 28, 14, 20, new Color((byte)176,(byte)112,(byte)80,(byte)255));
+            Raylib.DrawRectangle((int)bx + 86, (int)by - 30, 18, 5, new Color((byte)152,(byte)90,(byte)56,(byte)255));
+            Raylib.DrawRectangle((int)bx + 10, (int)by + 15, 30, 28, new Color((byte)168,(byte)212,(byte)224,(byte)192));
+            Raylib.DrawRectangleLines((int)bx + 10, (int)by + 15, 30, 28, new Color((byte)138,(byte)112,(byte)80,(byte)255));
+            Raylib.DrawLine((int)bx + 25, (int)by + 15, (int)bx + 25, (int)by + 43, new Color((byte)138,(byte)112,(byte)80,(byte)255));
+            Raylib.DrawLine((int)bx + 10, (int)by + 29, (int)bx + 40, (int)by + 29, new Color((byte)138,(byte)112,(byte)80,(byte)255));
+            Raylib.DrawRectangle((int)bx + 10, (int)by + 43, 30, 7, new Color((byte)107,(byte)58,(byte)31,(byte)255));
+            Raylib.DrawCircle((int)bx + 17, (int)by + 45, 3, new Color((byte)232,(byte)64,(byte)64,(byte)255));
+            Raylib.DrawCircle((int)bx + 25, (int)by + 44, 3, new Color((byte)245,(byte)200,(byte)66,(byte)255));
+            Raylib.DrawCircle((int)bx + 33, (int)by + 45, 3, new Color((byte)232,(byte)64,(byte)64,(byte)255));
+            Raylib.DrawRectangle((int)bx + 80, (int)by + 15, 30, 28, new Color((byte)168,(byte)212,(byte)224,(byte)192));
+            Raylib.DrawRectangleLines((int)bx + 80, (int)by + 15, 30, 28, new Color((byte)138,(byte)112,(byte)80,(byte)255));
+            Raylib.DrawLine((int)bx + 95, (int)by + 15, (int)bx + 95, (int)by + 43, new Color((byte)138,(byte)112,(byte)80,(byte)255));
+            Raylib.DrawLine((int)bx + 80, (int)by + 29, (int)bx + 110, (int)by + 29, new Color((byte)138,(byte)112,(byte)80,(byte)255));
+            Raylib.DrawRectangle((int)bx + 80, (int)by + 43, 30, 7, new Color((byte)107,(byte)58,(byte)31,(byte)255));
+            Raylib.DrawCircle((int)bx + 87, (int)by + 45, 3, new Color((byte)245,(byte)200,(byte)66,(byte)255));
+            Raylib.DrawCircle((int)bx + 95, (int)by + 44, 3, new Color((byte)232,(byte)64,(byte)64,(byte)255));
+            Raylib.DrawCircle((int)bx + 103, (int)by + 45, 3, new Color((byte)245,(byte)200,(byte)66,(byte)255));
+            Raylib.DrawRectangle((int)bx + 42, (int)by + 54, 36, 36, new Color((byte)139,(byte)82,(byte)48,(byte)255));
+            Raylib.DrawRectangle((int)bx + 46, (int)by + 58, 28, 14, new Color((byte)160,(byte)100,(byte)53,(byte)255));
+            Raylib.DrawRectangle((int)bx + 46, (int)by + 76, 28, 11, new Color((byte)160,(byte)100,(byte)53,(byte)255));
+            Raylib.DrawCircle((int)bx + 71, (int)by + 75, 3, new Color((byte)200,(byte)160,(byte)64,(byte)255));
+            Raylib.DrawRectangle((int)bx + 52, (int)by + 90, 10, 8, new Color((byte)204,(byte)191,(byte)154,(byte)255));
+            Raylib.DrawRectangle((int)bx + 65, (int)by + 90, 10, 8, new Color((byte)204,(byte)191,(byte)154,(byte)255));
+            Raylib.DrawRectangle((int)bx + 15, (int)by - 8, 90, 8, new Color((byte)139,(byte)82,(byte)48,(byte)220));
+        }
+
+        // ── TOWNHOUSE ─────────────────────────────────────────────────────
+        if (BuildingName == "Townhouse")
+        {
+            Raylib.DrawRectangle((int)bx, (int)by, 140, 190, new Color((byte)212,(byte)144,(byte)106,(byte)255));
+            Raylib.DrawRectangle((int)bx, (int)by + 90, 140, 4, new Color((byte)184,(byte)112,(byte)80,(byte)160));
+            Raylib.DrawRectangle((int)bx + 136, (int)by + 4, 6, 186, new Color((byte)154,(byte)90,(byte)48,(byte)100));
+            Raylib.DrawRectangle((int)bx - 8, (int)by - 14, 156, 16, new Color((byte)74,(byte)56,(byte)40,(byte)255));
+            Raylib.DrawRectangle((int)bx - 8, (int)by - 14, 156, 5, new Color((byte)106,(byte)80,(byte)64,(byte)255));
+            Raylib.DrawRectangle((int)bx + 110, (int)by - 30, 16, 22, new Color((byte)176,(byte)112,(byte)80,(byte)255));
+            Raylib.DrawRectangle((int)bx + 108, (int)by - 32, 20, 5, new Color((byte)152,(byte)88,(byte)64,(byte)255));
+            Raylib.DrawRectangle((int)bx + 4, (int)by + 10, 6, 30, new Color((byte)90,(byte)58,(byte)32,(byte)128));
+            Raylib.DrawRectangle((int)bx + 10, (int)by + 10, 35, 30, new Color((byte)184,(byte)220,(byte)232,(byte)204));
+            Raylib.DrawRectangleLines((int)bx + 10, (int)by + 10, 35, 30, new Color((byte)90,(byte)58,(byte)32,(byte)255));
+            Raylib.DrawLine((int)bx + 27, (int)by + 10, (int)bx + 27, (int)by + 40, new Color((byte)90,(byte)58,(byte)32,(byte)255));
+            Raylib.DrawLine((int)bx + 10, (int)by + 25, (int)bx + 45, (int)by + 25, new Color((byte)90,(byte)58,(byte)32,(byte)255));
+            Raylib.DrawRectangle((int)bx + 45, (int)by + 10, 6, 30, new Color((byte)90,(byte)58,(byte)32,(byte)128));
+            Raylib.DrawRectangle((int)bx + 75, (int)by + 10, 6, 30, new Color((byte)90,(byte)58,(byte)32,(byte)128));
+            Raylib.DrawRectangle((int)bx + 81, (int)by + 10, 35, 30, new Color((byte)184,(byte)220,(byte)232,(byte)204));
+            Raylib.DrawRectangleLines((int)bx + 81, (int)by + 10, 35, 30, new Color((byte)90,(byte)58,(byte)32,(byte)255));
+            Raylib.DrawLine((int)bx + 98, (int)by + 10, (int)bx + 98, (int)by + 40, new Color((byte)90,(byte)58,(byte)32,(byte)255));
+            Raylib.DrawLine((int)bx + 81, (int)by + 25, (int)bx + 116, (int)by + 25, new Color((byte)90,(byte)58,(byte)32,(byte)255));
+            Raylib.DrawRectangle((int)bx + 116, (int)by + 10, 6, 30, new Color((byte)90,(byte)58,(byte)32,(byte)128));
+            Raylib.DrawRectangle((int)bx + 10, (int)by + 102, 35, 30, new Color((byte)184,(byte)220,(byte)232,(byte)204));
+            Raylib.DrawRectangleLines((int)bx + 10, (int)by + 102, 35, 30, new Color((byte)90,(byte)58,(byte)32,(byte)255));
+            Raylib.DrawLine((int)bx + 27, (int)by + 102, (int)bx + 27, (int)by + 132, new Color((byte)90,(byte)58,(byte)32,(byte)255));
+            Raylib.DrawLine((int)bx + 10, (int)by + 117, (int)bx + 45, (int)by + 117, new Color((byte)90,(byte)58,(byte)32,(byte)255));
+            Raylib.DrawRectangle((int)bx + 81, (int)by + 102, 35, 30, new Color((byte)184,(byte)220,(byte)232,(byte)204));
+            Raylib.DrawRectangleLines((int)bx + 81, (int)by + 102, 35, 30, new Color((byte)90,(byte)58,(byte)32,(byte)255));
+            Raylib.DrawLine((int)bx + 98, (int)by + 102, (int)bx + 98, (int)by + 132, new Color((byte)90,(byte)58,(byte)32,(byte)255));
+            Raylib.DrawLine((int)bx + 81, (int)by + 117, (int)bx + 116, (int)by + 117, new Color((byte)90,(byte)58,(byte)32,(byte)255));
+            Raylib.DrawRectangle((int)bx + 42, (int)by + 152, 36, 38, new Color((byte)90,(byte)48,(byte)16,(byte)255));
+            Raylib.DrawRectangle((int)bx + 46, (int)by + 156, 28, 16, new Color((byte)110,(byte)64,(byte)32,(byte)255));
+            Raylib.DrawRectangle((int)bx + 46, (int)by + 176, 28, 12, new Color((byte)110,(byte)64,(byte)32,(byte)255));
+            Raylib.DrawCircle((int)bx + 72, (int)by + 175, 3, new Color((byte)200,(byte)160,(byte)64,(byte)255));
+            Raylib.DrawRectangle((int)bx + 38, (int)by + 188, 44, 5, new Color((byte)176,(byte)144,(byte)112,(byte)255));
+            Raylib.DrawRectangle((int)bx + 8, (int)by + 168, 20, 10, new Color((byte)138,(byte)112,(byte)80,(byte)255));
+            Raylib.DrawRectangle((int)bx + 10, (int)by + 173, 16, 3, new Color((byte)90,(byte)58,(byte)32,(byte)255));
+            Raylib.DrawRectangle((int)bx + 52, (int)by + 193, 8, 7, new Color((byte)200,(byte)184,(byte)144,(byte)255));
+            Raylib.DrawRectangle((int)bx + 63, (int)by + 193, 8, 7, new Color((byte)200,(byte)184,(byte)144,(byte)255));
+            Raylib.DrawRectangle((int)bx + 15, (int)by - 8, 110, 8, new Color((byte)74,(byte)56,(byte)40,(byte)220));
+        }
+
+        // ── APARTMENT BLOCK ───────────────────────────────────────────────
+        if (BuildingName == "Apartment Block")
+        {
+            Raylib.DrawRectangle((int)bx, (int)by, 200, 210, new Color((byte)216,(byte)212,(byte)204,(byte)255));
+            Raylib.DrawRectangle((int)bx, (int)by + 70, 200, 3, new Color((byte)184,(byte)180,(byte)170,(byte)178));
+            Raylib.DrawRectangle((int)bx, (int)by + 135, 200, 3, new Color((byte)184,(byte)180,(byte)170,(byte)178));
+            Raylib.DrawRectangle((int)bx + 196, (int)by + 4, 6, 206, new Color((byte)168,(byte)164,(byte)152,(byte)128));
+            Raylib.DrawRectangle((int)bx - 8, (int)by - 14, 216, 16, new Color((byte)74,(byte)74,(byte)80,(byte)255));
+            Raylib.DrawRectangle((int)bx - 8, (int)by - 14, 216, 5, new Color((byte)106,(byte)106,(byte)114,(byte)255));
+            for (int w = 0; w < 3; w++)
+            {
+                Raylib.DrawRectangle((int)bx + 12 + w * 64, (int)by + 8, 34, 28, new Color((byte)160,(byte)200,(byte)216,(byte)204));
+                Raylib.DrawRectangleLines((int)bx + 12 + w * 64, (int)by + 8, 34, 28, new Color((byte)120,(byte)120,(byte)120,(byte)255));
+                Raylib.DrawLine((int)bx + 29 + w * 64, (int)by + 8, (int)bx + 29 + w * 64, (int)by + 36, new Color((byte)120,(byte)120,(byte)120,(byte)255));
+            }
+            for (int w = 0; w < 3; w++)
+            {
+                Raylib.DrawRectangle((int)bx + 12 + w * 64, (int)by + 78, 34, 28, new Color((byte)160,(byte)200,(byte)216,(byte)204));
+                Raylib.DrawRectangleLines((int)bx + 12 + w * 64, (int)by + 78, 34, 28, new Color((byte)120,(byte)120,(byte)120,(byte)255));
+                Raylib.DrawLine((int)bx + 29 + w * 64, (int)by + 78, (int)bx + 29 + w * 64, (int)by + 106, new Color((byte)120,(byte)120,(byte)120,(byte)255));
+            }
+            Raylib.DrawRectangle((int)bx + 12, (int)by + 143, 34, 28, new Color((byte)160,(byte)200,(byte)216,(byte)204));
+            Raylib.DrawRectangleLines((int)bx + 12, (int)by + 143, 34, 28, new Color((byte)120,(byte)120,(byte)120,(byte)255));
+            Raylib.DrawLine((int)bx + 29, (int)by + 143, (int)bx + 29, (int)by + 171, new Color((byte)120,(byte)120,(byte)120,(byte)255));
+            Raylib.DrawRectangle((int)bx + 154, (int)by + 143, 34, 28, new Color((byte)160,(byte)200,(byte)216,(byte)204));
+            Raylib.DrawRectangleLines((int)bx + 154, (int)by + 143, 34, 28, new Color((byte)120,(byte)120,(byte)120,(byte)255));
+            Raylib.DrawLine((int)bx + 171, (int)by + 143, (int)bx + 171, (int)by + 171, new Color((byte)120,(byte)120,(byte)120,(byte)255));
+            Raylib.DrawRectangle((int)bx + 62, (int)by + 132, 76, 8, new Color((byte)74,(byte)74,(byte)80,(byte)255));
+            Raylib.DrawRectangle((int)bx + 70, (int)by + 140, 60, 70, new Color((byte)136,(byte)184,(byte)204,(byte)178));
+            Raylib.DrawRectangleLines((int)bx + 70, (int)by + 140, 30, 70, new Color((byte)80,(byte)88,(byte)96,(byte)255));
+            Raylib.DrawRectangleLines((int)bx + 100, (int)by + 140, 30, 70, new Color((byte)80,(byte)88,(byte)96,(byte)255));
+            Raylib.DrawCircle((int)bx + 99, (int)by + 177, 2, new Color((byte)160,(byte)144,(byte)96,(byte)255));
+            Raylib.DrawCircle((int)bx + 102, (int)by + 177, 2, new Color((byte)160,(byte)144,(byte)96,(byte)255));
+            Raylib.DrawRectangle((int)bx + 70, (int)by + 140, 5, 70, new Color((byte)192,(byte)188,(byte)184,(byte)255));
+            Raylib.DrawRectangle((int)bx + 125, (int)by + 140, 5, 70, new Color((byte)192,(byte)188,(byte)184,(byte)255));
+            Raylib.DrawRectangle((int)bx + 64, (int)by + 208, 72, 4, new Color((byte)184,(byte)176,(byte)160,(byte)255));
+            Raylib.DrawRectangle((int)bx + 68, (int)by + 212, 64, 4, new Color((byte)172,(byte)164,(byte)150,(byte)255));
+            Raylib.DrawRectangle((int)bx + 8, (int)by + 160, 44, 24, new Color((byte)144,(byte)144,(byte)144,(byte)255));
+            Raylib.DrawRectangle((int)bx + 11, (int)by + 163, 18, 9, new Color((byte)112,(byte)112,(byte)112,(byte)255));
+            Raylib.DrawRectangle((int)bx + 31, (int)by + 163, 18, 9, new Color((byte)112,(byte)112,(byte)112,(byte)255));
+            Raylib.DrawRectangle((int)bx + 11, (int)by + 174, 18, 7, new Color((byte)112,(byte)112,(byte)112,(byte)255));
+            Raylib.DrawRectangle((int)bx + 31, (int)by + 174, 18, 7, new Color((byte)112,(byte)112,(byte)112,(byte)255));
+            Raylib.DrawRectangle((int)bx + 15, (int)by - 8, 170, 8, new Color((byte)58,(byte)58,(byte)66,(byte)230));
+        }
+    }
+}
 }
