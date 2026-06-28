@@ -1393,6 +1393,21 @@ static void RemoveOneItem(string item)
         static List<LootDrop> lootDrops = new();
         static List<(Vector2 pos, float radius, Color color)> grassPatches = new();
         static List<(Vector2 pos, Color color)> flowers = new();
+
+        // MULTIPLAYER
+        static MultiplayerManager multiplayer = new MultiplayerManager();
+        static List<RemotePlayer> remotePlayers => multiplayer.RemotePlayers;
+        static string multiplayerIPInput = "192.168.1.";
+        string ipInputString = multiplayerIPInput;
+        static bool multiplayerMenuOpen = false;
+        static float chatInputCooldown = 0f;
+
+        // CHAT INTERACTION
+        static bool chatInputOpen = false;
+        static string chatInputText = "";
+        static string playerChatMessage = "";
+        static float playerChatTimer = 0f;
+        static float playerChatDuration = 5f;
         
         static bool worldTextureGenerated = false;
         static Building currentBuilding = null;
@@ -6488,7 +6503,7 @@ static void AddBurgerKing(float x, float y)
         new Rectangle(x + 300, y - 780, 260, 160),
         new Color(220, 220, 180, 255),
         new Color(200, 195, 160, 255),
-        new Vector2(x + 280, y - 700),
+        new Vector2(x + 280, y - 600),
         "GAS STATION",
         new NPC(new Vector2(1000, 150), "Attendant", "Pay for your fuel here bro."),
         entryPos: new Vector2(580, 870)
@@ -7952,6 +7967,33 @@ static void AddPoliceStation(float x, float y)
     // text
     Raylib.DrawText(text, bx + padding, by + padding, fontSize,
         new Color((byte)20,(byte)20,(byte)20,(byte)255));
+}
+
+static void DrawSpeechBubbleScreen(int sx, int sy, string text, float alphaPct = 1f)
+{
+    int padding  = 8;
+    int fontSize = 15;
+    int textWidth = Raylib.MeasureText(text, fontSize);
+    int bubbleW  = Math.Min(textWidth + padding * 2, 400);
+    int bubbleH  = fontSize + padding * 2;
+    int bx = sx - bubbleW / 2;
+    int by = sy - bubbleH - 18;
+    byte alpha = (byte)(230 * Math.Clamp(alphaPct, 0f, 1f));
+
+    Raylib.DrawRectangle(bx, by, bubbleW, bubbleH,
+        new Color((byte)255,(byte)255,(byte)255,(byte)alpha));
+    Raylib.DrawRectangleLines(bx, by, bubbleW, bubbleH,
+        new Color((byte)80,(byte)80,(byte)80,(byte)alpha));
+    // tail
+    Raylib.DrawTriangle(
+        new Vector2(bx + bubbleW / 2 - 6, by + bubbleH),
+        new Vector2(bx + bubbleW / 2 + 6, by + bubbleH),
+        new Vector2(bx + bubbleW / 2,     by + bubbleH + 10),
+        new Color((byte)255,(byte)255,(byte)255,(byte)alpha));
+    // text — truncate if too long
+    string display = textWidth > 380 ? text[..Math.Min(text.Length, 28)] + "..." : text;
+    Raylib.DrawText(display, bx + padding, by + padding, fontSize,
+        new Color((byte)20,(byte)20,(byte)20,(byte)alpha));
 }
 
         static bool IsNearRoad(Vector2 pos, int buffer = 80)
@@ -12568,7 +12610,7 @@ Raylib.DrawRectangle(ScreenWidth - 320, ScreenHeight - 343, (int)(140 * cardsPro
 
         bool anySaveExists = savePaths.Any(p => System.IO.File.Exists(p));
 
-       if (Raylib.IsMouseButtonPressed(MouseButton.Left))
+if (Raylib.IsMouseButtonPressed(MouseButton.Left) && !multiplayerMenuOpen)
 {
     if (Raylib.CheckCollisionPointRec(mouse, newGameBtn))
     {
@@ -12684,6 +12726,53 @@ Raylib.DrawRectangle(ScreenWidth - 320, ScreenHeight - 343, (int)(140 * cardsPro
 
 
                 CheckZoneMusic();
+
+                        // ── CHAT INPUT ────────────────────────────────────────────────────────────
+       if (chatInputCooldown > 0f) chatInputCooldown -= dt;
+
+        // ── CHAT INPUT ────────────────────────────────────────────────────────────
+        if (chatInputOpen)
+        {
+            int key = Raylib.GetCharPressed();
+            while (key > 0)
+            {
+                if (key >= 32 && key <= 125 && chatInputText.Length < 60)
+                    chatInputText += (char)key;
+                key = Raylib.GetCharPressed();
+            }
+            if (Raylib.IsKeyPressed(KeyboardKey.Backspace) && chatInputText.Length > 0)
+                chatInputText = chatInputText[..^1];
+
+            if (Raylib.IsKeyPressed(KeyboardKey.Enter) && chatInputText.Length > 0)
+            {
+                playerChatMessage = chatInputText;
+                playerChatTimer   = playerChatDuration;
+                multiplayer.SendChat(chatInputText);
+                multiplayer.SendTyping(false);
+                chatInputText = "";
+                chatInputOpen = false;
+            }
+            if (Raylib.IsKeyPressed(KeyboardKey.Escape))
+            {
+                multiplayer.SendTyping(false);
+                chatInputText = "";
+                chatInputOpen = false;
+            }
+        }
+        else
+        {
+            if (Raylib.IsKeyPressed(KeyboardKey.Enter) && chatInputCooldown <= 0f)
+            {
+                chatInputOpen = true;
+                multiplayer.SendTyping(true);
+            }
+        }
+
+        // age the local speech bubble
+        if (playerChatTimer > 0f)
+            playerChatTimer -= Raylib.GetFrameTime();
+
+                multiplayer.Update(player, playerName, currentScene.ToString());
                 UpdateTutorial(dt);
                 UpdateDroppedItems(dt);
 
@@ -15354,7 +15443,7 @@ Raylib.DrawRectangle(hx + 25, hy, 8, 20, Color.DarkBrown);
 Raylib.DrawRectangle(hx + 40, hy, 8, 20, Color.DarkBrown);
 Raylib.DrawRectangle(hx + 55, hy, 8, 20, Color.DarkBrown);
 
-    if (!mainMenuChoice)
+    if (!mainMenuChoice && !multiplayerMenuOpen)
     {
         Vector2 mouse = Raylib.GetMousePosition();
         bool anySaveExists = savePaths.Any(p => System.IO.File.Exists(p));
@@ -15372,6 +15461,15 @@ Raylib.DrawRectangle(hx + 55, hy, 8, 20, Color.DarkBrown);
         Raylib.DrawRectangleLinesEx(loadGameBtn, 2, loadColor);
         Raylib.DrawText("LOAD GAME", ScreenWidth / 2 - 85, 458, 28, loadColor);
 
+        Rectangle mpBtn = new Rectangle(ScreenWidth / 2 - 150, 520, 300, 60);
+        bool hoverMp = Raylib.CheckCollisionPointRec(mouse, mpBtn);
+        Raylib.DrawRectangleRec(mpBtn, new Color((byte)20,(byte)30,(byte)60,(byte)255));
+        Raylib.DrawRectangleLinesEx(mpBtn, 2, hoverMp ? Color.SkyBlue : Color.White);
+        Raylib.DrawText("MULTIPLAYER", ScreenWidth / 2 - 100, 538, 28, hoverMp ? Color.SkyBlue : Color.White);
+
+        if (Raylib.IsMouseButtonPressed(MouseButton.Left) && hoverMp)
+            multiplayerMenuOpen = true;
+
         if (Raylib.IsKeyPressed(KeyboardKey.Escape))
         {
             mainMenuChoice = false;
@@ -15380,9 +15478,68 @@ Raylib.DrawRectangle(hx + 55, hy, 8, 20, Color.DarkBrown);
         }
 
         if (!anySaveExists)
-            Raylib.DrawText("No save files found", ScreenWidth / 2 - 100, 510, 20, Color.DarkGray);
+            Raylib.DrawText("No save files found", ScreenWidth / 2 - 100, 596, 20, Color.DarkGray);
     }
-        else if (!slotSelected)
+    else if (multiplayerMenuOpen)
+    {
+        Vector2 mouse = Raylib.GetMousePosition();
+
+        Raylib.DrawText("MULTIPLAYER", ScreenWidth / 2 - 110, 220, 40, Color.SkyBlue);
+
+        // IP input label + box
+        Raylib.DrawText("Host IP to join:", ScreenWidth / 2 - 150, 295, 22, Color.LightGray);
+        Raylib.DrawRectangle(ScreenWidth / 2 - 150, 325, 300, 40, new Color((byte)30,(byte)30,(byte)50,(byte)255));
+        Raylib.DrawRectangleLines(ScreenWidth / 2 - 150, 325, 300, 40, Color.Gray);
+        Raylib.DrawText(multiplayerIPInput, ScreenWidth / 2 - 140, 337, 20, Color.White);
+        if ((int)(Raylib.GetTime() * 2) % 2 == 0)
+            Raylib.DrawText("|", ScreenWidth / 2 - 140 + Raylib.MeasureText(multiplayerIPInput, 20), 337, 20, Color.White);
+
+        int key = Raylib.GetCharPressed();
+        while (key > 0)
+        {
+            if ((key >= 48 && key <= 57) || key == 46)
+                multiplayerIPInput += (char)key;
+            key = Raylib.GetCharPressed();
+        }
+        if (Raylib.IsKeyPressed(KeyboardKey.Backspace) && multiplayerIPInput.Length > 0)
+            multiplayerIPInput = multiplayerIPInput[..^1];
+
+        // HOST button
+        Rectangle hostBtn = new Rectangle(ScreenWidth / 2 - 150, 390, 300, 60);
+        bool hoverHost = Raylib.CheckCollisionPointRec(mouse, hostBtn);
+        Raylib.DrawRectangleRec(hostBtn, new Color((byte)20,(byte)60,(byte)20,(byte)255));
+        Raylib.DrawRectangleLinesEx(hostBtn, 2, hoverHost ? Color.Green : Color.Gray);
+        Raylib.DrawText("HOST GAME", ScreenWidth / 2 - 80, 408, 28, hoverHost ? Color.Green : Color.White);
+
+        // JOIN button
+        Rectangle joinBtn = new Rectangle(ScreenWidth / 2 - 150, 470, 300, 60);
+        bool hoverJoin = Raylib.CheckCollisionPointRec(mouse, joinBtn);
+        Raylib.DrawRectangleRec(joinBtn, new Color((byte)20,(byte)20,(byte)60,(byte)255));
+        Raylib.DrawRectangleLinesEx(joinBtn, 2, hoverJoin ? Color.SkyBlue : Color.Gray);
+        Raylib.DrawText("JOIN GAME", ScreenWidth / 2 - 75, 488, 28, hoverJoin ? Color.SkyBlue : Color.White);
+
+        // DISCONNECT button
+        Rectangle discBtn = new Rectangle(ScreenWidth / 2 - 150, 550, 300, 60);
+        bool hoverDisc = Raylib.CheckCollisionPointRec(mouse, discBtn) && multiplayer.Connected;
+        Raylib.DrawRectangleRec(discBtn, new Color((byte)50,(byte)15,(byte)15,(byte)255));
+        Raylib.DrawRectangleLinesEx(discBtn, 2, hoverDisc ? Color.Red : Color.DarkGray);
+        Raylib.DrawText("DISCONNECT", ScreenWidth / 2 - 85, 568, 28,
+            multiplayer.Connected ? (hoverDisc ? Color.Red : Color.LightGray) : Color.DarkGray);
+
+        if (Raylib.IsMouseButtonPressed(MouseButton.Left))
+        {
+            if (hoverHost) multiplayer.StartHost();
+            if (hoverJoin) multiplayer.StartClient(multiplayerIPInput);
+            if (hoverDisc) multiplayer.Stop();
+        }
+
+        multiplayer.DrawStatusOverlay();
+
+        Raylib.DrawText("ESC = Back", ScreenWidth / 2 - 55, 635, 20, Color.LightGray);
+        if (Raylib.IsKeyPressed(KeyboardKey.Escape))
+            multiplayerMenuOpen = false;
+    }
+    else if (!slotSelected)
     {
         // show save slots
         Raylib.DrawText("SELECT SAVE SLOT", ScreenWidth / 2 - 130, 250, 28, Color.LightGray);
@@ -15399,10 +15556,10 @@ Raylib.DrawRectangle(hx + 55, hy, 8, 20, Color.DarkBrown);
             Raylib.DrawText($"SLOT {i + 1}", (int)slotBtn.X + 20, (int)slotBtn.Y + 12, 22, hover ? Color.Gold : Color.White);
 
             if (exists)
-                {
-                    Raylib.DrawText(name, (int)slotBtn.X + 120, (int)slotBtn.Y + 12, 22, Color.White);
-                    Raylib.DrawText(info, (int)slotBtn.X + 20, (int)slotBtn.Y + 46, 18, Color.LightGray);
-                }
+            {
+                Raylib.DrawText(name, (int)slotBtn.X + 120, (int)slotBtn.Y + 12, 22, Color.White);
+                Raylib.DrawText(info, (int)slotBtn.X + 20, (int)slotBtn.Y + 46, 18, Color.LightGray);
+            }
             else
             {
                 Raylib.DrawText("Empty Slot", (int)slotBtn.X + 120, (int)slotBtn.Y + 26, 22, Color.DarkGray);
@@ -15711,6 +15868,7 @@ Raylib.DrawText("ROTOAIRA", Math.Clamp(cx+(int)(-16500*scale),mapX,mapX+mapW), M
                     break;
                 case "QUIT TO MENU":
                     pauseMenuOpen = false;
+                    multiplayer.Stop();
                     currentScene = SceneState.MainMenu;
                     Raylib.ResumeMusicStream(currentMusic);
                     SwitchMusic(musicMainMenu);
@@ -17701,6 +17859,7 @@ if (!swordPickedUp)
             player.Position = new Vector2(player.Position.X, player.Position.Y + playerElevation);
             player.Draw();
             player.Position = savedPosW;
+            foreach (var rp in remotePlayers) rp.Draw();
 
             Raylib.EndMode2D();
 
@@ -17723,6 +17882,30 @@ if (!swordPickedUp)
             DrawWeather();
             DrawHUD();
             DrawArmorUI();
+
+            // ── LOCAL SPEECH BUBBLE ───────────────────────────────────────────────────
+if (playerChatTimer > 0f && playerChatMessage.Length > 0)
+{
+    Vector2 screenPos = Raylib.GetWorldToScreen2D(
+        new Vector2(player.Position.X + 20, player.Position.Y), camera);
+    DrawSpeechBubbleScreen((int)screenPos.X, (int)screenPos.Y - 20,
+        playerChatMessage, playerChatTimer / playerChatDuration);
+}
+
+// ── CHAT INPUT BOX ────────────────────────────────────────────────────────
+if (chatInputOpen)
+{
+    int boxW = 500; int boxH = 40;
+    int boxX = ScreenWidth / 2 - boxW / 2;
+    int boxY = ScreenHeight - 80;
+    Raylib.DrawRectangle(boxX, boxY, boxW, boxH, new Color((byte)0,(byte)0,(byte)0,(byte)200));
+    Raylib.DrawRectangleLines(boxX, boxY, boxW, boxH, Color.White);
+    Raylib.DrawText("Say:", boxX - 44, boxY + 10, 20, Color.LightGray);
+    Raylib.DrawText(chatInputText, boxX + 8, boxY + 10, 20, Color.White);
+    if ((int)(Raylib.GetTime() * 2) % 2 == 0)
+        Raylib.DrawText("|", boxX + 8 + Raylib.MeasureText(chatInputText, 20), boxY + 10, 20, Color.White);
+    Raylib.DrawText("ENTER = Send   ESC = Cancel", boxX, boxY + 46, 14, Color.DarkGray);
+}
             
             
         }
@@ -22692,6 +22875,8 @@ if (currentBuilding.BuildingName == "McDONALD'S" &&
             DrawDropConfirm();
             DrawDropQuantity();
             DrawSkillCheatPanel();
+            multiplayer.DrawStatusOverlay();
+            multiplayer.DrawChat();
 
             // Coordinates display with background
             string coordText = $"X: {(int)player.Position.X}  Y: {(int)player.Position.Y}";
