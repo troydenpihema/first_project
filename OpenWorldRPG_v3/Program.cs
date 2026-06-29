@@ -869,6 +869,46 @@ static void RemoveOneItem(string item)
         static Vector2 bowSpawnPos = new Vector2(800, -400);
         static Vector2 crossbowSpawnPos = new Vector2(1000, -400);
 
+        // PLAYER HOUSING 
+        static List<(int x, int y)> ownedHousePlots = new List<(int x, int y)>();
+        static bool housePurchased => ownedHousePlots.Count > 0; // keep for backward compat
+        static int activeHousePlotIndex = 0;
+        static bool   landForSaleUIOpen   = false;
+        static bool   houseMenuOpen       = false;
+        static int    houseMenuSelected   = 0;
+        static List<HouseData> houseDataList = new List<HouseData>();
+        static string houseRoofColor = "Grey";
+        static int    furnitureCategoryIndex = 0;
+        static int    furnitureShopScroll    = 0;
+        static int    heldFurnitureRotation  = 0;
+        static float bedMenuInputCooldown = 0f;
+        static bool   houseBuildingActive  = false;
+        static float  houseBuildingTimer   = 0f;
+        static float  houseBuildingDuration = 4f;
+        static float  houseBuildingAlpha   = 0f;
+        static bool   houseBuildingFadeIn  = true;
+        static HouseData ActiveHouseData =>
+        activeHousePlotIndex >= 0 && activeHousePlotIndex < houseDataList.Count
+        ? houseDataList[activeHousePlotIndex]
+        : null;
+
+        // Available land plots (world position, price)
+        static (float x, float y, int price, string label)[] landPlots = {
+            (2000,  -200,  8000,  "Safe Zone Plot A"),
+            (2400,  -200,  8000,  "Safe Zone Plot B"),
+            (2800,  -200,  8000,  "Safe Zone Plot C"),
+            (-400,  -200,  7500,  "Safe Zone Plot D"),
+            (-800,  -200,  7500,  "Safe Zone Plot E"),
+        };
+        static int selectedPlot = -1;
+        static bool   furniturePlaceMode  = false;  // true when holding a piece to place
+        static string heldFurnitureType   = "";     // which piece is being held
+        static int    heldFurnitureIndex  = -1;     // index in houseFurniture list (-1 = new)
+        static int    furnitureCursorX    = 640;    // current ghost position
+        static int    furnitureCursorY    = 400;
+        static int    furnitureGridSnap   = 40;     // snap to 40px grid
+
+
         // Cheats
         static readonly (string name, Func<int> get, Action<int> set)[] cheatSkills = new (string, Func<int>, Action<int>)[]
         {
@@ -1231,7 +1271,7 @@ static void RemoveOneItem(string item)
         static bool optionsMenuOpen = false;
         static bool cheatsMenuOpen = false;
         static bool loadMenuOpen = false;
-        static int cheatGoldAmount = 100;
+        static int cheatGoldAmount = 1000;
 
         // WORLD MAP AND MINIMAP
         static int minimapSize = 120;
@@ -6365,7 +6405,7 @@ static void DrawRocket(int x, int y)
         new Rectangle(x, y, 260, 160),
         new Color(180, 180, 200, 255),
         new Color(210, 210, 220, 255),
-        new Vector2(x + 120, y + 220),
+        new Vector2(x + 120, y + 150),
         name,
         new NPC(new Vector2(700, 120), "Dealer", $"Welcome to the {name}! E to browse."),
         entryPos: new Vector2(700, 900)
@@ -6389,7 +6429,7 @@ static void AddDominos(float x, float y)
         new Rectangle(x, y, 200, 140),
         new Color(0, 75, 155, 255),
         new Color(20, 20, 20, 255),
-        new Vector2(x + 100, y + 240),
+        new Vector2(x + 100, y + 150),
         "DOMINO'S",
         new NPC(new Vector2(700, 120), "Cashier", "Welcome to Domino's! Press E to order."),
         entryPos: new Vector2(700, 900)
@@ -6427,7 +6467,7 @@ static void AddKFC(float x, float y)
         new Rectangle(x, y, 200, 140),
         new Color(180, 20, 20, 255),
         new Color(30, 15, 10, 255),
-        new Vector2(x + 100, y + 240),
+        new Vector2(x + 100, y + 150),
         "KFC",
         new NPC(new Vector2(700, 120), "Cashier", "Welcome to KFC! Press E to order."),
         entryPos: new Vector2(700, 900)
@@ -6465,7 +6505,7 @@ static void AddBurgerKing(float x, float y)
         new Rectangle(x, y, 200, 140),
         new Color(210, 80, 0, 255),
         new Color(25, 15, 5, 255),
-        new Vector2(x + 100, y + 240),
+        new Vector2(x + 100, y + 150),
         "BURGER KING",
         new NPC(new Vector2(700, 120), "Cashier", "Welcome to Burger King! Press E to order."),
         entryPos: new Vector2(700, 900)
@@ -6563,7 +6603,7 @@ static void AddSwimmingComplex(float x, float y)
         new Rectangle(x, y, 300, 200),
         new Color(30, 120, 200, 255),
         new Color(20, 160, 220, 255),
-        new Vector2(x + 150, y + 300),
+        new Vector2(x + 150, y + 150),
         "SWIMMING COMPLEX",
         new NPC(new Vector2(700, 100), "Lifeguard", "Lane pool: swim laps. Diving pool: time your jump!"),
         entryPos: new Vector2(700, 900)
@@ -6600,7 +6640,7 @@ static void AddTennisCourt(float x, float y)
         new Rectangle(x, y, 200, 120),
         new Color(180, 120, 40, 255),
         new Color(60, 160, 60, 255),
-        new Vector2(x + 100, y + 200),
+        new Vector2(x + 100, y + 150),
         "TENNIS COURT",
         new NPC(new Vector2(700, 100), "Tennis Coach", "Press E near the net to start a game! WASD to move your paddle."),
         entryPos: new Vector2(700, 920)
@@ -6619,7 +6659,7 @@ static void AddBasketballCourt(float x, float y)
         new Rectangle(x, y, 200, 120),
         new Color(200, 100, 20, 255),
         new Color(200, 140, 60, 255),
-        new Vector2(x + 100, y + 200),
+        new Vector2(x + 100, y + 150),
         "BASKETBALL COURT",
         new NPC(new Vector2(700, 100), "Coach", "Shoot hoops! Stand at the free throw line and press F. Lock power, then lock aim!"),
         entryPos: new Vector2(700, 920)
@@ -6638,7 +6678,7 @@ static void AddMcDonalds(float x, float y)
         new Rectangle(x, y, 200, 140),
         new Color(220, 30, 30, 255),
         new Color(255, 200, 0, 255),
-        new Vector2(x + 100, y + 240),
+        new Vector2(x + 100, y + 150),
         "McDONALD'S",
         new NPC(new Vector2(700, 120), "Cashier", "Welcome to McDonald's! Press E to order."),
         entryPos: new Vector2(700, 900)
@@ -7329,7 +7369,7 @@ static void AddAA(float x, float y)
         new Rectangle(x, y, 160, 110),
         new Color(0, 80, 160, 255),
         new Color(10, 50, 100, 255),
-        new Vector2(x + 80, y + 220),
+        new Vector2(x + 80, y + 150),
         "AA",
         new NPC(new Vector2(700, 160), "AA Officer", "Kia ora! Theory tests, licence checks and practical bookings here bro."),
         entryPos: new Vector2(700, 900)
@@ -7349,7 +7389,7 @@ static void AddDBar(float x, float y)
         new Rectangle(x, y, 160, 120),
         new Color(15, 15, 15, 255),          // black exterior
         new Color(20, 20, 25, 255),           // very dark interior
-        new Vector2(x + 100, y + 240),
+        new Vector2(x + 100, y + 150),
         "DBar",
         new NPC(new Vector2(600, 420), "Dbar Owner", "Grab a woodys and relax at Dbar."),
         entryPos: new Vector2(318, 885)
@@ -7372,7 +7412,7 @@ static void AddKiwiCuts(float x, float y)
         new Rectangle(x, y, 140, 110),
         new Color(240, 240, 235, 255),
         new Color(245, 240, 230, 255),
-        new Vector2(x + 80, y + 220),          // ExitPosition (world coords, where player lands outside)
+        new Vector2(x + 80, y + 150),          // ExitPosition (world coords, where player lands outside)
         "KiwiCuts",
         new NPC(new Vector2(400, 300), "Barber", "Sweet as, take a seat bro."),
         entryPos: new Vector2(640, 640)        // EntryPosition — bottom-centre, clear floor near exit door
@@ -7404,7 +7444,7 @@ static void AddDropZone(float x, float y)
         new Rectangle(x, y, 200, 140),
         new Color(40, 20, 70, 255),           // purple exterior
         new Color(25, 20, 45, 255),           // dark purple interior
-        new Vector2(x + 100, y + 280),
+        new Vector2(x + 100, y + 150),
         "DropZone",
         new NPC(new Vector2(600, 600), "Arcade Attendant", "Welcome to DropZone! Games, prizes and snacks await."),
         entryPos: new Vector2(620, 830)
@@ -7443,7 +7483,7 @@ static void AddSupermarket(float x, float y)
         new Rectangle(x, y, 160, 120),
         new Color(200, 220, 200, 255),
         new Color(210, 225, 210, 255),
-        new Vector2(x + 100, y + 240),
+        new Vector2(x + 100, y + 150),
         "SUPERMARKET",
         new NPC(new Vector2(1280, 60), "Cashier", "Welcome! Grab a trolley or basket at the entrance. Use spacebar to pickup and return"),
         entryPos: new Vector2(500, 920)
@@ -7599,7 +7639,7 @@ static void AddStore(float x, float y)
         new Rectangle(x, y, 160, 120),
         Color.DarkGreen,
         new Color(40, 90, 50, 255),
-        new Vector2(x + 60, y + 190),
+        new Vector2(x + 60, y + 150),
         "STORE",
         new NPC(new Vector2(700, 120), "Store Clerk", "Need supplies? Show me the moolack."),
         entryPos: new Vector2(700, 850)
@@ -7642,7 +7682,7 @@ static void AddMagicShop(float x, float y)
         new Rectangle(x, y, 160, 120),
         new Color(60, 20, 100, 255),      // deep purple exterior
         new Color(30, 10, 60, 255),       // dark interior
-        new Vector2(x + 80, y + 240),
+        new Vector2(x + 80, y + 150),
         "MAGIC SHOP",
         new NPC(new Vector2(600, 120), "Mystic", "Welcome traveller. Arcane power awaits those who seek it."),
         entryPos: new Vector2(640, 880)
@@ -7665,7 +7705,7 @@ static void AddRangingShop(float x, float y)
         new Rectangle(x, y, 160, 120),
         new Color(60, 35, 10, 255),
         new Color(35, 20, 8, 255),
-        new Vector2(x + 80, y + 240),
+        new Vector2(x + 80, y + 150),
         "RANGING SHOP",
         new NPC(new Vector2(600, 120), "Fletcher", "Best bows in the land bro. Arrows too."),
         entryPos: new Vector2(640, 880)
@@ -7737,7 +7777,7 @@ static void AddMyHouse(float x, float y)
         new Rectangle(x, y, 160, 120),
         new Color(200, 160, 100, 255),
         new Color(180, 140, 100, 255),
-        new Vector2(x + 80, y + 240),
+        new Vector2(x + 80, y + 150),
         "MY HOUSE",
         new NPC(new Vector2(450, 180), "Mum", "Press space to interact with your chest and wardrobe and to sleep in your bed"),
         entryPos: new Vector2(700, 880)  // centre of entry mat
@@ -7780,13 +7820,914 @@ static void AddMyHouse(float x, float y)
     buildings.Add(house);
 }
 
+static void SpawnPlayerHouse(int plotIndex = -1)
+{
+    if (ownedHousePlots.Count == 0) return;
+    if (plotIndex < 0) plotIndex = activeHousePlotIndex;
+
+    int houseWorldX = ownedHousePlots[plotIndex].x;
+    int houseWorldY = ownedHousePlots[plotIndex].y;
+    string houseName = $"PLAYER HOUSE {plotIndex}";
+
+    var data = houseDataList[plotIndex];
+
+    Color wallCol = data.WallColor switch {
+        "Beige"  => new Color((byte)210,(byte)190,(byte)150,(byte)255),
+        "White"  => new Color((byte)240,(byte)240,(byte)235,(byte)255),
+        "Blue"   => new Color((byte)80,(byte)120,(byte)180,(byte)255),
+        "Green"  => new Color((byte)80,(byte)150,(byte)80,(byte)255),
+        "Red"    => new Color((byte)180,(byte)70,(byte)70,(byte)255),
+        _        => new Color((byte)210,(byte)190,(byte)150,(byte)255)
+    };
+
+    var h = new Building(
+        new Rectangle(houseWorldX, houseWorldY, 240, 180),
+        wallCol,
+        new Color((byte)220,(byte)205,(byte)170,(byte)255),
+        new Vector2(houseWorldX + 120, houseWorldY + 150),
+        houseName,
+        new NPC(new Vector2(640, 300), "Home", "Welcome home!"),
+        entryPos: new Vector2(640, 880)
+    );
+
+    h.InteriorObjects.Clear();
+    h.InteriorObjects.Add(new Rectangle(60,   60,  500, 50));
+    h.InteriorObjects.Add(new Rectangle(1030, 450, 300, 270));
+    h.InteriorObjects.Add(new Rectangle(820,  870, 105, 90));
+
+    foreach (var f in data.Furniture)
+    {
+        Rectangle baseCol = f.Type switch
+        {
+            "Sofa"     => new Rectangle(f.RoomX, f.RoomY, 120, 70),
+            "Lamp"     => new Rectangle(f.RoomX + 14, f.RoomY + 30, 20, 30),
+            "TV"       => new Rectangle(f.RoomX, f.RoomY, 100, 60),
+            "Plant"    => new Rectangle(f.RoomX + 10, f.RoomY + 20, 30, 40),
+            "Shelf"    => new Rectangle(f.RoomX, f.RoomY, 100, 70),
+            "Rug"      => new Rectangle(f.RoomX, f.RoomY, 120, 80),
+            "Wall"     => new Rectangle(f.RoomX - 10, f.RoomY, 120, 16),
+            "Toilet"   => new Rectangle(f.RoomX + 4, f.RoomY, 36, 68),
+            "Table"    => new Rectangle(f.RoomX, f.RoomY, 100, 60),
+            "Chair"    => new Rectangle(f.RoomX + 4, f.RoomY, 44, 66),
+            "Fridge"   => new Rectangle(f.RoomX, f.RoomY, 60, 90),
+            "Desk"     => new Rectangle(f.RoomX, f.RoomY, 100, 55),
+            "Stove"    => new Rectangle(f.RoomX, f.RoomY, 80, 70),
+            "Cupboard" => new Rectangle(f.RoomX, f.RoomY, 80, 80),
+            "Bench"    => new Rectangle(f.RoomX, f.RoomY, 100, 48),
+            "Armchair"     => new Rectangle(f.RoomX,      f.RoomY,       80, 64),
+            "BabyChair"    => new Rectangle(f.RoomX + 6,  f.RoomY,       42, 54),
+            "CoffeeTable"  => new Rectangle(f.RoomX,      f.RoomY + 10,  90, 40),
+            "NightStand"   => new Rectangle(f.RoomX,      f.RoomY,       60, 70),
+            "Sink"         => new Rectangle(f.RoomX,      f.RoomY,       70, 55),
+            "KitchenBench" => new Rectangle(f.RoomX,      f.RoomY,      110, 46),
+            "Dishwasher"   => new Rectangle(f.RoomX,      f.RoomY,       65, 80),
+            "PCDesk"       => new Rectangle(f.RoomX,      f.RoomY,      110, 70),
+            "Speaker"      => new Rectangle(f.RoomX,      f.RoomY,       36, 70),
+            "BigPlant"     => new Rectangle(f.RoomX + 10, f.RoomY + 10,  46, 76),
+            "Cactus"       => new Rectangle(f.RoomX + 16, f.RoomY + 10,  18, 70),
+            "FlowerPot"    => new Rectangle(f.RoomX + 6,  f.RoomY + 6,   28, 54),
+            "HalfWall"     => new Rectangle(f.RoomX,      f.RoomY + 28, 120, 22),
+            "WallV"        => new Rectangle(f.RoomX - 2, f.RoomY,      16, 90),
+            "HalfWallV"    => new Rectangle(f.RoomX - 2, f.RoomY + 20, 16, 50),
+            "Bathtub"      => new Rectangle(f.RoomX,      f.RoomY + 10, 110, 70),
+            "Shower"       => new Rectangle(f.RoomX,      f.RoomY,       80, 90),
+            "Painting"     => new Rectangle(f.RoomX,      f.RoomY,       80,  8),
+            "Mirror"       => new Rectangle(f.RoomX,      f.RoomY,       55,  8),
+            "Bin"          => new Rectangle(f.RoomX + 8,  f.RoomY + 6,   34, 50),
+            "Fireplace"    => new Rectangle(f.RoomX,      f.RoomY,      100, 80),
+            _          => new Rectangle(f.RoomX, f.RoomY, 80, 60)
+        };
+
+        // swap W/H for 90/270 rotation
+        Rectangle col = (f.Rotation == 90 || f.Rotation == 270)
+            ? new Rectangle(f.RoomX, f.RoomY, baseCol.Height, baseCol.Width)
+            : baseCol;
+
+        h.InteriorObjects.Add(col);
+    }
+
+    buildings.RemoveAll(b => b.BuildingName == houseName);
+    buildings.Add(h);
+
+    if (currentBuilding?.BuildingName == houseName)
+        currentBuilding = h;
+}
+
+static void DrawRectRot(int cx, int cy, int w, int h, int rotation, Color col)
+{
+    float rad = rotation * MathF.PI / 180f;
+    float cos = MathF.Cos(rad); float sin = MathF.Sin(rad);
+    float hw = w / 2f; float hh = h / 2f;
+
+    Vector2[] corners = {
+        new Vector2(-hw, -hh), new Vector2(hw, -hh),
+        new Vector2(hw,  hh),  new Vector2(-hw, hh)
+    };
+    Vector2[] rot = corners.Select(c =>
+        new Vector2(cx + c.X * cos - c.Y * sin,
+                    cy + c.X * sin + c.Y * cos)).ToArray();
+
+    Raylib.DrawTriangle(rot[0], rot[1], rot[2], col);
+    Raylib.DrawTriangle(rot[0], rot[2], rot[3], col);
+}
+
+static void DrawLineRot(int cx, int cy, int x1, int y1, int x2, int y2, int rotation, Color col)
+{
+    float rad = rotation * MathF.PI / 180f;
+    float cos = MathF.Cos(rad); float sin = MathF.Sin(rad);
+    Vector2 Rot(float x, float y) => new Vector2(
+        cx + x * cos - y * sin,
+        cy + x * sin + y * cos);
+    var a = Rot(x1, y1); var b = Rot(x2, y2);
+    Raylib.DrawLine((int)a.X, (int)a.Y, (int)b.X, (int)b.Y, col);
+}
+
+static void DrawCircRot(int cx, int cy, int ox, int oy, int radius, int rotation, Color col)
+{
+    float rad = rotation * MathF.PI / 180f;
+    float cos = MathF.Cos(rad); float sin = MathF.Sin(rad);
+    int nx = cx + (int)(ox * cos - oy * sin);
+    int ny = cy + (int)(ox * sin + oy * cos);
+    Raylib.DrawCircle(nx, ny, radius, col);
+}
+
+static void DrawFurniturePiece(string type, int x, int y)
+{
+
+    switch (type)
+    {
+        case "Sofa":
+            // base
+            Raylib.DrawRectangle(x, y + 20, 120, 50, new Color((byte)100,(byte)65,(byte)35,(byte)255));
+            // back rest
+            Raylib.DrawRectangle(x, y, 120, 24, new Color((byte)80,(byte)48,(byte)22,(byte)255));
+            // seat cushions (3)
+            Raylib.DrawRectangle(x + 4,  y + 24, 34, 36, new Color((byte)130,(byte)85,(byte)45,(byte)255));
+            Raylib.DrawRectangle(x + 43, y + 24, 34, 36, new Color((byte)130,(byte)85,(byte)45,(byte)255));
+            Raylib.DrawRectangle(x + 82, y + 24, 34, 36, new Color((byte)130,(byte)85,(byte)45,(byte)255));
+            // arm rests
+            Raylib.DrawRectangle(x,       y + 20, 8, 50, new Color((byte)70,(byte)42,(byte)18,(byte)255));
+            Raylib.DrawRectangle(x + 112, y + 20, 8, 50, new Color((byte)70,(byte)42,(byte)18,(byte)255));
+            // legs
+            Raylib.DrawRectangle(x + 4,   y + 66, 8, 8, new Color((byte)50,(byte)30,(byte)10,(byte)255));
+            Raylib.DrawRectangle(x + 108, y + 66, 8, 8, new Color((byte)50,(byte)30,(byte)10,(byte)255));
+            break;
+
+        case "Lamp":
+            // base plate
+            Raylib.DrawRectangle(x + 14, y + 52, 20, 6, new Color((byte)80,(byte)70,(byte)50,(byte)255));
+            // pole
+            Raylib.DrawRectangle(x + 21, y + 14, 6, 40, new Color((byte)100,(byte)90,(byte)65,(byte)255));
+            // shade
+            Raylib.DrawTriangle(
+                new Vector2(x + 10, y + 14),
+                new Vector2(x + 38, y + 14),
+                new Vector2(x + 24, y),
+                new Color((byte)220,(byte)200,(byte)120,(byte)255));
+            Raylib.DrawRectangle(x + 10, y + 14, 28, 6,
+                new Color((byte)200,(byte)180,(byte)100,(byte)255));
+            // glow
+            Raylib.DrawCircle(x + 24, y + 14, 14,
+                new Color((byte)255,(byte)240,(byte)160,(byte)60));
+            break;
+
+        case "TV":
+            // stand
+            Raylib.DrawRectangle(x + 30, y + 52, 40, 8, new Color((byte)40,(byte)40,(byte)40,(byte)255));
+            Raylib.DrawRectangle(x + 44, y + 44, 12, 10, new Color((byte)40,(byte)40,(byte)40,(byte)255));
+            // screen bezel
+            Raylib.DrawRectangle(x, y, 100, 48, new Color((byte)20,(byte)20,(byte)20,(byte)255));
+            // screen
+            Raylib.DrawRectangle(x + 4, y + 4, 92, 38, new Color((byte)10,(byte)20,(byte)60,(byte)255));
+            // screen content (fake image lines)
+            Raylib.DrawRectangle(x + 8,  y + 8,  84, 6,  new Color((byte)40,(byte)80,(byte)160,(byte)200));
+            Raylib.DrawRectangle(x + 8,  y + 18, 50, 6,  new Color((byte)60,(byte)100,(byte)180,(byte)160));
+            Raylib.DrawRectangle(x + 8,  y + 28, 70, 6,  new Color((byte)40,(byte)80,(byte)160,(byte)140));
+            // power light
+            Raylib.DrawCircle(x + 92, y + 42, 3,
+                new Color((byte)0,(byte)220,(byte)80,(byte)255));
+            break;
+
+        case "Plant":
+            // pot
+            Raylib.DrawRectangle(x + 12, y + 34, 26, 24,
+                new Color((byte)140,(byte)90,(byte)40,(byte)255));
+            Raylib.DrawRectangle(x + 10, y + 30, 30, 8,
+                new Color((byte)160,(byte)110,(byte)50,(byte)255));
+            // soil
+            Raylib.DrawRectangle(x + 14, y + 30, 22, 6,
+                new Color((byte)60,(byte)35,(byte)10,(byte)255));
+            // stem
+            Raylib.DrawRectangle(x + 23, y + 10, 4, 22,
+                new Color((byte)40,(byte)120,(byte)40,(byte)255));
+            // leaves
+            Raylib.DrawCircle(x + 25, y + 8,  12, new Color((byte)50,(byte)160,(byte)50,(byte)255));
+            Raylib.DrawCircle(x + 14, y + 16, 9,  new Color((byte)40,(byte)140,(byte)40,(byte)255));
+            Raylib.DrawCircle(x + 36, y + 16, 9,  new Color((byte)60,(byte)150,(byte)60,(byte)255));
+            break;
+
+        case "Shelf":
+            // back board
+            Raylib.DrawRectangle(x, y, 100, 70, new Color((byte)100,(byte)65,(byte)30,(byte)255));
+            // shelves (3 planks)
+            Raylib.DrawRectangle(x, y,      100, 8, new Color((byte)130,(byte)90,(byte)45,(byte)255));
+            Raylib.DrawRectangle(x, y + 28, 100, 8, new Color((byte)130,(byte)90,(byte)45,(byte)255));
+            Raylib.DrawRectangle(x, y + 56, 100, 8, new Color((byte)130,(byte)90,(byte)45,(byte)255));
+            // side panels
+            Raylib.DrawRectangle(x,      y, 6, 70, new Color((byte)80,(byte)50,(byte)20,(byte)255));
+            Raylib.DrawRectangle(x + 94, y, 6, 70, new Color((byte)80,(byte)50,(byte)20,(byte)255));
+            // decorative items on shelves
+            Raylib.DrawRectangle(x + 10, y + 10, 12, 16, new Color((byte)180,(byte)60,(byte)60,(byte)255)); // book
+            Raylib.DrawRectangle(x + 26, y + 10, 8,  16, new Color((byte)60,(byte)100,(byte)180,(byte)255)); // book
+            Raylib.DrawCircle(x + 80, y + 18, 7, new Color((byte)200,(byte)160,(byte)80,(byte)255)); // ornament
+            break;
+
+        case "Rug":
+            // rug base
+            Raylib.DrawRectangle(x, y, 120, 80, new Color((byte)160,(byte)50,(byte)50,(byte)255));
+            // border
+            Raylib.DrawRectangleLines(x + 4, y + 4, 112, 72,
+                new Color((byte)200,(byte)80,(byte)80,(byte)255));
+            Raylib.DrawRectangleLines(x + 8, y + 8, 104, 64,
+                new Color((byte)120,(byte)30,(byte)30,(byte)255));
+            // centre pattern
+            Raylib.DrawRectangle(x + 44, y + 28, 32, 24,
+                new Color((byte)200,(byte)80,(byte)80,(byte)255));
+            Raylib.DrawCircle(x + 60, y + 40, 10,
+                new Color((byte)220,(byte)100,(byte)100,(byte)255));
+            // corner diamonds
+            Raylib.DrawRectangle(x + 14, y + 14, 10, 10,
+                new Color((byte)200,(byte)80,(byte)80,(byte)255));
+            Raylib.DrawRectangle(x + 96, y + 14, 10, 10,
+                new Color((byte)200,(byte)80,(byte)80,(byte)255));
+            Raylib.DrawRectangle(x + 14, y + 56, 10, 10,
+                new Color((byte)200,(byte)80,(byte)80,(byte)255));
+            Raylib.DrawRectangle(x + 96, y + 56, 10, 10,
+                new Color((byte)200,(byte)80,(byte)80,(byte)255));
+            break;
+
+        case "Wall":
+            // thick wall panel
+            Raylib.DrawRectangle(x - 10, y, 120, 16, new Color((byte)150,(byte)150,(byte)145,(byte)255));
+            Raylib.DrawRectangle(x - 10, y, 120, 4,  new Color((byte)180,(byte)180,(byte)175,(byte)255));
+            Raylib.DrawRectangle(x - 10, y + 12, 120, 4, new Color((byte)110,(byte)110,(byte)105,(byte)255));
+            // skirting board
+            Raylib.DrawRectangle(x - 10, y + 14, 120, 6, new Color((byte)200,(byte)195,(byte)180,(byte)255));
+            break;
+
+        case "Toilet":
+            // bowl
+            Raylib.DrawEllipse(x + 22, y + 44, 18, 24, new Color((byte)225,(byte)225,(byte)220,(byte)255));
+            Raylib.DrawEllipseLines(x + 22, y + 44, 18, 24, new Color((byte)180,(byte)180,(byte)175,(byte)255));
+            // seat
+            Raylib.DrawEllipse(x + 22, y + 38, 16, 20, new Color((byte)235,(byte)235,(byte)230,(byte)255));
+            Raylib.DrawEllipseLines(x + 22, y + 38, 16, 20, new Color((byte)160,(byte)160,(byte)155,(byte)255));
+            // cistern
+            Raylib.DrawRectangle(x + 4, y, 36, 24, new Color((byte)225,(byte)225,(byte)220,(byte)255));
+            Raylib.DrawRectangleLines(x + 4, y, 36, 24, new Color((byte)180,(byte)180,(byte)175,(byte)255));
+            // flush button
+            Raylib.DrawCircle(x + 22, y + 8, 5, new Color((byte)180,(byte)180,(byte)175,(byte)255));
+            break;
+
+        case "Table":
+            // table top
+            Raylib.DrawRectangle(x, y, 100, 60, new Color((byte)140,(byte)95,(byte)48,(byte)255));
+            Raylib.DrawRectangle(x, y, 100, 5,  new Color((byte)170,(byte)120,(byte)65,(byte)255));
+            // legs
+            Raylib.DrawRectangle(x + 4,  y + 52, 8, 14, new Color((byte)100,(byte)65,(byte)28,(byte)255));
+            Raylib.DrawRectangle(x + 88, y + 52, 8, 14, new Color((byte)100,(byte)65,(byte)28,(byte)255));
+            // grain lines
+            for (int g = 0; g < 4; g++)
+                Raylib.DrawLine(x + 12 + g * 24, y + 5, x + 12 + g * 24, y + 52,
+                    new Color((byte)120,(byte)80,(byte)38,(byte)80));
+            break;
+
+        case "Chair":
+            // seat
+            Raylib.DrawRectangle(x + 4,  y + 22, 44, 36, new Color((byte)100,(byte)68,(byte)30,(byte)255));
+            // back rest
+            Raylib.DrawRectangle(x + 4,  y,      44, 26, new Color((byte)80,(byte)52,(byte)20,(byte)255));
+            // legs
+            Raylib.DrawRectangle(x + 6,  y + 54, 6, 12, new Color((byte)70,(byte)44,(byte)14,(byte)255));
+            Raylib.DrawRectangle(x + 40, y + 54, 6, 12, new Color((byte)70,(byte)44,(byte)14,(byte)255));
+            // cushion
+            Raylib.DrawRectangle(x + 8,  y + 26, 36, 26, new Color((byte)130,(byte)88,(byte)40,(byte)255));
+            break;
+
+        case "Fridge":
+            // body
+            Raylib.DrawRectangle(x, y, 60, 90, new Color((byte)205,(byte)210,(byte)215,(byte)255));
+            Raylib.DrawRectangleLines(x, y, 60, 90, new Color((byte)160,(byte)165,(byte)170,(byte)255));
+            // door divider
+            Raylib.DrawRectangle(x, y + 50, 60, 3, new Color((byte)150,(byte)155,(byte)160,(byte)255));
+            // handles
+            Raylib.DrawRectangle(x + 50, y + 14, 6, 24, new Color((byte)140,(byte)145,(byte)150,(byte)255));
+            Raylib.DrawRectangle(x + 50, y + 60, 6, 18, new Color((byte)140,(byte)145,(byte)150,(byte)255));
+            // freezer section highlight
+            Raylib.DrawRectangle(x + 3, y + 3,  54, 44, new Color((byte)215,(byte)220,(byte)228,(byte)255));
+            Raylib.DrawRectangle(x + 3, y + 53, 54, 34, new Color((byte)215,(byte)218,(byte)220,(byte)255));
+            break;
+
+        case "Desk":
+            // surface
+            Raylib.DrawRectangle(x, y, 100, 55, new Color((byte)115,(byte)80,(byte)35,(byte)255));
+            Raylib.DrawRectangle(x, y, 100, 5,  new Color((byte)145,(byte)105,(byte)55,(byte)255));
+            // drawer unit
+            Raylib.DrawRectangle(x + 70, y + 5, 26, 46, new Color((byte)95,(byte)65,(byte)28,(byte)255));
+            // drawers
+            Raylib.DrawRectangle(x + 72, y + 8,  22, 12, new Color((byte)110,(byte)76,(byte)34,(byte)255));
+            Raylib.DrawRectangle(x + 72, y + 22, 22, 12, new Color((byte)110,(byte)76,(byte)34,(byte)255));
+            Raylib.DrawRectangle(x + 72, y + 36, 22, 12, new Color((byte)110,(byte)76,(byte)34,(byte)255));
+            // drawer handles
+            Raylib.DrawRectangle(x + 80, y + 12, 6, 3, new Color((byte)160,(byte)130,(byte)60,(byte)255));
+            Raylib.DrawRectangle(x + 80, y + 26, 6, 3, new Color((byte)160,(byte)130,(byte)60,(byte)255));
+            Raylib.DrawRectangle(x + 80, y + 40, 6, 3, new Color((byte)160,(byte)130,(byte)60,(byte)255));
+            // leg
+            Raylib.DrawRectangle(x + 4, y + 52, 8, 14, new Color((byte)90,(byte)60,(byte)22,(byte)255));
+            break;
+
+        case "Stove":
+            // body
+            Raylib.DrawRectangle(x, y, 80, 70, new Color((byte)45,(byte)45,(byte)45,(byte)255));
+            Raylib.DrawRectangleLines(x, y, 80, 70, new Color((byte)30,(byte)30,(byte)30,(byte)255));
+            // cooktop surface
+            Raylib.DrawRectangle(x + 4, y + 4, 72, 44, new Color((byte)35,(byte)35,(byte)35,(byte)255));
+            // burners (4)
+            Raylib.DrawCircle(x + 20, y + 16, 10, new Color((byte)25,(byte)25,(byte)25,(byte)255));
+            Raylib.DrawCircleLines(x + 20, y + 16, 10, new Color((byte)70,(byte)70,(byte)70,(byte)255));
+            Raylib.DrawCircle(x + 58, y + 16, 10, new Color((byte)25,(byte)25,(byte)25,(byte)255));
+            Raylib.DrawCircleLines(x + 58, y + 16, 10, new Color((byte)70,(byte)70,(byte)70,(byte)255));
+            Raylib.DrawCircle(x + 20, y + 36, 10, new Color((byte)25,(byte)25,(byte)25,(byte)255));
+            Raylib.DrawCircleLines(x + 20, y + 36, 10, new Color((byte)70,(byte)70,(byte)70,(byte)255));
+            Raylib.DrawCircle(x + 58, y + 36, 10, new Color((byte)25,(byte)25,(byte)25,(byte)255));
+            Raylib.DrawCircleLines(x + 58, y + 36, 10, new Color((byte)70,(byte)70,(byte)70,(byte)255));
+            // oven door
+            Raylib.DrawRectangle(x + 4, y + 50, 72, 16, new Color((byte)55,(byte)55,(byte)55,(byte)255));
+            Raylib.DrawRectangle(x + 14, y + 54, 52, 8, new Color((byte)30,(byte)30,(byte)30,(byte)255));
+            // knobs
+            for (int k = 0; k < 4; k++)
+                Raylib.DrawCircle(x + 10 + k * 18, y + 66, 4, new Color((byte)80,(byte)80,(byte)80,(byte)255));
+            break;
+
+        case "Cupboard":
+            // body
+            Raylib.DrawRectangle(x, y, 80, 80, new Color((byte)130,(byte)92,(byte)52,(byte)255));
+            Raylib.DrawRectangleLines(x, y, 80, 80, new Color((byte)100,(byte)68,(byte)30,(byte)255));
+            // doors (2)
+            Raylib.DrawRectangle(x + 3,  y + 3, 35, 74, new Color((byte)145,(byte)105,(byte)58,(byte)255));
+            Raylib.DrawRectangle(x + 42, y + 3, 35, 74, new Color((byte)145,(byte)105,(byte)58,(byte)255));
+            // door divider
+            Raylib.DrawRectangle(x + 38, y, 4, 80, new Color((byte)100,(byte)68,(byte)30,(byte)255));
+            // handles
+            Raylib.DrawRectangle(x + 32, y + 34, 5, 12, new Color((byte)180,(byte)145,(byte)60,(byte)255));
+            Raylib.DrawRectangle(x + 43, y + 34, 5, 12, new Color((byte)180,(byte)145,(byte)60,(byte)255));
+            break;
+
+        case "Bench":
+            // seat plank
+            Raylib.DrawRectangle(x, y + 14, 100, 14, new Color((byte)170,(byte)125,(byte)68,(byte)255));
+            Raylib.DrawRectangle(x, y + 14, 100, 3,  new Color((byte)195,(byte)150,(byte)85,(byte)255));
+            // legs
+            Raylib.DrawRectangle(x + 6,  y + 28, 8, 20, new Color((byte)130,(byte)90,(byte)40,(byte)255));
+            Raylib.DrawRectangle(x + 86, y + 28, 8, 20, new Color((byte)130,(byte)90,(byte)40,(byte)255));
+            // cross support
+            Raylib.DrawRectangle(x + 14, y + 36, 72, 5, new Color((byte)130,(byte)90,(byte)40,(byte)255));
+            break;
+        
+        case "Armchair":
+            Raylib.DrawRectangle(x,      y + 18, 80, 46, new Color((byte)90,(byte)55,(byte)25,(byte)255));
+            Raylib.DrawRectangle(x,      y,      80, 22, new Color((byte)70,(byte)42,(byte)18,(byte)255));
+            Raylib.DrawRectangle(x,      y + 18, 10, 46, new Color((byte)60,(byte)35,(byte)12,(byte)255));
+            Raylib.DrawRectangle(x + 70, y + 18, 10, 46, new Color((byte)60,(byte)35,(byte)12,(byte)255));
+            Raylib.DrawRectangle(x + 10, y + 22, 60, 36, new Color((byte)115,(byte)75,(byte)35,(byte)255));
+            break;
+
+        case "BabyChair":
+            Raylib.DrawRectangle(x + 10, y + 20, 30, 26, new Color((byte)200,(byte)160,(byte)80,(byte)255));
+            Raylib.DrawRectangle(x + 10, y,      30, 22, new Color((byte)180,(byte)140,(byte)60,(byte)255));
+            Raylib.DrawRectangle(x + 6,  y + 44, 6,  10, new Color((byte)160,(byte)120,(byte)40,(byte)255));
+            Raylib.DrawRectangle(x + 36, y + 44, 6,  10, new Color((byte)160,(byte)120,(byte)40,(byte)255));
+            Raylib.DrawRectangle(x + 4,  y + 24, 42, 6,  new Color((byte)220,(byte)180,(byte)100,(byte)255));
+            break;
+
+        case "CoffeeTable":
+            Raylib.DrawRectangle(x,      y + 10, 90, 40, new Color((byte)120,(byte)80,(byte)38,(byte)255));
+            Raylib.DrawRectangle(x,      y + 10, 90, 4,  new Color((byte)150,(byte)105,(byte)55,(byte)255));
+            Raylib.DrawRectangle(x + 6,  y + 46, 6,  12, new Color((byte)90,(byte)58,(byte)20,(byte)255));
+            Raylib.DrawRectangle(x + 78, y + 46, 6,  12, new Color((byte)90,(byte)58,(byte)20,(byte)255));
+            break;
+
+        case "NightStand":
+            Raylib.DrawRectangle(x,      y,      60, 70, new Color((byte)115,(byte)78,(byte)36,(byte)255));
+            Raylib.DrawRectangleLines(x,  y,     60, 70, new Color((byte)85,(byte)55,(byte)20,(byte)255));
+            Raylib.DrawRectangle(x + 3,  y + 4,  54, 28, new Color((byte)130,(byte)90,(byte)44,(byte)255));
+            Raylib.DrawRectangle(x + 3,  y + 36, 54, 28, new Color((byte)130,(byte)90,(byte)44,(byte)255));
+            Raylib.DrawRectangle(x + 36, y + 14, 8,  6,  new Color((byte)180,(byte)145,(byte)60,(byte)255));
+            Raylib.DrawRectangle(x + 36, y + 46, 8,  6,  new Color((byte)180,(byte)145,(byte)60,(byte)255));
+            break;
+
+        case "Sink":
+            Raylib.DrawRectangle(x,      y,      70, 55, new Color((byte)195,(byte)200,(byte)205,(byte)255));
+            Raylib.DrawRectangleLines(x,  y,     70, 55, new Color((byte)150,(byte)155,(byte)160,(byte)255));
+            Raylib.DrawEllipse(x + 35, y + 30, 22, 16, new Color((byte)170,(byte)180,(byte)190,(byte)255));
+            Raylib.DrawEllipseLines(x + 35, y + 30, 22, 16, new Color((byte)120,(byte)130,(byte)140,(byte)255));
+            Raylib.DrawCircle(x + 35, y + 12, 4, new Color((byte)160,(byte)165,(byte)170,(byte)255));
+            Raylib.DrawRectangle(x + 33, y + 8,  4, 8,  new Color((byte)140,(byte)145,(byte)150,(byte)255));
+            break;
+
+        case "KitchenBench":
+            Raylib.DrawRectangle(x,      y,      110, 46, new Color((byte)175,(byte)165,(byte)135,(byte)255));
+            Raylib.DrawRectangle(x,      y,      110, 5,  new Color((byte)200,(byte)190,(byte)155,(byte)255));
+            Raylib.DrawRectangle(x,      y + 42, 110, 8,  new Color((byte)140,(byte)130,(byte)100,(byte)255));
+            for (int g = 0; g < 3; g++)
+                Raylib.DrawLine(x + 20 + g * 36, y + 5, x + 20 + g * 36, y + 40,
+                    new Color((byte)155,(byte)145,(byte)115,(byte)80));
+            break;
+
+        case "Dishwasher":
+            Raylib.DrawRectangle(x,      y,      65, 80, new Color((byte)185,(byte)190,(byte)195,(byte)255));
+            Raylib.DrawRectangleLines(x,  y,     65, 80, new Color((byte)145,(byte)150,(byte)155,(byte)255));
+            Raylib.DrawRectangle(x + 5,  y + 10, 55, 55, new Color((byte)170,(byte)175,(byte)180,(byte)255));
+            Raylib.DrawRectangleLines(x + 5, y + 10, 55, 55, new Color((byte)130,(byte)135,(byte)140,(byte)255));
+            Raylib.DrawCircle(x + 54, y + 6, 4, new Color((byte)80,(byte)200,(byte)80,(byte)255));
+            Raylib.DrawRectangle(x + 20, y + 70, 26, 6, new Color((byte)155,(byte)160,(byte)165,(byte)255));
+            break;
+
+        case "PCDesk":
+            // desk surface
+            Raylib.DrawRectangle(x,      y + 30, 110, 40, new Color((byte)80,(byte)60,(byte)30,(byte)255));
+            Raylib.DrawRectangle(x,      y + 30, 110, 4,  new Color((byte)110,(byte)85,(byte)45,(byte)255));
+            // monitor
+            Raylib.DrawRectangle(x + 10, y,      80, 32, new Color((byte)20,(byte)20,(byte)20,(byte)255));
+            Raylib.DrawRectangle(x + 13, y + 2,  74, 26, new Color((byte)15,(byte)30,(byte)80,(byte)255));
+            // stand
+            Raylib.DrawRectangle(x + 46, y + 30, 8,  6,  new Color((byte)30,(byte)30,(byte)30,(byte)255));
+            // keyboard
+            Raylib.DrawRectangle(x + 20, y + 38, 60, 14, new Color((byte)40,(byte)40,(byte)45,(byte)255));
+            Raylib.DrawRectangleLines(x + 20, y + 38, 60, 14, new Color((byte)55,(byte)55,(byte)60,(byte)255));
+            // mouse
+            Raylib.DrawEllipse(x + 92, y + 44, 7, 10, new Color((byte)35,(byte)35,(byte)38,(byte)255));
+            break;
+
+        case "Speaker":
+            Raylib.DrawRectangle(x,      y,      36, 70, new Color((byte)22,(byte)22,(byte)22,(byte)255));
+            Raylib.DrawRectangleLines(x,  y,     36, 70, new Color((byte)40,(byte)40,(byte)40,(byte)255));
+            Raylib.DrawCircle(x + 18, y + 22, 14, new Color((byte)35,(byte)35,(byte)35,(byte)255));
+            Raylib.DrawCircle(x + 18, y + 22, 8,  new Color((byte)15,(byte)15,(byte)15,(byte)255));
+            Raylib.DrawCircle(x + 18, y + 22, 3,  new Color((byte)60,(byte)60,(byte)60,(byte)255));
+            Raylib.DrawRectangle(x + 10, y + 52, 16, 4, new Color((byte)40,(byte)40,(byte)40,(byte)255));
+            Raylib.DrawCircle(x + 18, y + 62, 4, new Color((byte)60,(byte)60,(byte)60,(byte)255));
+            break;
+
+        case "BigPlant":
+            Raylib.DrawRectangle(x + 18, y + 52, 30, 34, new Color((byte)150,(byte)95,(byte)45,(byte)255));
+            Raylib.DrawRectangle(x + 15, y + 48, 36, 8,  new Color((byte)170,(byte)115,(byte)55,(byte)255));
+            Raylib.DrawRectangle(x + 28, y + 16, 10, 36, new Color((byte)45,(byte)125,(byte)45,(byte)255));
+            Raylib.DrawCircle(x + 33, y + 12, 20, new Color((byte)40,(byte)140,(byte)40,(byte)255));
+            Raylib.DrawCircle(x + 16, y + 22, 14, new Color((byte)35,(byte)120,(byte)35,(byte)255));
+            Raylib.DrawCircle(x + 50, y + 22, 14, new Color((byte)50,(byte)145,(byte)50,(byte)255));
+            Raylib.DrawCircle(x + 33, y + 30, 12, new Color((byte)55,(byte)155,(byte)55,(byte)255));
+            break;
+
+        case "Cactus":
+            Raylib.DrawRectangle(x + 16, y + 52, 18, 28, new Color((byte)145,(byte)95,(byte)45,(byte)255));
+            Raylib.DrawRectangle(x + 13, y + 48, 24, 8,  new Color((byte)165,(byte)110,(byte)55,(byte)255));
+            Raylib.DrawRectangle(x + 18, y + 12, 14, 40, new Color((byte)60,(byte)135,(byte)55,(byte)255));
+            Raylib.DrawRectangle(x + 6,  y + 22, 12, 20, new Color((byte)60,(byte)130,(byte)55,(byte)255));
+            Raylib.DrawRectangle(x + 32, y + 26, 12, 16, new Color((byte)60,(byte)130,(byte)55,(byte)255));
+            for (int s = 0; s < 4; s++)
+                Raylib.DrawRectangle(x + 16 + s * 3, y + 14 + s * 6, 2, 4,
+                    new Color((byte)200,(byte)200,(byte)180,(byte)255));
+            break;
+
+        case "FlowerPot":
+            Raylib.DrawRectangle(x + 8,  y + 36, 24, 24, new Color((byte)180,(byte)75,(byte)55,(byte)255));
+            Raylib.DrawRectangle(x + 6,  y + 32, 28, 8,  new Color((byte)200,(byte)95,(byte)70,(byte)255));
+            Raylib.DrawRectangle(x + 18, y + 18, 4,  18, new Color((byte)45,(byte)120,(byte)45,(byte)255));
+            Raylib.DrawCircle(x + 20, y + 14, 10, new Color((byte)220,(byte)80,(byte)100,(byte)255));
+            Raylib.DrawCircle(x + 20, y + 14, 5,  new Color((byte)255,(byte)220,(byte)50,(byte)255));
+            break;
+
+        case "HalfWall":
+            Raylib.DrawRectangle(x,      y + 28, 120, 22, new Color((byte)145,(byte)145,(byte)140,(byte)255));
+            Raylib.DrawRectangle(x,      y + 28, 120, 4,  new Color((byte)175,(byte)175,(byte)170,(byte)255));
+            Raylib.DrawRectangle(x,      y + 48, 120, 4,  new Color((byte)105,(byte)105,(byte)100,(byte)255));
+            for (int b = 0; b < 3; b++)
+                Raylib.DrawRectangleLines(x + 2 + b * 40, y + 30, 36, 18,
+                    new Color((byte)120,(byte)120,(byte)115,(byte)100));
+            break;
+
+        case "WallV":
+            // vertical wall — tall and narrow
+            Raylib.DrawRectangle(x - 2, y,      16,  90, new Color((byte)150,(byte)150,(byte)145,(byte)255));
+            Raylib.DrawRectangle(x - 2, y,       4,  90, new Color((byte)180,(byte)180,(byte)175,(byte)255));
+            Raylib.DrawRectangle(x - 2, y,       4,  90, new Color((byte)105,(byte)105,(byte)100,(byte)255));
+            Raylib.DrawRectangle(x - 2, y,      16,   4, new Color((byte)200,(byte)195,(byte)180,(byte)255));
+            break;
+
+        case "HalfWallV":
+            // vertical half wall
+            Raylib.DrawRectangle(x + 52, y + 20, 16,  50, new Color((byte)145,(byte)145,(byte)140,(byte)255));
+            Raylib.DrawRectangle(x + 52, y + 20,  4,  50, new Color((byte)175,(byte)175,(byte)170,(byte)255));
+            Raylib.DrawRectangle(x + 64, y + 20,  4,  50, new Color((byte)105,(byte)105,(byte)100,(byte)255));
+            Raylib.DrawRectangle(x + 52, y + 20, 16,   4, new Color((byte)200,(byte)195,(byte)180,(byte)255));
+            break;
+
+        case "Bathtub":
+            Raylib.DrawRectangle(x,      y + 10, 110, 70, new Color((byte)215,(byte)220,(byte)225,(byte)255));
+            Raylib.DrawRectangleLines(x,  y + 10, 110, 70, new Color((byte)170,(byte)175,(byte)180,(byte)255));
+            Raylib.DrawRectangle(x + 8,  y + 18, 94, 54,  new Color((byte)185,(byte)210,(byte)225,(byte)255));
+            Raylib.DrawRectangle(x + 6,  y + 6,  30, 10,  new Color((byte)195,(byte)200,(byte)205,(byte)255));
+            Raylib.DrawCircle(x + 18, y + 10, 5, new Color((byte)155,(byte)160,(byte)165,(byte)255));
+            Raylib.DrawRectangle(x + 15, y + 6,  6,  8,   new Color((byte)140,(byte)145,(byte)150,(byte)255));
+            break;
+
+        case "Shower":
+            Raylib.DrawRectangle(x,      y,      80, 90, new Color((byte)195,(byte)205,(byte)210,(byte)255));
+            Raylib.DrawRectangleLines(x,  y,     80, 90, new Color((byte)155,(byte)165,(byte)170,(byte)255));
+            Raylib.DrawRectangle(x + 4,  y + 4,  72, 82, new Color((byte)180,(byte)200,(byte)210,(byte)200));
+            Raylib.DrawCircle(x + 65, y + 20, 8, new Color((byte)155,(byte)160,(byte)165,(byte)255));
+            Raylib.DrawRectangle(x + 62, y + 20, 4, 30, new Color((byte)145,(byte)150,(byte)155,(byte)255));
+            for (int d = 0; d < 4; d++)
+                Raylib.DrawCircle(x + 62 + (d%2)*4, y + 22 + d*5, 2,
+                    new Color((byte)150,(byte)200,(byte)220,(byte)180));
+            break;
+
+        case "Painting":
+            Raylib.DrawRectangle(x,      y,      80, 60, new Color((byte)70,(byte)50,(byte)25,(byte)255));
+            Raylib.DrawRectangle(x + 6,  y + 6,  68, 48, new Color((byte)80,(byte)120,(byte)160,(byte)255));
+            Raylib.DrawCircle(x + 40, y + 30, 16, new Color((byte)220,(byte)180,(byte)60,(byte)255));
+            Raylib.DrawCircle(x + 40, y + 30, 8,  new Color((byte)255,(byte)220,(byte)80,(byte)255));
+            Raylib.DrawRectangle(x + 8,  y + 8,  30, 20, new Color((byte)50,(byte)90,(byte)140,(byte)255));
+            break;
+
+        case "Mirror":
+            Raylib.DrawRectangle(x,      y,      55, 80, new Color((byte)70,(byte)55,(byte)30,(byte)255));
+            Raylib.DrawRectangle(x + 5,  y + 5,  45, 70, new Color((byte)180,(byte)205,(byte)215,(byte)255));
+            Raylib.DrawRectangle(x + 5,  y + 5,  45, 3,  new Color((byte)220,(byte)235,(byte)240,(byte)180));
+            Raylib.DrawRectangle(x + 5,  y + 5,  3,  70, new Color((byte)210,(byte)230,(byte)238,(byte)120));
+            break;
+
+        case "Bin":
+            Raylib.DrawRectangle(x + 10, y + 14, 30, 42, new Color((byte)55,(byte)55,(byte)55,(byte)255));
+            Raylib.DrawRectangle(x + 8,  y + 10, 34, 8,  new Color((byte)70,(byte)70,(byte)70,(byte)255));
+            Raylib.DrawRectangle(x + 14, y + 6,  22, 8,  new Color((byte)60,(byte)60,(byte)60,(byte)255));
+            Raylib.DrawRectangle(x + 16, y + 14, 18, 4,  new Color((byte)45,(byte)45,(byte)45,(byte)255));
+            break;
+
+        case "Fireplace":
+            Raylib.DrawRectangle(x,      y,      100, 80, new Color((byte)75,(byte)38,(byte)18,(byte)255));
+            Raylib.DrawRectangleLines(x,  y,     100, 80, new Color((byte)55,(byte)28,(byte)10,(byte)255));
+            Raylib.DrawRectangle(x + 15, y + 14, 70, 52, new Color((byte)20,(byte)18,(byte)15,(byte)255));
+            // flames
+            Raylib.DrawTriangle(new Vector2(x+30, y+62), new Vector2(x+50, y+20), new Vector2(x+70, y+62),
+                new Color((byte)220,(byte)80,(byte)20,(byte)255));
+            Raylib.DrawTriangle(new Vector2(x+38, y+62), new Vector2(x+52, y+30), new Vector2(x+66, y+62),
+                new Color((byte)240,(byte)150,(byte)20,(byte)255));
+            Raylib.DrawTriangle(new Vector2(x+44, y+62), new Vector2(x+52, y+40), new Vector2(x+60, y+62),
+                new Color((byte)255,(byte)220,(byte)60,(byte)255));
+            // mantle
+            Raylib.DrawRectangle(x - 4, y - 8, 108, 14, new Color((byte)90,(byte)48,(byte)22,(byte)255));
+            break;
+
+        default:
+            // fallback plain rectangle with name
+            Raylib.DrawRectangle(x, y, 80, 60, Color.Gray);
+            Raylib.DrawText(type, x + 4, y + 20, 13, Color.White);
+            break;
+    }
+}
+
+static (int cost, Color col) GetFurnitureTemplate(string type) => type switch
+{
+    "Sofa"         => (800,  new Color((byte)120,(byte)80, (byte)40, (byte)255)),
+    "Chair"        => (180,  new Color((byte)80, (byte)55, (byte)25, (byte)255)),
+    "Bench"        => (280,  new Color((byte)160,(byte)120,(byte)70, (byte)255)),
+    "Armchair"     => (420,  new Color((byte)100,(byte)60, (byte)30, (byte)255)),
+    "BabyChair"    => (150,  new Color((byte)200,(byte)160,(byte)80, (byte)255)),
+    "Table"        => (350,  new Color((byte)120,(byte)80, (byte)40, (byte)255)),
+    "Desk"         => (450,  new Color((byte)100,(byte)70, (byte)30, (byte)255)),
+    "CoffeeTable"  => (280,  new Color((byte)100,(byte)65, (byte)30, (byte)255)),
+    "NightStand"   => (200,  new Color((byte)110,(byte)75, (byte)35, (byte)255)),
+    "Shelf"        => (400,  new Color((byte)140,(byte)100,(byte)60, (byte)255)),
+    "Stove"        => (750,  new Color((byte)50, (byte)50, (byte)50, (byte)255)),
+    "Fridge"       => (900,  new Color((byte)210,(byte)215,(byte)220,(byte)255)),
+    "Cupboard"     => (380,  new Color((byte)140,(byte)100,(byte)60, (byte)255)),
+    "Sink"         => (320,  new Color((byte)200,(byte)205,(byte)210,(byte)255)),
+    "KitchenBench" => (300,  new Color((byte)180,(byte)170,(byte)140,(byte)255)),
+    "Dishwasher"   => (600,  new Color((byte)190,(byte)195,(byte)200,(byte)255)),
+    "TV"           => (1200, new Color((byte)30, (byte)30, (byte)30, (byte)255)),
+    "Lamp"         => (200,  new Color((byte)255,(byte)220,(byte)80, (byte)255)),
+    "PCDesk"       => (900,  new Color((byte)30, (byte)30, (byte)40, (byte)255)),
+    "Speaker"      => (350,  new Color((byte)25, (byte)25, (byte)25, (byte)255)),
+    "Plant"        => (150,  new Color((byte)40, (byte)140,(byte)40, (byte)255)),
+    "BigPlant"     => (280,  new Color((byte)30, (byte)120,(byte)30, (byte)255)),
+    "Cactus"       => (120,  new Color((byte)60, (byte)130,(byte)50, (byte)255)),
+    "FlowerPot"    => (90,   new Color((byte)180,(byte)80, (byte)60, (byte)255)),
+    "Wall"         => (500,  new Color((byte)160,(byte)160,(byte)155,(byte)255)),
+    "HalfWall"     => (300,  new Color((byte)150,(byte)150,(byte)145,(byte)255)),
+    "WallV"        => (500,  new Color((byte)150,(byte)150,(byte)145,(byte)255)),
+    "HalfWallV"    => (300,  new Color((byte)145,(byte)145,(byte)140,(byte)255)),
+    "Toilet"       => (600,  new Color((byte)230,(byte)230,(byte)225,(byte)255)),
+    "Bathtub"      => (800,  new Color((byte)220,(byte)225,(byte)230,(byte)255)),
+    "Shower"       => (700,  new Color((byte)200,(byte)210,(byte)215,(byte)255)),
+    "Rug"          => (300,  new Color((byte)180,(byte)60, (byte)60, (byte)255)),
+    "Painting"     => (250,  new Color((byte)80, (byte)60, (byte)40, (byte)255)),
+    "Mirror"       => (180,  new Color((byte)180,(byte)200,(byte)210,(byte)255)),
+    "Bin"          => (60,   new Color((byte)60, (byte)60, (byte)60, (byte)255)),
+    "Fireplace"    => (950,  new Color((byte)80, (byte)40, (byte)20, (byte)255)),
+    _              => (0,    Color.Gray)
+};
+
+static void DrawHouseMenuUI()
+{
+    if (!houseMenuOpen || ActiveHouseData == null) return;
+
+    int pw = 1240; int ph = 680;
+    int px = ScreenWidth  / 2 - pw / 2;
+    int py = ScreenHeight / 2 - ph / 2;
+    Color gold = new Color((byte)220,(byte)180,(byte)40,(byte)255);
+    Vector2 mouse = Raylib.GetMousePosition();
+
+    Raylib.DrawRectangle(px, py, pw, ph, new Color((byte)8,(byte)8,(byte)18,(byte)250));
+    Raylib.DrawRectangleLines(px, py, pw, ph, gold);
+    Raylib.DrawText("MY HOUSE — CUSTOMISE", px + pw/2 - 160, py + 10, 28, gold);
+    Raylib.DrawText($"Wallet: ${player.Money}", px + pw - 200, py + 14, 20, Color.LightGray);
+
+    // ── TABS: Wall / Floor / Furniture ────────────────────────────────────────
+    string[] mainTabs = { "Furniture", "Wall Colour", "Floor Colour" };
+    for (int i = 0; i < mainTabs.Length; i++)
+    {
+        Rectangle tab = new Rectangle(px + 20 + i * 200, py + 46, 190, 30);
+        bool active = furnitureCategoryIndex == -10 - i  // -10 = Wall, -11 = Floor
+            || (i == 0 && furnitureCategoryIndex >= 0);
+        // use -10 for wall tab, -11 for floor tab, >=0 for furniture tab
+        bool thisTab = (i == 0 && furnitureCategoryIndex >= 0)
+                    || (i == 1 && furnitureCategoryIndex == -10)
+                    || (i == 2 && furnitureCategoryIndex == -11);
+        Raylib.DrawRectangleRec(tab, thisTab
+            ? new Color((byte)60,(byte)50,(byte)10,(byte)255)
+            : new Color((byte)25,(byte)25,(byte)35,(byte)255));
+        Raylib.DrawRectangleLinesEx(tab, 2, thisTab ? gold : Color.DarkGray);
+        Raylib.DrawText(mainTabs[i], (int)tab.X + 12, (int)tab.Y + 7, 17,
+            thisTab ? gold : Color.LightGray);
+        if (Raylib.IsMouseButtonPressed(MouseButton.Left) &&
+            Raylib.CheckCollisionPointRec(mouse, tab))
+        {
+            furnitureCategoryIndex = i == 0 ? 0 : (i == 1 ? -10 : -11);
+            furnitureShopScroll = 0;
+        }
+    }
+
+    int contentY = py + 86;
+
+    // ══ WALL COLOUR TAB ═══════════════════════════════════════════════════════
+    if (furnitureCategoryIndex == -10)
+    {
+        Raylib.DrawText("Choose Wall Colour:", px + 30, contentY + 20, 22, Color.LightGray);
+        string[] walls = { "Beige","White","Blue","Green","Red","Yellow","Pink","Dark" };
+        Color[] wallPreviews = {
+            new Color((byte)210,(byte)190,(byte)150,(byte)255),
+            new Color((byte)240,(byte)240,(byte)235,(byte)255),
+            new Color((byte)80, (byte)120,(byte)180,(byte)255),
+            new Color((byte)80, (byte)150,(byte)80, (byte)255),
+            new Color((byte)180,(byte)70, (byte)70, (byte)255),
+            new Color((byte)200,(byte)185,(byte)60, (byte)255),
+            new Color((byte)200,(byte)120,(byte)160,(byte)255),
+            new Color((byte)40, (byte)35, (byte)50, (byte)255),
+        };
+        for (int i = 0; i < walls.Length; i++)
+        {
+            Rectangle wb = new Rectangle(px + 30 + i * 148, contentY + 60, 136, 80);
+            bool sel = ActiveHouseData.WallColor == walls[i];
+            bool hov = Raylib.CheckCollisionPointRec(mouse, wb);
+            Raylib.DrawRectangleRec(wb, wallPreviews[i]);
+            Raylib.DrawRectangleLinesEx(wb, sel ? 4 : 2, sel ? Color.Gold : (hov ? Color.White : Color.DarkGray));
+            Raylib.DrawText(walls[i], (int)wb.X + 4, (int)wb.Y + 62, 15,
+                sel ? Color.Gold : Color.White);
+            if (Raylib.IsMouseButtonPressed(MouseButton.Left) && hov)
+            { ActiveHouseData.WallColor = walls[i]; SpawnPlayerHouse(); }
+        }
+    }
+
+    // ══ FLOOR COLOUR TAB ══════════════════════════════════════════════════════
+    else if (furnitureCategoryIndex == -11)
+    {
+        Raylib.DrawText("Choose Floor:", px + 30, contentY + 20, 22, Color.LightGray);
+        string[] floors = { "Oak","Pine","Stone","Carpet","Tile","Marble","Concrete","Bamboo" };
+        Color[] floorPreviews = {
+            new Color((byte)160,(byte)110,(byte)60, (byte)255),
+            new Color((byte)190,(byte)150,(byte)90, (byte)255),
+            new Color((byte)120,(byte)120,(byte)115,(byte)255),
+            new Color((byte)100,(byte)80, (byte)140,(byte)255),
+            new Color((byte)200,(byte)200,(byte)195,(byte)255),
+            new Color((byte)210,(byte)205,(byte)195,(byte)255),
+            new Color((byte)90, (byte)90, (byte)88, (byte)255),
+            new Color((byte)140,(byte)175,(byte)100,(byte)255),
+        };
+        for (int i = 0; i < floors.Length; i++)
+        {
+            Rectangle fb = new Rectangle(px + 30 + i * 148, contentY + 60, 136, 80);
+            bool sel = ActiveHouseData.FloorColor == floors[i];
+            bool hov = Raylib.CheckCollisionPointRec(mouse, fb);
+            // draw floor tile pattern
+            for (int tx = 0; tx < 4; tx++)
+                for (int ty = 0; ty < 3; ty++)
+                    Raylib.DrawRectangle((int)fb.X + tx * 34, (int)fb.Y + ty * 26, 33, 25,
+                        new Color((byte)(floorPreviews[i].R + (tx + ty) % 2 * 10),
+                                  (byte)(floorPreviews[i].G + (tx + ty) % 2 * 8),
+                                  (byte)(floorPreviews[i].B + (tx + ty) % 2 * 6),
+                                  (byte)255));
+            Raylib.DrawRectangleLinesEx(fb, sel ? 4 : 2, sel ? Color.Gold : (hov ? Color.White : Color.DarkGray));
+            Raylib.DrawText(floors[i], (int)fb.X + 4, (int)fb.Y + 62, 15,
+                sel ? Color.Gold : Color.White);
+            if (Raylib.IsMouseButtonPressed(MouseButton.Left) && hov)
+                ActiveHouseData.FloorColor = floors[i];
+        }
+    }
+
+    // ══ FURNITURE TAB ═════════════════════════════════════════════════════════
+    else
+    {
+        // category tabs
+        string[] cats = { "All","Seating","Surfaces","Kitchen","Electronics","Plants","Walls","Misc" };
+        for (int i = 0; i < cats.Length; i++)
+        {
+            Rectangle ct = new Rectangle(px + 20 + i * 150, contentY + 4, 142, 26);
+            bool active = furnitureCategoryIndex == i;
+            Raylib.DrawRectangleRec(ct, active
+                ? new Color((byte)40,(byte)80,(byte)40,(byte)255)
+                : new Color((byte)20,(byte)20,(byte)30,(byte)255));
+            Raylib.DrawRectangleLinesEx(ct, 1, active ? Color.Green : Color.DarkGray);
+            Raylib.DrawText(cats[i], (int)ct.X + 8, (int)ct.Y + 5, 15,
+                active ? Color.Green : Color.LightGray);
+            if (Raylib.IsMouseButtonPressed(MouseButton.Left) &&
+                Raylib.CheckCollisionPointRec(mouse, ct))
+            { furnitureCategoryIndex = i; furnitureShopScroll = 0; }
+        }
+
+        // all furniture items with categories
+        (string name, int cost, string cat)[] allItems = {
+            // Seating
+            ("Sofa",        800,  "Seating"),
+            ("Chair",       180,  "Seating"),
+            ("Bench",       280,  "Seating"),
+            ("Armchair",    420,  "Seating"),
+            ("BabyChair",   150,  "Seating"),
+            // Surfaces
+            ("Table",       350,  "Surfaces"),
+            ("Desk",        450,  "Surfaces"),
+            ("CoffeeTable", 280,  "Surfaces"),
+            ("NightStand",  200,  "Surfaces"),
+            ("Shelf",       400,  "Surfaces"),
+            ("Bench",       280,  "Surfaces"),
+            // Kitchen
+            ("Stove",       750,  "Kitchen"),
+            ("Fridge",      900,  "Kitchen"),
+            ("Cupboard",    380,  "Kitchen"),
+            ("Sink",        320,  "Kitchen"),
+            ("KitchenBench",300,  "Kitchen"),
+            ("Dishwasher",  600,  "Kitchen"),
+            // Electronics
+            ("TV",         1200,  "Electronics"),
+            ("Lamp",        200,  "Electronics"),
+            ("PCDesk",      900,  "Electronics"),
+            ("Speaker",     350,  "Electronics"),
+            // Plants
+            ("Plant",       150,  "Plants"),
+            ("BigPlant",    280,  "Plants"),
+            ("Cactus",      120,  "Plants"),
+            ("FlowerPot",   90,   "Plants"),
+            // Walls
+            ("Wall",        500,  "Walls"),
+            ("HalfWall",    300,  "Walls"),
+            ("WallV",       500,  "Walls"),       
+            ("HalfWallV",   300,  "Walls"),
+            ("Toilet",      600,  "Walls"),
+            ("Bathtub",     800,  "Walls"),
+            ("Shower",      700,  "Walls"),
+            // Misc
+            ("Rug",         300,  "Misc"),
+            ("Painting",    250,  "Misc"),
+            ("Mirror",      180,  "Misc"),
+            ("Bin",          60,  "Misc"),
+            ("Fireplace",   950,  "Misc"),
+        };
+
+        string activeCat = cats[furnitureCategoryIndex];
+        var filtered = activeCat == "All"
+            ? allItems
+            : allItems.Where(it => it.cat == activeCat).ToArray();
+
+        // scrollable grid — 5 columns, cards 220w x 160h
+        int cardW = 220; int cardH = 160; int cardPad = 10;
+        int cols = 5;
+        int rows = (int)Math.Ceiling(filtered.Length / (float)cols);
+        int visRows = 3;
+        int maxScroll = Math.Max(0, rows - visRows);
+        furnitureShopScroll = Math.Clamp(furnitureShopScroll, 0, maxScroll);
+
+        // scroll with mouse wheel
+        float wheel = Raylib.GetMouseWheelMove();
+        if (wheel != 0) furnitureShopScroll = Math.Clamp(furnitureShopScroll - (int)wheel, 0, maxScroll);
+
+        // scroll arrows
+        Rectangle upArrow   = new Rectangle(px + pw - 36, contentY + 36,  28, 28);
+        Rectangle downArrow = new Rectangle(px + pw - 36, py + ph - 52, 28, 28);
+        bool hUp   = furnitureShopScroll > 0        && Raylib.CheckCollisionPointRec(mouse, upArrow);
+        bool hDown = furnitureShopScroll < maxScroll && Raylib.CheckCollisionPointRec(mouse, downArrow);
+        Raylib.DrawRectangleRec(upArrow,   new Color((byte)30,(byte)30,(byte)40,(byte)255));
+        Raylib.DrawRectangleRec(downArrow, new Color((byte)30,(byte)30,(byte)40,(byte)255));
+        Raylib.DrawText("▲", (int)upArrow.X   + 4, (int)upArrow.Y   + 4, 20, hUp   ? gold : Color.DarkGray);
+        Raylib.DrawText("▼", (int)downArrow.X + 4, (int)downArrow.Y + 4, 20, hDown ? gold : Color.DarkGray);
+        if (hUp   && Raylib.IsMouseButtonPressed(MouseButton.Left)) furnitureShopScroll--;
+        if (hDown && Raylib.IsMouseButtonPressed(MouseButton.Left)) furnitureShopScroll++;
+
+        // scroll bar
+        if (maxScroll > 0)
+        {
+            int sbH  = py + ph - 80 - (contentY + 70);
+            int sbY  = contentY + 70 + (int)(sbH * (furnitureShopScroll / (float)maxScroll));
+            Raylib.DrawRectangle(px + pw - 30, contentY + 70, 8, sbH,
+                new Color((byte)40,(byte)40,(byte)50,(byte)255));
+            Raylib.DrawRectangle(px + pw - 30, sbY, 8, Math.Max(20, sbH / Math.Max(1, rows)),
+                new Color((byte)120,(byte)100,(byte)40,(byte)255));
+        }
+
+        // draw grid with scissor clip
+        Raylib.BeginScissorMode(px + 20, contentY + 36, pw - 60, visRows * (cardH + cardPad));
+
+        for (int i = 0; i < filtered.Length; i++)
+        {
+            int col = i % cols;
+            int row = i / cols;
+            int visRow = row - furnitureShopScroll;
+            if (visRow < 0 || visRow >= visRows) continue;
+
+            int cx = px + 20 + col * (cardW + cardPad);
+            int cy = contentY + 36 + visRow * (cardH + cardPad);
+            Rectangle card = new Rectangle(cx, cy, cardW, cardH);
+            bool canAfford = player.Money >= filtered[i].cost;
+            bool hov = Raylib.CheckCollisionPointRec(mouse, card);
+
+            // card background
+            Raylib.DrawRectangleRec(card, new Color((byte)18,(byte)18,(byte)30,(byte)255));
+            Raylib.DrawRectangleLinesEx(card, 2,
+                hov && canAfford ? gold : (canAfford ? Color.DarkGray : new Color((byte)60,(byte)30,(byte)30,(byte)255)));
+
+            // furniture preview centred in top 100px of card
+            Raylib.BeginScissorMode(cx + 2, cy + 2, cardW - 4, 100);
+            DrawFurniturePiece(filtered[i].name, cx + cardW/2 - 50, cy + 10);
+            Raylib.EndScissorMode();
+
+            // name + price
+            int nw = Raylib.MeasureText(filtered[i].name, 16);
+            Raylib.DrawText(filtered[i].name, cx + cardW/2 - nw/2, cy + 108, 16, Color.White);
+            Raylib.DrawText($"${filtered[i].cost}", cx + 10, cy + 132, 15,
+                canAfford ? Color.Gold : Color.Red);
+            Raylib.DrawText(filtered[i].cat, cx + cardW - Raylib.MeasureText(filtered[i].cat, 12) - 8,
+                cy + 136, 12, new Color((byte)100,(byte)100,(byte)120,(byte)255));
+
+            if (!canAfford)
+                Raylib.DrawText("Can't afford", cx + cardW/2 - 44, cy + cardH - 20, 13, Color.Red);
+
+            if (Raylib.IsMouseButtonPressed(MouseButton.Left) && hov && canAfford)
+        {
+            heldFurnitureType  = filtered[i].name;
+            heldFurnitureIndex = -1;
+            furniturePlaceMode = true;
+            houseMenuOpen      = false;
+            // spawn ghost at player's current interior position + small offset forward
+            furnitureCursorX   = (int)player.Position.X + 60;
+            furnitureCursorY   = (int)player.Position.Y + 80;
+            ShowNotification($"Click to place your {filtered[i].name}! ESC to cancel.");
+        }
+        }
+
+        Raylib.EndScissorMode();
+
+        // page indicator
+        Raylib.DrawText($"Row {furnitureShopScroll+1}/{Math.Max(1,rows)} — Scroll to see more",
+            px + 20, py + ph - 36, 15, Color.DarkGray);
+    }
+
+    Raylib.DrawText("ESC = Close", px + pw - 130, py + ph - 28, 18, Color.DarkGray);
+    if (Raylib.IsKeyPressed(KeyboardKey.Escape))
+    {
+        houseMenuOpen      = false;
+        furniturePlaceMode = false;
+        heldFurnitureType  = "";
+        heldFurnitureIndex = -1;
+    }
+}
+
 static void AddGym(float x, float y)
 {
     var gym = new Building(
         new Rectangle(x, y, 160, 120),
         new Color(50, 100, 180, 255),
         new Color(40, 40, 60, 255),
-        new Vector2(x + 100, y + 240),
+        new Vector2(x + 100, y + 150),
         "GYM",
         new NPC(new Vector2(950, 125), "Trainer", "You wanna get big? Train hard every day bro."),
         entryPos: new Vector2(1036, 902)
@@ -7815,7 +8756,7 @@ static void AddMarae(float x, float y)
         new Rectangle(x, y, 220, 160),
         new Color(180, 60, 40, 255),
         new Color(140, 80, 40, 255),
-        new Vector2(x + 110, y + 240),
+        new Vector2(x + 110, y + 150),
         "MARAE",
         new NPC(new Vector2(700, 200), "Kaumatua", "Haere mai, haere mai, haere mai."),
         entryPos: new Vector2(700, 880)
@@ -7873,7 +8814,7 @@ static void AddPoliceStation(float x, float y)
         new Rectangle(x, y, 160, 120),
         new Color(30, 30, 120, 255),
         new Color(40, 40, 80, 255),
-        new Vector2(x + 80, y + 240),
+        new Vector2(x + 80, y + 150),
         "POLICE STATION",
         new NPC(new Vector2(1235, 80), "Officer", "Keep it legal out there, no funny business."),
         entryPos: new Vector2(1225, 897)
@@ -8988,6 +9929,23 @@ static void DrawBiomeTextures()
     lines.Add(backpack.Count.ToString());
     foreach (var kv in backpack) { lines.Add(kv.Key); lines.Add(kv.Value.ToString()); }
 
+    // ── Variable-length: player houses (marker) ──
+    lines.Add("HOUSES_START");
+    lines.Add(ownedHousePlots.Count.ToString());
+    for (int i = 0; i < ownedHousePlots.Count; i++)
+    {
+        lines.Add(ownedHousePlots[i].x.ToString());
+        lines.Add(ownedHousePlots[i].y.ToString());
+        // house data
+        var hd = i < houseDataList.Count ? houseDataList[i] : new HouseData(0, 0);
+        lines.Add(hd.WallColor);
+        lines.Add(hd.FloorColor);
+        // furniture
+        lines.Add(hd.Furniture.Count.ToString());
+        foreach (var f in hd.Furniture)
+            lines.Add($"{f.Type}|{f.RoomX}|{f.RoomY}|{f.Cost}");
+    }
+
     System.IO.File.WriteAllLines(savePath, lines);
     ShowNotification("Game Saved!");
 }
@@ -9195,6 +10153,62 @@ static void LoadGame()
                 toolbarSlots[i] = name == "empty" ? null : name;
                 int.TryParse(lines[countLine], out toolbarCounts[i]);
             }
+        }
+    }
+
+    // ── Player houses (marker) ──
+    ownedHousePlots.Clear();
+    houseDataList.Clear();
+    int housesStart = Array.IndexOf(lines, "HOUSES_START");
+    if (housesStart >= 0 && lines.Length > housesStart + 1)
+    {
+        if (int.TryParse(lines[housesStart + 1], out int houseCount))
+        {
+            int hi = housesStart + 2;
+            for (int i = 0; i < houseCount && hi < lines.Length; i++)
+            {
+                // plot position
+                if (!int.TryParse(lines[hi], out int hx)) break; hi++;
+                if (!int.TryParse(lines[hi], out int hy)) break; hi++;
+
+                // house data
+                string wallColor  = hi < lines.Length ? lines[hi++] : "Beige";
+                string floorColor = hi < lines.Length ? lines[hi++] : "Oak";
+
+                var hd = new HouseData(hx, hy)
+                {
+                    WallColor  = wallColor,
+                    FloorColor = floorColor
+                };
+
+                // furniture
+                if (hi < lines.Length && int.TryParse(lines[hi++], out int fCount))
+                {
+                    for (int j = 0; j < fCount && hi < lines.Length; j++)
+                    {
+                        string[] fp = lines[hi++].Split('|');
+                        if (fp.Length >= 4 &&
+                            int.TryParse(fp[1], out int rx) &&
+                            int.TryParse(fp[2], out int ry) &&
+                            int.TryParse(fp[3], out int cost))
+                        {
+                            hd.Furniture.Add(new HouseFurniture(fp[0], rx, ry, cost, Color.Gray));
+                        }
+                    }
+                }
+
+                ownedHousePlots.Add((hx, hy));
+                houseDataList.Add(hd);
+            }
+
+            // spawn all houses back into the world
+            for (int i = 0; i < ownedHousePlots.Count; i++)
+            {
+                activeHousePlotIndex = i;
+                SpawnPlayerHouse(i);
+            }
+            // restore active index to last house
+            activeHousePlotIndex = Math.Max(0, ownedHousePlots.Count - 1);
         }
     }
 }      
@@ -10219,6 +11233,65 @@ static void DrawRangingShopUI()
 
     Raylib.DrawText("Q = Close", panelX + 360, panelY + 548, 18, Color.DarkGray);
     if (Raylib.IsKeyPressed(KeyboardKey.Q)) rangingShopOpen = false;
+}
+
+static void DrawLandForSaleUI()
+{
+    if (!landForSaleUIOpen || selectedPlot < 0) return;
+    var plot = landPlots[selectedPlot];
+
+    int pw = 600; int ph = 340;
+    int px2 = ScreenWidth / 2 - pw / 2;
+    int py2 = ScreenHeight / 2 - ph / 2;
+    Color gold = new Color((byte)220,(byte)180,(byte)40,(byte)255);
+
+    Raylib.DrawRectangle(px2, py2, pw, ph, new Color((byte)10,(byte)10,(byte)20,(byte)245));
+    Raylib.DrawRectangleLines(px2, py2, pw, ph, gold);
+    Raylib.DrawText("LAND FOR SALE", px2 + 170, py2 + 14, 30, gold);
+    Raylib.DrawRectangle(px2 + 20, py2 + 50, pw - 40, 2, new Color((byte)80,(byte)60,(byte)10,(byte)255));
+
+    Raylib.DrawText(plot.label,    px2 + 30, py2 + 64,  22, Color.White);
+    Raylib.DrawText("240 x 180 plot — build your dream home!", px2 + 30, py2 + 94,  18, Color.LightGray);
+    Raylib.DrawText("Includes:",                              px2 + 30, py2 + 124, 18, Color.LightGray);
+    Raylib.DrawText("  • Fully customisable interior",       px2 + 30, py2 + 148, 17, Color.LightGray);
+    Raylib.DrawText("  • Buy furniture from any store",      px2 + 30, py2 + 170, 17, Color.LightGray);
+    Raylib.DrawText("  • Change wall, roof & floor colours", px2 + 30, py2 + 192, 17, Color.LightGray);
+    Raylib.DrawText("  • Chest, bed & save point included",  px2 + 30, py2 + 214, 17, Color.LightGray);
+
+    Raylib.DrawText($"Price: ${plot.price}", px2 + 30, py2 + 248, 24, gold);
+    Raylib.DrawText($"Your wallet: ${player.Money}", px2 + 30, py2 + 278, 20,
+        player.Money >= plot.price ? Color.Green : Color.Red);
+
+    // Buy button
+    bool canAfford = player.Money >= plot.price;
+    Vector2 mouse = Raylib.GetMousePosition();
+    Rectangle buyBtn = new Rectangle(px2 + pw - 200, py2 + ph - 60, 170, 44);
+    bool hoverBuy = canAfford && Raylib.CheckCollisionPointRec(mouse, buyBtn);
+    Raylib.DrawRectangleRec(buyBtn, canAfford
+        ? new Color((byte)20,(byte)80,(byte)20,(byte)255)
+        : new Color((byte)40,(byte)40,(byte)40,(byte)255));
+    Raylib.DrawRectangleLinesEx(buyBtn, 2, hoverBuy ? Color.Green : Color.Gray);
+    Raylib.DrawText(canAfford ? "BUY LAND" : "NOT ENOUGH $",
+        (int)buyBtn.X + 16, (int)buyBtn.Y + 12, 20,
+        hoverBuy ? Color.Green : Color.Gray);
+
+    if (Raylib.IsMouseButtonPressed(MouseButton.Left) && hoverBuy)
+    {
+        player.Money -= plot.price;
+        ownedHousePlots.Add(((int)plot.x, (int)plot.y));
+        houseDataList.Add(new HouseData((int)plot.x, (int)plot.y));
+        activeHousePlotIndex = ownedHousePlots.Count - 1;
+        landForSaleUIOpen    = false;
+        SpawnPlayerHouse(activeHousePlotIndex);
+        houseBuildingActive  = true;   // ← trigger animation
+        houseBuildingTimer   = 0f;
+        houseBuildingFadeIn  = true;
+        houseBuildingAlpha   = 0f;
+        ShowNotification($"Land purchased! Building your house at {plot.label}...");
+    }
+
+    Raylib.DrawText("ESC = Close", px2 + 30, py2 + ph - 40, 18, Color.DarkGray);
+    if (Raylib.IsKeyPressed(KeyboardKey.Escape)) landForSaleUIOpen = false;
 }
         static void DrawChestUI()
 {
@@ -12967,6 +14040,22 @@ if (Raylib.IsKeyPressed(KeyboardKey.F8))
                     //Raylib.PlaySound(soundPauseClose);
                     if (shakeDuration > 0) shakeDuration -= dt;
                     if (levelUpTimer > 0) levelUpTimer -= dt;
+                    if (houseBuildingActive)
+                    {
+                        houseBuildingTimer += dt;
+                        if (houseBuildingFadeIn)
+                        {
+                            houseBuildingAlpha = Math.Min(1f, houseBuildingTimer / 0.5f);
+                            if (houseBuildingAlpha >= 1f) houseBuildingFadeIn = false;
+                        }
+                        if (houseBuildingTimer >= houseBuildingDuration)
+                        {
+                            houseBuildingActive = false;
+                            houseBuildingTimer  = 0f;
+                            houseBuildingAlpha  = 0f;
+                            houseBuildingFadeIn = true;
+                        }
+                    }
                     timeOfDay += daySpeed * dt;
                     UpdateWeather(dt);
                     UpdateQuests();
@@ -13861,6 +14950,11 @@ if (isFishing)
                                 player.Position = currentBuilding.EntryPosition;
                                 if (building.BuildingName == "MY HOUSE")
                                 SwitchMusic(musicHouse);
+                                if (building.BuildingName.StartsWith("PLAYER HOUSE"))
+                                {
+                                    int idx = int.Parse(building.BuildingName.Replace("PLAYER HOUSE ", ""));
+                                    activeHousePlotIndex = idx;
+                                }   
                                else if (building.BuildingName == "McDONALD'S")
                                 SwitchMusic(musicTakeaways);
                                else if (building.BuildingName == "KFC")
@@ -14101,6 +15195,185 @@ if (nearCupboard && !wardrobeOpen && !chestOpen && !cookingMenuOpen)
     if (Raylib.IsKeyPressed(KeyboardKey.Space)) cupboardOpen = !cupboardOpen;
 }
 }
+
+if (currentBuilding.BuildingName.StartsWith("PLAYER HOUSE"))
+{
+    Vector2 bedPos   = new Vector2(1120, 580);
+    Vector2 chestPos = new Vector2(872, 915);
+    if (bedMenuInputCooldown > 0f) bedMenuInputCooldown -= dt;
+
+    bool nearBed2   = Vector2.Distance(player.Center, bedPos)   < 180;
+    bool nearChest2 = Vector2.Distance(player.Center, chestPos) < 100;
+
+    // chest — opens with Space, closes with Q
+    if (!wardrobeOpen && nearChest2 && !bedMenuOpen)
+        if (Raylib.IsKeyPressed(KeyboardKey.Space))
+            chestOpen = !chestOpen;
+
+    if (Raylib.IsKeyPressed(KeyboardKey.Q) && chestOpen)
+    {
+        chestOpen = false;
+        return;
+    }
+
+    // bed — opens with Space, closes with Escape or menu selection
+    if (!wardrobeOpen && !chestOpen && nearBed2)
+    {
+        if (Raylib.IsKeyPressed(KeyboardKey.Space) && !bedMenuOpen && bedMenuInputCooldown <= 0f)
+        {
+            bedMenuOpen = true;
+            bedMenuInputCooldown = 0.4f;
+        }
+
+        if (bedMenuOpen)
+        {
+            Vector2 mouse = Raylib.GetMousePosition();
+            int mx = ScreenWidth / 2 - 200;
+            int my = ScreenHeight / 2 - 100;
+            Rectangle saveRect  = new Rectangle(mx + 20, my + 60,  360, 44);
+            Rectangle sleepRect = new Rectangle(mx + 20, my + 116, 360, 44);
+
+            float bedScroll = Raylib.GetMouseWheelMove();
+            if (Raylib.IsKeyPressed(KeyboardKey.Up)   || bedScroll > 0) bedMenuSelected = 0;
+            if (Raylib.IsKeyPressed(KeyboardKey.Down) || bedScroll < 0) bedMenuSelected = 1;
+            if (Raylib.CheckCollisionPointRec(mouse, saveRect)  && !Raylib.CheckCollisionPointRec(mouse, sleepRect)) bedMenuSelected = 0;
+            if (Raylib.CheckCollisionPointRec(mouse, sleepRect) && !Raylib.CheckCollisionPointRec(mouse, saveRect))  bedMenuSelected = 1;
+
+            bool confirm = bedMenuInputCooldown <= 0f &&
+                          (Raylib.IsKeyPressed(KeyboardKey.Space)
+                        || (Raylib.IsMouseButtonPressed(MouseButton.Left) &&
+                            (Raylib.CheckCollisionPointRec(mouse, saveRect) ||
+                             Raylib.CheckCollisionPointRec(mouse, sleepRect))));
+
+            if (confirm)
+            {
+                if (bedMenuSelected == 0) { SaveGame(); shopMessage = "Game saved!"; shopMessageTimer = 2f; bedMenuOpen = false; }
+                else { bedMenuOpen = false; sleepTimer = 0f; sleepFadeAlpha = 0f; sleepFadingIn = true; zzzTimer = 0f; currentScene = SceneState.Sleeping; }
+                bedMenuInputCooldown = 0.4f;
+            }
+            if (Raylib.IsKeyPressed(KeyboardKey.Escape)) bedMenuOpen = false;
+        }
+    }
+
+    if (!nearBed2) bedMenuOpen = false;
+
+    // ── FURNITURE PLACEMENT ───────────────────────────────────────────────────
+    if (!chestOpen && !bedMenuOpen && !houseMenuOpen && ActiveHouseData != null)
+    {
+        var furniture = ActiveHouseData.Furniture;
+
+        if (furniturePlaceMode)
+        {
+            Vector2 mouse = Raylib.GetMousePosition();
+            Vector2 worldMouse = Raylib.GetScreenToWorld2D(mouse, camera);
+
+            int snapX = (heldFurnitureType == "Wall"  || heldFurnitureType == "HalfWall")  ? 120
+                      : (heldFurnitureType == "WallV" || heldFurnitureType == "HalfWallV") ? 16
+                      : furnitureGridSnap;
+            int snapY = (heldFurnitureType == "Wall"  || heldFurnitureType == "HalfWall")  ? 16
+                      : (heldFurnitureType == "WallV" || heldFurnitureType == "HalfWallV") ? 90
+                      : furnitureGridSnap;
+
+            furnitureCursorX = ((int)worldMouse.X / snapX) * snapX;
+            furnitureCursorY = ((int)worldMouse.Y / snapY) * snapY;
+            furnitureCursorX = Math.Clamp(furnitureCursorX, 20,  1180);
+            furnitureCursorY = Math.Clamp(furnitureCursorY, 70,  900);
+
+            if (Raylib.IsMouseButtonPressed(MouseButton.Left) || Raylib.IsKeyPressed(KeyboardKey.Space))
+            {
+                if (heldFurnitureIndex >= 0 && heldFurnitureIndex < furniture.Count)
+                {
+                    furniture[heldFurnitureIndex].RoomX = furnitureCursorX;
+                    furniture[heldFurnitureIndex].RoomY = furnitureCursorY;
+                    furniturePlaceMode = false;
+                    heldFurnitureType  = "";
+                    heldFurnitureIndex = -1;
+                    SpawnPlayerHouse();
+                    ShowNotification("Furniture moved!");
+                }
+                else
+                {
+                    var template = GetFurnitureTemplate(heldFurnitureType);
+                    if (player.Money >= template.cost)
+                    {
+                        player.Money -= template.cost;
+                        furniture.Add(new HouseFurniture(
+                            heldFurnitureType, furnitureCursorX, furnitureCursorY,
+                            template.cost, template.col));
+                        SpawnPlayerHouse();
+                        ShowNotification($"Placed! ${template.cost} charged. Click again to place another or ESC to stop.");
+                        furnitureCursorX = (int)player.Position.X + 60;
+                        furnitureCursorY = (int)player.Position.Y + 80;
+                    }
+                    else
+                    {
+                        ShowNotification("Not enough money!");
+                        furniturePlaceMode = false;
+                        heldFurnitureType  = "";
+                        heldFurnitureIndex = -1;
+                    }
+                }
+            }
+
+            if (Raylib.IsKeyPressed(KeyboardKey.Escape))
+            {
+                furniturePlaceMode = false;
+                heldFurnitureType  = "";
+                heldFurnitureIndex = -1;
+            }
+
+            // delete — Delete + right click
+            if (Raylib.IsKeyDown(KeyboardKey.Delete) && Raylib.IsMouseButtonPressed(MouseButton.Right))
+            {
+                for (int i = furniture.Count - 1; i >= 0; i--)
+                {
+                    if (Raylib.CheckCollisionPointRec(worldMouse, new Rectangle(furniture[i].RoomX, furniture[i].RoomY, 80, 60)))
+                    {
+                        player.Money += furniture[i].Cost / 2;
+                        ShowNotification($"Sold {furniture[i].Type} for ${furniture[i].Cost / 2}");
+                        furniture.RemoveAt(i);
+                        SpawnPlayerHouse();
+                        break;
+                    }
+                }
+            }
+        }
+        else
+        {
+            // pick up furniture — right click
+            if (Raylib.IsMouseButtonPressed(MouseButton.Right))
+            {
+                Vector2 worldMouse = Raylib.GetScreenToWorld2D(Raylib.GetMousePosition(), camera);
+                for (int i = 0; i < furniture.Count; i++)
+                {
+                    if (Raylib.CheckCollisionPointRec(worldMouse, new Rectangle(furniture[i].RoomX, furniture[i].RoomY, 80, 60)))
+                    {
+                        heldFurnitureIndex = i;
+                        heldFurnitureType  = furniture[i].Type;
+                        furniturePlaceMode = true;
+                        furnitureCursorX   = furniture[i].RoomX;
+                        furnitureCursorY   = furniture[i].RoomY;
+                        ShowNotification($"Moving {furniture[i].Type} — click to place, ESC to cancel");
+                        break;
+                    }
+                }
+            }
+        }
+    }
+
+    if (!chestOpen && !bedMenuOpen)
+        if (Raylib.IsKeyPressed(KeyboardKey.H))
+        {
+            houseMenuOpen = !houseMenuOpen;
+            if (!houseMenuOpen)
+            {
+                furniturePlaceMode = false;
+                heldFurnitureType  = "";
+                heldFurnitureIndex = -1;
+            }
+        }
+}
+
 if (currentBuilding.BuildingName == "DropZone")
 {
     // Bowling lanes
@@ -17088,6 +18361,170 @@ foreach (var b in buildings)
         Raylib.DrawRectangle((int)bx + 90, (int)by + 155, 80, 10, new Color((byte)200,(byte)195,(byte)160,(byte)255));
     }
 
+    // ── PLAYER HOUSE EXTERIOR ─────────────────────────────────────────────────
+    if (building.BuildingName.StartsWith("PLAYER HOUSE"))
+    {
+        // extract plot index to vary the house style slightly per plot
+        int plotIdx = 0;
+        if (int.TryParse(building.BuildingName.Replace("PLAYER HOUSE ", ""), out int pi))
+            plotIdx = pi;
+
+        // get wall colour from house data
+        Color wallCol = plotIdx < houseDataList.Count
+            ? building.ExteriorColor
+            : new Color((byte)210,(byte)190,(byte)150,(byte)255);
+
+        // ── foundation ──
+        Raylib.DrawRectangle((int)bx - 4, (int)by + 172, 248, 12,
+            new Color((byte)160,(byte)150,(byte)130,(byte)255));
+
+        // ── main body ──
+        Raylib.DrawRectangle((int)bx, (int)by, 240, 178, wallCol);
+        // shadow on right and bottom edges
+        Raylib.DrawRectangle((int)bx + 236, (int)by + 4,   4, 174,
+            new Color((byte)0,(byte)0,(byte)0,(byte)40));
+        Raylib.DrawRectangle((int)bx + 4,   (int)by + 174, 236, 4,
+            new Color((byte)0,(byte)0,(byte)0,(byte)40));
+
+        // ── roof ──
+        // main roof band
+        Raylib.DrawRectangle((int)bx - 8,  (int)by - 18, 256, 22,
+            new Color((byte)80,(byte)55,(byte)30,(byte)255));
+        // roof highlight
+        Raylib.DrawRectangle((int)bx - 8,  (int)by - 18, 256, 5,
+            new Color((byte)110,(byte)80,(byte)45,(byte)255));
+        // roof shadow line
+        Raylib.DrawRectangle((int)bx - 8,  (int)by + 2,  256, 3,
+            new Color((byte)50,(byte)32,(byte)14,(byte)255));
+        // roof tiles (horizontal lines)
+        for (int t = 0; t < 3; t++)
+            Raylib.DrawRectangle((int)bx - 8, (int)by - 14 + t * 5, 256, 2,
+                new Color((byte)60,(byte)40,(byte)18,(byte)120));
+        // chimney
+        Raylib.DrawRectangle((int)bx + 180, (int)by - 42, 22, 28,
+            new Color((byte)140,(byte)100,(byte)70,(byte)255));
+        Raylib.DrawRectangle((int)bx + 177, (int)by - 44, 28, 6,
+            new Color((byte)120,(byte)85,(byte)55,(byte)255));
+        // chimney smoke puffs
+        float smokeT = (float)Raylib.GetTime();
+        Raylib.DrawCircle((int)bx + 191, (int)by - 50 + (int)(MathF.Sin(smokeT * 1.2f) * 3f), 5,
+            new Color((byte)180,(byte)180,(byte)180,(byte)120));
+        Raylib.DrawCircle((int)bx + 188, (int)by - 60 + (int)(MathF.Sin(smokeT * 0.9f) * 4f), 7,
+            new Color((byte)160,(byte)160,(byte)160,(byte)80));
+        Raylib.DrawCircle((int)bx + 193, (int)by - 70 + (int)(MathF.Sin(smokeT * 1.5f) * 3f), 4,
+            new Color((byte)140,(byte)140,(byte)140,(byte)50));
+
+        // ── left window ──
+        Raylib.DrawRectangle((int)bx + 14, (int)by + 18, 60, 55,
+            new Color((byte)160,(byte)200,(byte)220,(byte)180));
+        Raylib.DrawRectangleLines((int)bx + 14, (int)by + 18, 60, 55,
+            new Color((byte)80,(byte)55,(byte)30,(byte)255));
+        // window cross
+        Raylib.DrawRectangle((int)bx + 43, (int)by + 18, 3, 55,
+            new Color((byte)80,(byte)55,(byte)30,(byte)200));
+        Raylib.DrawRectangle((int)bx + 14, (int)by + 44, 60, 3,
+            new Color((byte)80,(byte)55,(byte)30,(byte)200));
+        // window sill
+        Raylib.DrawRectangle((int)bx + 10, (int)by + 71, 68, 5,
+            new Color((byte)200,(byte)185,(byte)155,(byte)255));
+        // curtains hint
+        Raylib.DrawRectangle((int)bx + 15, (int)by + 19, 10, 53,
+            new Color((byte)220,(byte)180,(byte)140,(byte)60));
+        Raylib.DrawRectangle((int)bx + 63, (int)by + 19, 10, 53,
+            new Color((byte)220,(byte)180,(byte)140,(byte)60));
+
+        // ── right window ──
+        Raylib.DrawRectangle((int)bx + 166, (int)by + 18, 60, 55,
+            new Color((byte)160,(byte)200,(byte)220,(byte)180));
+        Raylib.DrawRectangleLines((int)bx + 166, (int)by + 18, 60, 55,
+            new Color((byte)80,(byte)55,(byte)30,(byte)255));
+        Raylib.DrawRectangle((int)bx + 195, (int)by + 18, 3, 55,
+            new Color((byte)80,(byte)55,(byte)30,(byte)200));
+        Raylib.DrawRectangle((int)bx + 166, (int)by + 44, 60, 3,
+            new Color((byte)80,(byte)55,(byte)30,(byte)200));
+        Raylib.DrawRectangle((int)bx + 162, (int)by + 71, 68, 5,
+            new Color((byte)200,(byte)185,(byte)155,(byte)255));
+        Raylib.DrawRectangle((int)bx + 167, (int)by + 19, 10, 53,
+            new Color((byte)220,(byte)180,(byte)140,(byte)60));
+        Raylib.DrawRectangle((int)bx + 215, (int)by + 19, 10, 53,
+            new Color((byte)220,(byte)180,(byte)140,(byte)60));
+
+        // ── door ──
+        Raylib.DrawRectangle((int)bx + 96,  (int)by + 98, 48, 80,
+            new Color((byte)90,(byte)55,(byte)22,(byte)255));
+        Raylib.DrawRectangleLines((int)bx + 96, (int)by + 98, 48, 80,
+            new Color((byte)60,(byte)36,(byte)12,(byte)255));
+        // door panels
+        Raylib.DrawRectangle((int)bx + 100, (int)by + 102, 18, 28,
+            new Color((byte)106,(byte)66,(byte)28,(byte)255));
+        Raylib.DrawRectangle((int)bx + 122, (int)by + 102, 18, 28,
+            new Color((byte)106,(byte)66,(byte)28,(byte)255));
+        Raylib.DrawRectangle((int)bx + 100, (int)by + 136, 40, 36,
+            new Color((byte)106,(byte)66,(byte)28,(byte)255));
+        // door handle
+        Raylib.DrawCircle((int)bx + 136, (int)by + 138, 4,
+            new Color((byte)200,(byte)165,(byte)60,(byte)255));
+        // door knocker
+        Raylib.DrawCircle((int)bx + 120, (int)by + 112, 3,
+            new Color((byte)190,(byte)155,(byte)50,(byte)255));
+        // door step
+        Raylib.DrawRectangle((int)bx + 86,  (int)by + 174, 68, 8,
+            new Color((byte)180,(byte)165,(byte)135,(byte)255));
+        // door arch
+        Raylib.DrawRectangle((int)bx + 93,  (int)by + 90,  54, 10,
+            new Color((byte)80,(byte)55,(byte)30,(byte)255));
+
+        // ── wall details ──
+        // brick texture lines (horizontal)
+        for (int br = 0; br < 6; br++)
+            Raylib.DrawRectangle((int)bx, (int)by + 24 + br * 26, 240, 1,
+                new Color((byte)0,(byte)0,(byte)0,(byte)18));
+        // vertical brick offsets alternating
+        for (int br = 0; br < 6; br++)
+        {
+            int offset = br % 2 == 0 ? 40 : 20;
+            for (int bc = 0; bc < 5; bc++)
+                Raylib.DrawRectangle((int)bx + offset + bc * 48, (int)by + 24 + br * 26, 1, 26,
+                    new Color((byte)0,(byte)0,(byte)0,(byte)14));
+        }
+
+        // ── hanging sign ──
+        Raylib.DrawRectangle((int)bx + 60,  (int)by - 36, 120, 20,
+            new Color((byte)60,(byte)36,(byte)12,(byte)240));
+        Raylib.DrawRectangleLines((int)bx + 60, (int)by - 36, 120, 20,
+            new Color((byte)160,(byte)120,(byte)50,(byte)255));
+        // sign chains
+        Raylib.DrawLine((int)bx + 70,  (int)by - 36, (int)bx + 70,  (int)by - 18,
+            new Color((byte)140,(byte)105,(byte)40,(byte)200));
+        Raylib.DrawLine((int)bx + 170, (int)by - 36, (int)bx + 170, (int)by - 18,
+            new Color((byte)140,(byte)105,(byte)40,(byte)200));
+        string houseLabel = plotIdx == 0 ? "MY HOUSE" : $"HOUSE {plotIdx + 1}";
+        int labelW = Raylib.MeasureText(houseLabel, 13);
+        Raylib.DrawText(houseLabel, (int)bx + 120 - labelW / 2, (int)by - 33, 13,
+            new Color((byte)220,(byte)185,(byte)100,(byte)255));
+
+        // ── garden — small flower dots either side of door ──
+        for (int fl = 0; fl < 3; fl++)
+        {
+            Raylib.DrawCircle((int)bx + 20 + fl * 14, (int)by + 170, 4,
+                new Color((byte)60,(byte)140,(byte)60,(byte)255));
+            Raylib.DrawCircle((int)bx + 20 + fl * 14, (int)by + 168, 3,
+                new Color((byte)220,(byte)80,(byte)80,(byte)255));
+            Raylib.DrawCircle((int)bx + 196 + fl * 14, (int)by + 170, 4,
+                new Color((byte)60,(byte)140,(byte)60,(byte)255));
+            Raylib.DrawCircle((int)bx + 196 + fl * 14, (int)by + 168, 3,
+                new Color((byte)255,(byte)180,(byte)60,(byte)255));
+        }
+
+        // ── mailbox ──
+        Raylib.DrawRectangle((int)bx + 4,  (int)by + 140, 6,  32,
+            new Color((byte)80,(byte)60,(byte)30,(byte)255));
+        Raylib.DrawRectangle((int)bx,      (int)by + 130, 14, 14,
+            new Color((byte)60,(byte)90,(byte)150,(byte)255));
+        Raylib.DrawRectangleLines((int)bx, (int)by + 130, 14, 14,
+            new Color((byte)40,(byte)65,(byte)115,(byte)255));
+    }
+
     // ── BIKE DEALER EXTERIOR ─────────────────────────────────────────────────
 if (building.BuildingName == "BIKE DEALER")
 {
@@ -17502,6 +18939,38 @@ else if (building.BuildingName == "BARN DEALER")
 foreach (GasStation gs in gasStations)
     DrawGasStation(gs, gs.OriginX, gs.OriginY);
 
+// ── LAND FOR SALE SIGNS ───────────────────────────────────────────────────
+    foreach (var plot in landPlots)
+    {
+        bool alreadyOwned = ownedHousePlots.Any(p => p.x == (int)plot.x && p.y == (int)plot.y);
+        if (alreadyOwned) continue;
+
+        int sx = (int)plot.x; int sy = (int)plot.y;
+        // plot boundary
+        Raylib.DrawRectangleLines(sx, sy, 240, 180, new Color((byte)255,(byte)200,(byte)0,(byte)200));
+        Raylib.DrawRectangle(sx, sy, 240, 180, new Color((byte)255,(byte)220,(byte)80,(byte)30));
+        // sign post
+        Raylib.DrawRectangle(sx + 110, sy - 60, 6, 60, new Color((byte)120,(byte)80,(byte)30,(byte)255));
+        // sign board
+        Raylib.DrawRectangle(sx + 60, sy - 100, 120, 44, new Color((byte)255,(byte)220,(byte)40,(byte)255));
+        Raylib.DrawRectangleLines(sx + 60, sy - 100, 120, 44, new Color((byte)180,(byte)140,(byte)0,(byte)255));
+        Raylib.DrawText("FOR SALE", sx + 68, sy - 96, 16, new Color((byte)20,(byte)20,(byte)20,(byte)255));
+        Raylib.DrawText($"${plot.price}", sx + 76, sy - 78, 14, new Color((byte)20,(byte)20,(byte)20,(byte)255));
+
+        // interaction prompt when nearby
+        float dist = Vector2.Distance(player.Position, new Vector2(plot.x + 120, plot.y + 90));
+        if (dist < 200)
+        {
+            Raylib.DrawText($"E = View {plot.label}", sx - 20, sy - 120, 16, Color.Yellow);
+            if (Raylib.IsKeyPressed(KeyboardKey.E) && !landForSaleUIOpen)
+            {
+                selectedPlot = Array.IndexOf(landPlots, plot);
+                landForSaleUIOpen = true;
+            }
+        }
+    }
+
+
 // Dungeon cave entrances
 foreach (var entrance in dungeonEntrances)
 {
@@ -17882,6 +19351,77 @@ if (!swordPickedUp)
             DrawWeather();
             DrawHUD();
             DrawArmorUI();
+            DrawLandForSaleUI();
+
+            // ── HOUSE BUILDING ANIMATION ──────────────────────────────────────────────
+    if (houseBuildingActive)
+    {
+        byte alpha = (byte)(255 * houseBuildingAlpha);
+        Raylib.DrawRectangle(0, 0, ScreenWidth, ScreenHeight,
+            new Color((byte)0,(byte)0,(byte)0,(byte)alpha));
+
+        if (houseBuildingAlpha >= 1f)
+        {
+            // animated hammer — bobs up and down
+            float bob    = MathF.Sin(houseBuildingTimer * 6f) * 18f;
+            float angle  = MathF.Sin(houseBuildingTimer * 5f) * 30f; // swing angle degrees
+            int   hx     = ScreenWidth  / 2;
+            int   hy     = ScreenHeight / 2 - 40 + (int)bob;
+
+            // hammer handle
+            Raylib.DrawRectangle(hx - 4,  hy,       8,  70,
+                new Color((byte)160,(byte)110,(byte)50,(byte)255));
+            // hammer head
+            Raylib.DrawRectangle(hx - 28, hy - 22,  56, 24,
+                new Color((byte)100,(byte)100,(byte)105,(byte)255));
+            Raylib.DrawRectangle(hx - 28, hy - 22,  56,  6,
+                new Color((byte)140,(byte)140,(byte)145,(byte)255));
+            // impact sparks when hammer is at bottom of swing
+            if (bob > 12f)
+            {
+                Raylib.DrawCircle(hx - 20, hy + 70, 4,
+                    new Color((byte)255,(byte)200,(byte)50,(byte)200));
+                Raylib.DrawCircle(hx + 20, hy + 70, 3,
+                    new Color((byte)255,(byte)160,(byte)30,(byte)180));
+                Raylib.DrawCircle(hx,      hy + 74, 5,
+                    new Color((byte)255,(byte)220,(byte)80,(byte)220));
+            }
+
+            // dust particles
+            for (int d = 0; d < 5; d++)
+            {
+                float dustX = hx - 60 + d * 28 + MathF.Sin(houseBuildingTimer * 3f + d) * 8f;
+                float dustY = hy + 80  + MathF.Cos(houseBuildingTimer * 4f + d) * 6f;
+                byte  dustA = (byte)(120 + (int)(MathF.Sin(houseBuildingTimer * 5f + d) * 60f));
+                Raylib.DrawCircle((int)dustX, (int)dustY, 5,
+                    new Color((byte)180,(byte)160,(byte)120,(byte)dustA));
+            }
+
+            // progress bar
+            float progress = houseBuildingTimer / houseBuildingDuration;
+            int   barW     = 300;
+            int   barX     = ScreenWidth / 2 - barW / 2;
+            int   barY     = ScreenHeight / 2 + 100;
+            Raylib.DrawRectangle(barX,     barY, barW,     16,
+                new Color((byte)30,(byte)30,(byte)30,(byte)255));
+            Raylib.DrawRectangle(barX,     barY, (int)(barW * progress), 16,
+                new Color((byte)220,(byte)160,(byte)40,(byte)255));
+            Raylib.DrawRectangleLines(barX, barY, barW,    16, Color.Gold);
+
+            // text
+            string msg = houseBuildingTimer < 1.5f ? "Breaking ground..."
+                       : houseBuildingTimer < 2.8f ? "Building your house..."
+                       : "Almost done!";
+            int tw = Raylib.MeasureText(msg, 24);
+            Raylib.DrawText(msg, ScreenWidth / 2 - tw / 2, hy + 120, 24, Color.Gold);
+
+            int tw2 = Raylib.MeasureText("YOUR NEW HOME", 36);
+            Raylib.DrawText("YOUR NEW HOME",
+                ScreenWidth / 2 - tw2 / 2, hy - 100, 36,
+                new Color((byte)220,(byte)180,(byte)40,(byte)255));
+        }
+    }
+            
 
             // ── LOCAL SPEECH BUBBLE ───────────────────────────────────────────────────
 if (playerChatTimer > 0f && playerChatMessage.Length > 0)
@@ -18896,7 +20436,8 @@ if (currentBuilding.BuildingName != "DBar" &&
     currentBuilding.BuildingName != "Airport" &&
     currentBuilding.BuildingName != "AA" &&
     currentBuilding.BuildingName != "MAGIC SHOP" &&
-    currentBuilding.BuildingName != "RANGING SHOP")
+    currentBuilding.BuildingName != "RANGING SHOP" &&
+    currentBuilding.BuildingName != "PLAYER HOUSE" )
 {
     foreach (Rectangle obj in currentBuilding.InteriorObjects)
         Raylib.DrawRectangleRec(obj, Color.DarkBrown);
@@ -21056,6 +22597,98 @@ Raylib.DrawText("WELCOME", 610, 940, 22, new Color((byte)180, (byte)220, (byte)1
     Raylib.DrawRectangle(800, 600, 3, 400, new Color((byte)200, (byte)215, (byte)215, (byte)255));
 }
 
+else if (currentBuilding.BuildingName.StartsWith("PLAYER HOUSE") && ActiveHouseData != null)
+{
+    var furniture = ActiveHouseData.Furniture;
+
+    // floor
+    Color floorCol = ActiveHouseData.FloorColor switch {
+        "Oak"    => new Color((byte)160,(byte)110,(byte)60,(byte)255),
+        "Pine"   => new Color((byte)190,(byte)150,(byte)90,(byte)255),
+        "Stone"  => new Color((byte)120,(byte)120,(byte)115,(byte)255),
+        "Carpet" => new Color((byte)100,(byte)80,(byte)140,(byte)255),
+        "Tile"   => new Color((byte)200,(byte)200,(byte)195,(byte)255),
+        _        => new Color((byte)160,(byte)110,(byte)60,(byte)255)
+    };
+    for (int tx = 0; tx < 1280; tx += 48)
+        for (int ty = 0; ty < 1000; ty += 48)
+        {
+            Raylib.DrawRectangle(tx, ty, 48, 48, floorCol);
+            Raylib.DrawRectangleLines(tx, ty, 48, 48,
+                new Color((byte)0,(byte)0,(byte)0,(byte)30));
+        }
+
+    // wall colour
+    Color wallC = ActiveHouseData.WallColor switch {
+        "White" => new Color((byte)240,(byte)240,(byte)235,(byte)255),
+        "Blue"  => new Color((byte)80,(byte)120,(byte)180,(byte)255),
+        "Green" => new Color((byte)80,(byte)150,(byte)80,(byte)255),
+        "Red"   => new Color((byte)180,(byte)70,(byte)70,(byte)255),
+        _       => new Color((byte)210,(byte)190,(byte)150,(byte)255)
+    };
+    Raylib.DrawRectangle(0, 0, 1280, 60, wallC);
+    Raylib.DrawRectangle(0, 0, 10, 1000, wallC);
+    Raylib.DrawRectangle(1270, 0, 10, 1000, wallC);
+
+    // bed
+    Raylib.DrawRectangle(1030, 500, 180, 160, new Color((byte)180,(byte)160,(byte)200,(byte)255));
+    Raylib.DrawRectangle(1030, 500, 180, 40,  new Color((byte)80,(byte)60,(byte)40,(byte)255));
+    // pillow
+    Raylib.DrawRectangle(1038, 508, 70, 30, new Color((byte)220,(byte)210,(byte)230,(byte)255));
+    Raylib.DrawRectangle(1118, 508, 70, 30, new Color((byte)220,(byte)210,(byte)230,(byte)255));
+    Raylib.DrawText("BED", 1090, 516, 16, Color.White);
+
+    // chest
+    Raylib.DrawRectangle(820, 870, 105, 90, new Color((byte)120,(byte)80,(byte)30,(byte)255));
+    Raylib.DrawRectangleLines(820, 870, 105, 90, new Color((byte)80,(byte)50,(byte)10,(byte)255));
+    Raylib.DrawText("CHEST", 830, 900, 16, Color.Gold);
+
+    // kitchen bench
+    Raylib.DrawRectangle(60, 60, 500, 50, new Color((byte)180,(byte)170,(byte)140,(byte)255));
+    Raylib.DrawRectangle(60, 60, 500, 6,  new Color((byte)140,(byte)130,(byte)100,(byte)255));
+
+    // owned furniture
+    foreach (var f in furniture)
+    DrawFurniturePiece(f.Type, f.RoomX, f.RoomY);
+
+    // ── FURNITURE PLACE GHOST ─────────────────────────────────────────────────
+     if (furniturePlaceMode)
+    {
+        DrawFurniturePiece(heldFurnitureType, furnitureCursorX, furnitureCursorY);
+
+        int ghostW = (heldFurnitureType == "Wall"     || heldFurnitureType == "HalfWall")  ? 120
+                   : (heldFurnitureType == "WallV"    || heldFurnitureType == "HalfWallV") ? 16
+                   : 80;
+        int ghostH = (heldFurnitureType == "Wall"     || heldFurnitureType == "HalfWall")  ? 16
+                   : (heldFurnitureType == "WallV"    || heldFurnitureType == "HalfWallV") ? 90
+                   : 60;
+        Raylib.DrawRectangleLines(furnitureCursorX, furnitureCursorY, ghostW, ghostH,
+            new Color((byte)255,(byte)255,(byte)0,(byte)220));
+        Raylib.DrawRectangle(0, 0, 1280, 36, new Color((byte)0,(byte)0,(byte)0,(byte)180));
+        Raylib.DrawText("Left Click / Space = Place   |   ESC = Cancel",
+            20, 8, 20, Color.Yellow);
+    }
+
+    // hover highlight on furniture
+    Vector2 mpos = Raylib.GetScreenToWorld2D(Raylib.GetMousePosition(), camera);
+    foreach (var f in furniture)
+    {
+    if (Raylib.CheckCollisionPointRec(mpos, new Rectangle(f.RoomX, f.RoomY, 80, 60)))
+        {
+            Raylib.DrawRectangleLines(f.RoomX, f.RoomY, 80, 60, Color.Yellow);
+            Raylib.DrawText(Raylib.IsKeyDown(KeyboardKey.Delete)
+                ? $"Right Click = Sell {f.Type} (${f.Cost/2})"
+                : $"Right Click = Move {f.Type}",
+                f.RoomX, f.RoomY - 20, 14, Color.Yellow);
+        }
+    }
+
+    // entrance mat
+    Raylib.DrawRectangle(540, 870, 200, 28, wallC);
+    Raylib.DrawRectangleLines(540, 870, 200, 28, Color.Gold);
+    Raylib.DrawText("MY HOME", 572, 878, 16, Color.Gold);
+}
+
 // ── DOMINO'S INTERIOR ────────────────────────────────────────────────────
 else if (currentBuilding.BuildingName == "DOMINO'S")
 {
@@ -21792,6 +23425,50 @@ if (!player.Hidden)
     Raylib.EndMode2D();
      // HUD text outside BeginMode2D
     Raylib.DrawText($"Player: {(int)player.Position.X}, {(int)player.Position.Y}", 20, 50, 24, Color.White);
+
+     // prompts
+     if (currentBuilding.BuildingName.StartsWith("PLAYER HOUSE"))
+{
+    Vector2 bedPos   = new Vector2(1120, 580);  
+    Vector2 chestPos2 = new Vector2(872, 915);
+    if (Vector2.Distance(player.Center, bedPos) < 180)
+        Raylib.DrawText("Space = Bed menu", 20, 600, 22, Color.LightGray);
+    if (Vector2.Distance(player.Center, chestPos2) < 100)
+        Raylib.DrawText("Space = Open Chest", 20, 600, 22, Color.LightGray);
+
+    Raylib.DrawRectangle(0, 670, 1280, 40, new Color((byte)0,(byte)0,(byte)0,(byte)140));
+    Raylib.DrawText("H = Customise House | Right click = Move furniture | Delete + right click = sell", 20, 678, 20, Color.Gold);
+
+    if (bedMenuOpen)
+        {
+            int mx = ScreenWidth  / 2 - 200;
+            int my = ScreenHeight / 2 - 100;
+            Raylib.DrawRectangle(mx, my, 400, 210, new Color((byte)10,(byte)10,(byte)25,(byte)240));
+            Raylib.DrawRectangleLines(mx, my, 400, 210, Color.Gold);
+            Raylib.DrawText("BED MENU", mx + 140, my + 16, 24, Color.Gold);
+
+            bool saveHl  = bedMenuSelected == 0;
+            bool sleepHl = bedMenuSelected == 1;
+
+            Raylib.DrawRectangle(mx + 20, my + 60, 360, 44,
+                saveHl ? new Color((byte)40,(byte)80,(byte)40,(byte)255)
+                       : new Color((byte)20,(byte)40,(byte)20,(byte)255));
+            Raylib.DrawRectangleLines(mx + 20, my + 60, 360, 44,
+                saveHl ? Color.Gold : Color.Green);
+            Raylib.DrawText("Save Game", mx + 30, my + 72, 20,
+                saveHl ? Color.Gold : Color.White);
+
+            Raylib.DrawRectangle(mx + 20, my + 116, 360, 44,
+                sleepHl ? new Color((byte)20,(byte)20,(byte)60,(byte)255)
+                        : new Color((byte)10,(byte)10,(byte)40,(byte)255));
+            Raylib.DrawRectangleLines(mx + 20, my + 116, 360, 44,
+                sleepHl ? Color.Gold : Color.SkyBlue);
+            Raylib.DrawText("Sleep", mx + 30, my + 128, 20,
+                sleepHl ? Color.Gold : Color.White);
+
+            Raylib.DrawText("ESC = Close", mx + 140, my + 180, 16, Color.DarkGray);
+        }
+}
 
     if (shopMessageTimer > 0)
     {
@@ -22851,6 +24528,7 @@ if (currentBuilding.BuildingName == "McDONALD'S" &&
     DrawAAMenu();
     DrawAATheoryTest();
     DrawSupermarketInventoryUI();
+    DrawHouseMenuUI();
     DrawMagicShopUI();
     DrawRangingShopUI();
     DrawGroceryShopPanel();
@@ -32420,6 +34098,31 @@ class DroppedItem
     {
         Name = name; Count = count; Position = pos;
     }
+}
+class HouseFurniture
+{
+    public string Type;      // "Bed", "Sofa", "Table", "Lamp", "Tv", "Plant", "Rug", "Shelf"
+    public int    RoomX;     // interior position
+    public int    RoomY;
+    public int    Cost;
+    public Color  Col;
+    public int    Rotation = 0;
+
+    public HouseFurniture(string type, int x, int y, int cost, Color col)
+    {
+        Type = type; RoomX = x; RoomY = y; Cost = cost; Col = col;
+    }
+}
+
+class HouseData
+{
+    public int PlotX;
+    public int PlotY;
+    public string WallColor  = "Beige";
+    public string FloorColor = "Oak";
+    public List<HouseFurniture> Furniture = new List<HouseFurniture>();
+
+    public HouseData(int x, int y) { PlotX = x; PlotY = y; }
 }
 
 class DungeonEnemy
