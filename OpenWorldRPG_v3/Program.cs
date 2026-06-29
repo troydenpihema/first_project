@@ -894,11 +894,11 @@ static void RemoveOneItem(string item)
 
         // Available land plots (world position, price)
         static (float x, float y, int price, string label)[] landPlots = {
-            (2000,  -200,  8000,  "Safe Zone Plot A"),
-            (2400,  -200,  8000,  "Safe Zone Plot B"),
-            (2800,  -200,  8000,  "Safe Zone Plot C"),
-            (-400,  -200,  7500,  "Safe Zone Plot D"),
-            (-800,  -200,  7500,  "Safe Zone Plot E"),
+            (3000,  1800,  8000,  "Safe Zone Plot A"),
+            (1900,  -1200,  8000,  "Safe Zone Plot B"),
+            (2600,  -100,  8000,  "Safe Zone Plot C"),
+            (-1700,  1700,  7500,  "Safe Zone Plot D"),
+            (-2650,  800,  7500,  "Safe Zone Plot E"),
         };
         static int selectedPlot = -1;
         static bool   furniturePlaceMode  = false;  // true when holding a piece to place
@@ -17092,17 +17092,17 @@ Raylib.DrawText("ROTOAIRA", Math.Clamp(cx+(int)(-16500*scale),mapX,mapX+mapW), M
     Raylib.DrawRectangle(0, 0, ScreenWidth, ScreenHeight, new Color((byte)0, (byte)0, (byte)0, (byte)150));
 
     // panel
-    Raylib.DrawRectangle(ScreenWidth / 2 - 200, ScreenHeight / 2 - 250, 400, 575, new Color((byte)20, (byte)20, (byte)30, (byte)240));
-    Raylib.DrawRectangleLines(ScreenWidth / 2 - 200, ScreenHeight / 2 - 250, 400, 575, Color.Gold);
-    Raylib.DrawText("PAUSED", ScreenWidth / 2 - 70, ScreenHeight / 2 - 230, 40, Color.Gold);
+    Raylib.DrawRectangle(ScreenWidth / 2 - 200, 20, 400, 680, new Color((byte)20,(byte)20,(byte)30,(byte)240));
+    Raylib.DrawRectangleLines(ScreenWidth / 2 - 200, 20, 400, 680, Color.Gold);
+    Raylib.DrawText("PAUSED", ScreenWidth / 2 - 70, 34, 40, Color.Gold);
 
     Vector2 mouse = Raylib.GetMousePosition();
 
-    string[] buttons = { "RESUME", "LOAD GAME", "OPTIONS", "CHEATS", "MAP", "QUIT TO MENU" };
+    string[] buttons = { "RESUME", "LOAD GAME", "OPTIONS", "CHEATS", "MAP", "UNSTUCK", "QUIT TO MENU" };
 
     for (int i = 0; i < buttons.Length; i++)
     {
-        Rectangle btn = new Rectangle(ScreenWidth / 2 - 150, ScreenHeight / 2 - 160 + i * 80, 300, 55);
+        Rectangle btn = new Rectangle(ScreenWidth / 2 - 150, 90 + i * 80, 300, 55);
         bool hover = Raylib.CheckCollisionPointRec(mouse, btn);
 
         Raylib.DrawRectangleRec(btn, new Color((byte)40, (byte)40, (byte)40, (byte)255));
@@ -17138,6 +17138,37 @@ Raylib.DrawText("ROTOAIRA", Math.Clamp(cx+(int)(-16500*scale),mapX,mapX+mapW), M
                     optionsMenuOpen = false;
                     loadMenuOpen = false;
                     cheatsMenuOpen = false;
+                    break;
+                case "UNSTUCK":
+                    // find the nearest open position by trying directions
+                    Vector2[] tries = {
+                        player.Position + new Vector2(0,    120),
+                        player.Position + new Vector2(0,   -120),
+                        player.Position + new Vector2(120,  0),
+                        player.Position + new Vector2(-120, 0),
+                        player.Position + new Vector2(120,  120),
+                        player.Position + new Vector2(-120,-120),
+                        new Vector2(400, -50),   // safe zone spawn as last resort
+                    };
+                    foreach (var tryPos in tries)
+                    {
+                        Rectangle testRect = new Rectangle(tryPos.X - 20, tryPos.Y - 20, 40, 40);
+                        bool blocked = false;
+                        if (currentScene == SceneState.Building)
+                        {
+                            foreach (var obj in currentBuilding.InteriorObjects)
+                                if (Raylib.CheckCollisionRecs(testRect, obj)) { blocked = true; break; }
+                        }
+                        if (!blocked)
+                        {
+                            player.Position = tryPos;
+                            pauseMenuOpen   = false;
+                            ShowNotification("Player unstuck!");
+                            Raylib.PlaySound(soundPauseClose);
+                            Raylib.ResumeMusicStream(currentMusic);
+                            break;
+                        }
+                    }
                     break;
                 case "QUIT TO MENU":
                     pauseMenuOpen = false;
