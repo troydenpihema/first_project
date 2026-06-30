@@ -84,9 +84,30 @@ namespace OpenWorldRPG
         public float  LastSeen  = 0f;   // seconds since last update
         public bool   Active    => LastSeen < 5f;
         public string ChatBubble = "";
+        private Player _drawPlayer;
+        private float _lastX, _lastY;
+        private bool  _hasLastPos = false;
+        public string HairStyle        = "";
+        public string FacialHair       = "None";
+        public string EquippedWeapon   = "";
+        public bool   IsTwoHanded      = false;
         public float  ChatTimer  = 0f;
         public bool  IsTyping   = false;
         public float TypingTimer = 0f;
+        public bool PendingSwing = false;
+        public Color  SkinColor       = Color.Beige;
+        public Color  HairColor       = new Color((byte)80,(byte)50,(byte)20,(byte)255);
+        public Color  FacialHairColor = new Color((byte)80,(byte)50,(byte)20,(byte)255);
+        public string ArmorHelmet = "";
+        public string ArmorBody   = "";
+        public string ArmorLegs   = "";
+        public string ArmorBoots  = "";
+        public string ArmorGloves = "";
+        public string ArmorCape   = "";
+        public string ArmorShield = "";
+        public Color ShirtColor = Color.Blue;
+        public Color PantsColor = Color.Black;
+        public string HeldItem  = "";
 
         // Simple walk animation
         private float _animTimer = 0f;
@@ -98,91 +119,145 @@ namespace OpenWorldRPG
             if (_animTimer > 0.18f) { _animTimer = 0f; _animFrame = (_animFrame + 1) % 4; }
         }
 
-        public void Draw()
-{
-    if (!Active || Scene != "World") return;
+   public void Draw()
+        {
+            if (!Active || Scene != "World") return;
+            DrawAt("World");
+        }
 
-    int px = (int)X;
-    int py = (int)Y;
+        public void DrawAt(string requiredSceneTag)
+        {
+            if (!Active || Scene != requiredSceneTag) return;
 
-    // Shadow
-    Raylib.DrawEllipse(px + 20, py + 48, 18, 6, new Color((byte)0,(byte)0,(byte)0,(byte)50));
+            // lazily create a throwaway Player instance to reuse all existing armor/draw code
+            if (_drawPlayer == null) _drawPlayer = new Player(new Vector2(X, Y));
 
-    // Body
-    Raylib.DrawRectangle(px + 8, py + 20, 24, 28, new Color((byte)20,(byte)160,(byte)180,(byte)255));
+            _drawPlayer.Position   = new Vector2(X, Y);
+            _drawPlayer.SkinColor  = SkinColor;
+            _drawPlayer.ShirtColor = ShirtColor;
+            _drawPlayer.PantsColor = PantsColor;
+            _drawPlayer.UseHeldItemOverride = true;
+            _drawPlayer.HeldItemOverride = string.IsNullOrEmpty(HeldItem) ? null : HeldItem;
+            if (PendingSwing)
+            {
+                _drawPlayer.TriggerSwing();
+                PendingSwing = false;
+            }
+            _drawPlayer.Facing     = Facing switch
+            {
+                "Up"    => Player.FacingDirection.Up,
+                "Left"  => Player.FacingDirection.Left,
+                "Right" => Player.FacingDirection.Right,
+                _       => Player.FacingDirection.Down
+            };
+            
+            _drawPlayer.Hidden   = false;
 
-    // Head — matches player head at y+12, centre x+20
-    Raylib.DrawCircle(px + 20, py + 12, 12, new Color((byte)220,(byte)185,(byte)140,(byte)255));
+            // derive movement from position delta since last draw call (proxy for isMoving)
+            bool moving = false;
+            if (_hasLastPos)
+            {
+                float dx = X - _lastX;
+                float dy = Y - _lastY;
+                moving = (dx * dx + dy * dy) > 0.25f; // moved more than ~0.5px since last frame
+            }
+            _lastX = X; _lastY = Y; _hasLastPos = true;
 
-    // Legs
-    int legOff = (_animFrame % 2 == 0) ? 3 : -3;
-    Raylib.DrawRectangle(px + 8,  py + 48, 9, 14, new Color((byte)60,(byte)80,(byte)140,(byte)255));
-    Raylib.DrawRectangle(px + 19, py + 48 + legOff, 9, 14, new Color((byte)60,(byte)80,(byte)140,(byte)255));
+            _drawPlayer.DriveAnimation(moving, Raylib.GetFrameTime());
+            _drawPlayer.TickSwing(Raylib.GetFrameTime());
 
-    // Name tag — above head
-    int nameW = Raylib.MeasureText(Name, 14);
-    Raylib.DrawRectangle(px + 20 - nameW / 2 - 4, py - 22, nameW + 8, 18,
-        new Color((byte)0,(byte)0,(byte)0,(byte)160));
-    Raylib.DrawText(Name, px + 20 - nameW / 2, py - 21, 14,
-        new Color((byte)80,(byte)240,(byte)220,(byte)255));
+            // swap the global armor/hair statics to this remote player's gear, draw, then restore
+            string savedHelmet = Program.armorHelmet, savedBody = Program.armorBody, savedLegs = Program.armorLegs,
+                   savedBoots  = Program.armorBoots,  savedGloves = Program.armorGloves, savedCape = Program.armorCape,
+                   savedShield = Program.armorShield, savedWeapon = Program.armorWeapon, savedHairStyle = Program.playerHairStyle;
+            string savedFacialHair = Program.playerFacialHair;
+            Color  savedHairColor  = Program.playerHairColor, savedFacialColor = Program.playerFacialHairColor;
 
-// age timers
-if (ChatTimer   > 0f) ChatTimer   -= Raylib.GetFrameTime();
-if (TypingTimer > 0f) TypingTimer -= Raylib.GetFrameTime();
+            Program.armorHelmet = string.IsNullOrEmpty(ArmorHelmet) ? null : ArmorHelmet;
+            Program.armorBody   = string.IsNullOrEmpty(ArmorBody)   ? null : ArmorBody;
+            Program.armorLegs   = string.IsNullOrEmpty(ArmorLegs)   ? null : ArmorLegs;
+            Program.armorBoots  = string.IsNullOrEmpty(ArmorBoots)  ? null : ArmorBoots;
+            Program.armorGloves = string.IsNullOrEmpty(ArmorGloves) ? null : ArmorGloves;
+            Program.armorCape   = string.IsNullOrEmpty(ArmorCape)   ? null : ArmorCape;
+            Program.armorShield = string.IsNullOrEmpty(ArmorShield) ? null : ArmorShield;
+            Program.armorWeapon = string.IsNullOrEmpty(EquippedWeapon) ? null : EquippedWeapon;
+            Program.playerHairStyle = HairStyle;
+            Program.playerFacialHair = FacialHair;
+            Program.playerHairColor = HairColor;
+            Program.playerFacialHairColor = FacialHairColor;
 
-// decide what to show
-string bubbleText  = "";
-float  bubbleAlpha = 0f;
-bool   showBubble  = false;
+            _drawPlayer.Draw();
 
-if (IsTyping && TypingTimer > 0f)
-{
-    bubbleText  = "typing...";
-    bubbleAlpha = 1f;
-    showBubble  = true;
-}
-else if (ChatTimer > 0f && ChatBubble.Length > 0)
-{
-    bubbleText  = ChatBubble;
-    bubbleAlpha = Math.Clamp(ChatTimer / 5f, 0f, 1f);
-    showBubble  = true;
-}
+            Program.armorHelmet = savedHelmet; Program.armorBody = savedBody; Program.armorLegs = savedLegs;
+            Program.armorBoots  = savedBoots;  Program.armorGloves = savedGloves; Program.armorCape = savedCape;
+            Program.armorShield = savedShield; Program.armorWeapon = savedWeapon; Program.playerHairStyle = savedHairStyle;
+            Program.playerFacialHair = savedFacialHair;
+            Program.playerHairColor = savedHairColor; Program.playerFacialHairColor = savedFacialColor;
 
-if (showBubble)
-{
-    byte alpha    = (byte)(230 * bubbleAlpha);
-    byte txtAlpha = (byte)(255 * bubbleAlpha);
-    int  fontSize = 13;
-    int  tw2      = Raylib.MeasureText(bubbleText, fontSize);
-    int  bw       = Math.Min(tw2 + 16, 260);
-    int  bh       = fontSize + 14;
-    int  bx2      = px + 20 - bw / 2;
-    int  by2      = py - 72 - bh;
+            // ── name tag, chat bubble, HP bar ──
+            int px = (int)X;
+            int py = (int)Y;
 
-    Raylib.DrawRectangle(bx2, by2, bw, bh,
-        new Color((byte)255,(byte)255,(byte)255,(byte)alpha));
-    Raylib.DrawRectangleLines(bx2, by2, bw, bh,
-        new Color((byte)80,(byte)80,(byte)80,(byte)alpha));
-    Raylib.DrawTriangle(
-        new Vector2(px + 14, by2 + bh),
-        new Vector2(px + 26, by2 + bh),
-        new Vector2(px + 20, by2 + bh + 8),
-        new Color((byte)255,(byte)255,(byte)255,(byte)alpha));
+            int nameW = Raylib.MeasureText(Name, 14);
+            Raylib.DrawRectangle(px + 20 - nameW / 2 - 4, py - 22, nameW + 8, 18,
+                new Color((byte)0,(byte)0,(byte)0,(byte)160));
+            Raylib.DrawText(Name, px + 20 - nameW / 2, py - 21, 14,
+                new Color((byte)80,(byte)240,(byte)220,(byte)255));
 
-    string display = IsTyping ? bubbleText
-        : (tw2 > 240 ? bubbleText[..Math.Min(bubbleText.Length, 22)] + "..." : bubbleText);
-    Color dotCol = IsTyping
-        ? new Color((byte)100,(byte)100,(byte)100,(byte)txtAlpha)
-        : new Color((byte)20,(byte)20,(byte)20,(byte)txtAlpha);
-    Raylib.DrawText(display, bx2 + 8, by2 + 7, fontSize, dotCol);
-}
+            if (ChatTimer   > 0f) ChatTimer   -= Raylib.GetFrameTime();
+            if (TypingTimer > 0f) TypingTimer -= Raylib.GetFrameTime();
 
-    // HP bar
-    float hpPct = Math.Clamp(HP / 100f, 0f, 1f);
-    Raylib.DrawRectangle(px + 2, py - 30, 36, 5, new Color((byte)80,(byte)0,(byte)0,(byte)200));
-    Raylib.DrawRectangle(px + 2, py - 30, (int)(36 * hpPct), 5,
-        hpPct > 0.5f ? Color.Green : hpPct > 0.25f ? Color.Orange : Color.Red);
-}
+            string bubbleText  = "";
+            float  bubbleAlpha = 0f;
+            bool   showBubble  = false;
+
+            if (IsTyping && TypingTimer > 0f)
+            {
+                bubbleText  = "typing...";
+                bubbleAlpha = 1f;
+                showBubble  = true;
+            }
+            else if (ChatTimer > 0f && ChatBubble.Length > 0)
+            {
+                bubbleText  = ChatBubble;
+                bubbleAlpha = Math.Clamp(ChatTimer / 5f, 0f, 1f);
+                showBubble  = true;
+            }
+
+            if (showBubble)
+            {
+                byte alpha    = (byte)(230 * bubbleAlpha);
+                byte txtAlpha = (byte)(255 * bubbleAlpha);
+                int  fontSize = 13;
+                int  tw2      = Raylib.MeasureText(bubbleText, fontSize);
+                int  bw       = Math.Min(tw2 + 16, 260);
+                int  bh       = fontSize + 14;
+                int  bx2      = px + 20 - bw / 2;
+                int  by2      = py - 72 - bh;
+
+                Raylib.DrawRectangle(bx2, by2, bw, bh,
+                    new Color((byte)255,(byte)255,(byte)255,(byte)alpha));
+                Raylib.DrawRectangleLines(bx2, by2, bw, bh,
+                    new Color((byte)80,(byte)80,(byte)80,(byte)alpha));
+                Raylib.DrawTriangle(
+                    new Vector2(px + 14, by2 + bh),
+                    new Vector2(px + 26, by2 + bh),
+                    new Vector2(px + 20, by2 + bh + 8),
+                    new Color((byte)255,(byte)255,(byte)255,(byte)alpha));
+
+                string display = IsTyping ? bubbleText
+                    : (tw2 > 240 ? bubbleText[..Math.Min(bubbleText.Length, 22)] + "..." : bubbleText);
+                Color dotCol = IsTyping
+                    ? new Color((byte)100,(byte)100,(byte)100,(byte)txtAlpha)
+                    : new Color((byte)20,(byte)20,(byte)20,(byte)txtAlpha);
+                Raylib.DrawText(display, bx2 + 8, by2 + 7, fontSize, dotCol);
+            }
+
+            float hpPct = Math.Clamp(HP / 100f, 0f, 1f);
+            Raylib.DrawRectangle(px + 2, py - 30, 36, 5, new Color((byte)80,(byte)0,(byte)0,(byte)200));
+            Raylib.DrawRectangle(px + 2, py - 30, (int)(36 * hpPct), 5,
+                hpPct > 0.5f ? Color.Green : hpPct > 0.25f ? Color.Orange : Color.Red);
+        }
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -219,7 +294,7 @@ if (showBubble)
         public List<ChatMessage>  ChatLog       { get; } = new List<ChatMessage>();
 
         // ── config ────────────────────────────────────────────────────────────
-        public const int  PORT        = 7777;
+        public const int  PORT        = 9999;
         public const int  MAX_PLAYERS = 4;
         public const float SEND_RATE  = 0.05f;   // send update 20× per second
 
@@ -258,7 +333,8 @@ if (showBubble)
 
             try
             {
-                _listener = new TcpListener(IPAddress.Any, PORT);
+                _listener = new TcpListener(IPAddress.IPv6Any, PORT);
+                _listener.Server.SetSocketOption(SocketOptionLevel.IPv6, SocketOptionName.IPv6Only, false);
                 _listener.Start();
 
                 // print local IPs so friends know what to type
@@ -348,7 +424,7 @@ if (showBubble)
             if (_sendTimer <= 0f)
             {
                 _sendTimer = SEND_RATE;
-                string facing = "Down"; // replace with your player.Facing.ToString() if accessible
+                string facing = player.Facing.ToString();
                 string payload = $"PLAYER|{player.Position.X.ToString(System.Globalization.CultureInfo.InvariantCulture)}" +
                  $"|{player.Position.Y.ToString(System.Globalization.CultureInfo.InvariantCulture)}" +
                  $"|{player.Health}|{facing}|{scene}|{playerName}";
@@ -359,6 +435,47 @@ if (showBubble)
                     TrySendToServer(payload);
             }
         }
+
+        public void SendAppearance(Color skin, Color hair, Color facialHair, Color shirt, Color pants,
+            string helmet, string body, string legs, string boots, string gloves, string cape, string shield,
+            string heldItem, string hairStyle, string facialHairStyle, string weapon, bool isTwoHanded)
+        {
+            if (!Connected) return;
+            string payload = $"APPEAR|{skin.R}|{skin.G}|{skin.B}" +
+                            $"|{hair.R}|{hair.G}|{hair.B}" +
+                            $"|{facialHair.R}|{facialHair.G}|{facialHair.B}" +
+                            $"|{shirt.R}|{shirt.G}|{shirt.B}" +
+                            $"|{pants.R}|{pants.G}|{pants.B}" +
+                            $"|{helmet}|{body}|{legs}|{boots}|{gloves}|{cape}|{shield}|{heldItem}" +
+                            $"|{hairStyle}|{facialHairStyle}|{weapon}|{(isTwoHanded ? "1" : "0")}";
+
+            if (IsHost)
+            {
+                lock (_clientLock)
+                    foreach (var cc in _clients)
+                        TrySendToClient(cc, $"APPEAR|0|{payload.Substring(7)}");
+            }
+            else
+            {
+                TrySendToServer(payload);
+            }
+        }
+
+ public void SendSwing()
+        {
+            if (!Connected) return;
+
+            if (IsHost)
+            {
+                lock (_clientLock)
+                    foreach (var cc in _clients)
+                        TrySendToClient(cc, "SWING|0");
+            }
+            else
+            {
+                TrySendToServer("SWING");
+            }
+        }       
 
         /// <summary>Send a chat message.</summary>
         public void SendChat(string text)
@@ -617,6 +734,23 @@ if (showBubble)
                         BroadcastExcept(fromId, $"TYPING|{fromId}|{parts[1]}");
                         break;
 
+                    case "SWING":
+                        BroadcastExcept(fromId, $"SWING|{fromId}");
+                        lock (RemotePlayers)
+                        {
+                            var rp = GetOrCreateRemote(fromId);
+                            rp.PendingSwing = true;
+                        }
+                        break;
+
+                    case "APPEAR":
+                        {
+                            string rest = string.Join("|", parts, 1, parts.Length - 1);
+                            BroadcastExcept(fromId, $"APPEAR|{fromId}|{rest}");
+                            ApplyAppearance(GetOrCreateRemote(fromId), parts);
+                        }
+                        break;
+
                     case "CHAT":
                         if (parts.Length > 1)
                         {
@@ -693,6 +827,25 @@ if (showBubble)
                     }
                     break;
 
+                case "SWING":
+                    if (p.Length >= 2 && int.TryParse(p[1], out int swingId))
+                    {
+                        lock (RemotePlayers)
+                        {
+                            var rp = RemotePlayers.Find(r => r.Id == swingId);
+                            if (rp != null) rp.PendingSwing = true;
+                        }
+                    }
+                    break;
+
+                case "APPEAR":
+                    if (p.Length >= 17 && int.TryParse(p[1], out int appearId))
+                    {
+                        var rp = GetOrCreateRemote(appearId);
+                        ApplyAppearance(rp, p, 1);
+                    }
+                    break;
+
                 case "FULL":
                     StatusText       = "Server is full!";
                     IsClient         = _running = _clientConnected = false;
@@ -718,7 +871,7 @@ if (showBubble)
             // host entry (id 0 = host)
             sb.Append($"|0|{hostPlayer.Position.X.ToString(System.Globalization.CultureInfo.InvariantCulture)}");
             sb.Append($"|{hostPlayer.Position.Y.ToString(System.Globalization.CultureInfo.InvariantCulture)}");
-            sb.Append($"|{hostPlayer.Health}|Down|{hostScene}|{hostName}");
+            sb.Append($"|{hostPlayer.Health}|{hostPlayer.Facing}|{hostScene}|{hostName}");;
 
             lock (_clientLock)
                 foreach (var cc in _clients)
@@ -779,6 +932,32 @@ if (showBubble)
                 rp.LastSeen = 0f;
                 if (!string.IsNullOrEmpty(name)) rp.Name = name;
             }
+        }
+
+        private void ApplyAppearance(RemotePlayer rp, string[] parts, int offset = 0)
+        {
+            int i = offset == 0 ? 1 : 2;
+            try
+            {
+                rp.SkinColor       = new Color(byte.Parse(parts[i]),    byte.Parse(parts[i+1]),  byte.Parse(parts[i+2]),  (byte)255);
+                rp.HairColor       = new Color(byte.Parse(parts[i+3]),  byte.Parse(parts[i+4]),  byte.Parse(parts[i+5]),  (byte)255);
+                rp.FacialHairColor = new Color(byte.Parse(parts[i+6]),  byte.Parse(parts[i+7]),  byte.Parse(parts[i+8]),  (byte)255);
+                rp.ShirtColor      = new Color(byte.Parse(parts[i+9]),  byte.Parse(parts[i+10]), byte.Parse(parts[i+11]), (byte)255);
+                rp.PantsColor      = new Color(byte.Parse(parts[i+12]), byte.Parse(parts[i+13]), byte.Parse(parts[i+14]), (byte)255);
+                rp.ArmorHelmet = parts[i+15];
+                rp.ArmorBody   = parts[i+16];
+                rp.ArmorLegs   = parts[i+17];
+                rp.ArmorBoots  = parts[i+18];
+                rp.ArmorGloves = parts[i+19];
+                rp.ArmorCape   = parts[i+20];
+                rp.ArmorShield = parts[i+21];
+                rp.HeldItem    = parts.Length > i+22 ? parts[i+22] : "";
+                rp.HairStyle   = parts.Length > i+23 ? parts[i+23] : "";
+                rp.FacialHair  = parts.Length > i+24 ? parts[i+24] : "None";
+                rp.EquippedWeapon = parts.Length > i+25 ? parts[i+25] : "";
+                rp.IsTwoHanded    = parts.Length > i+26 && parts[i+26] == "1";
+            }
+            catch { /* malformed packet, ignore */ }
         }
 
         private RemotePlayer GetOrCreateRemote(int id)

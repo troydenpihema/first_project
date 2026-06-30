@@ -1822,6 +1822,52 @@ static void UpdateMusicFade(float dt)
     }
 }
 
+static Color lastSentSkin, lastSentHair, lastSentFacial, lastSentShirt, lastSentPants;
+static string lastSentHelmet="", lastSentBody="", lastSentLegs="", lastSentBoots="",
+              lastSentGloves="", lastSentCape="", lastSentShield="", lastSentHeld="";
+static string lastSentHairStyle = "";
+static string lastSentFacial2 = "None";
+static string lastSentWeapon = "";
+static bool   lastSentTwoHanded = false;
+
+static void CheckSendAppearanceIfChanged()
+{
+    string heldNow = GetActiveItem() ?? "";
+    string weaponNow = armorWeapon ?? "";
+    bool twoHandedNow = weaponNow.Length > 0 && IsTwoHandedWeapon(weaponNow);
+    string hairStyleNow = playerHairStyle ?? "None";
+    string facialHairNow = playerFacialHair ?? "None";
+
+    if (player.SkinColor.R != lastSentSkin.R || player.SkinColor.G != lastSentSkin.G || player.SkinColor.B != lastSentSkin.B ||
+        playerHairColor.R != lastSentHair.R || playerHairColor.G != lastSentHair.G || playerHairColor.B != lastSentHair.B ||
+        playerFacialHairColor.R != lastSentFacial.R ||
+        player.ShirtColor.R != lastSentShirt.R || player.ShirtColor.G != lastSentShirt.G || player.ShirtColor.B != lastSentShirt.B ||
+        player.PantsColor.R != lastSentPants.R || player.PantsColor.G != lastSentPants.G || player.PantsColor.B != lastSentPants.B ||
+        armorHelmet != lastSentHelmet || armorBody != lastSentBody || armorLegs != lastSentLegs ||
+        armorBoots != lastSentBoots || armorGloves != lastSentGloves || armorCape != lastSentCape ||
+        armorShield != lastSentShield || heldNow != lastSentHeld ||
+        hairStyleNow != lastSentHairStyle || facialHairNow != lastSentFacial2 ||
+        weaponNow != lastSentWeapon || twoHandedNow != lastSentTwoHanded)
+    {
+        multiplayer.SendAppearance(player.SkinColor, playerHairColor, playerFacialHairColor,
+            player.ShirtColor, player.PantsColor,
+            armorHelmet ?? "", armorBody ?? "", armorLegs ?? "", armorBoots ?? "",
+            armorGloves ?? "", armorCape ?? "", armorShield ?? "", heldNow,
+            hairStyleNow, facialHairNow, weaponNow, twoHandedNow);
+
+        lastSentSkin = player.SkinColor;
+        lastSentHair = playerHairColor;
+        lastSentFacial = playerFacialHairColor;
+        lastSentShirt = player.ShirtColor;
+        lastSentPants = player.PantsColor;
+        lastSentHelmet = armorHelmet; lastSentBody = armorBody; lastSentLegs = armorLegs;
+        lastSentBoots = armorBoots; lastSentGloves = armorGloves; lastSentCape = armorCape;
+        lastSentShield = armorShield; lastSentHeld = heldNow;
+        lastSentHairStyle = hairStyleNow; lastSentFacial2 = facialHairNow;
+        lastSentWeapon = weaponNow; lastSentTwoHanded = twoHandedNow;
+    }
+}
+
 static void ResetGameState()
 {
     // toolbar
@@ -4635,7 +4681,7 @@ static void UpdateDungeon(float dt)
         if (Raylib.IsKeyPressed(KeyboardKey.One + k))
             toolbarSelectedSlot = k;
 
-    if (Raylib.IsKeyPressed(KeyboardKey.Space))
+    if (Raylib.IsKeyPressed(KeyboardKey.Space) && !chatInputOpen)
 {
     string held = toolbarSlots[toolbarSelectedSlot];
     if (held != null && IsUsable(held))
@@ -4653,7 +4699,7 @@ static void UpdateDungeon(float dt)
 
     if (d.Complete)
     {
-        if (Raylib.IsKeyPressed(KeyboardKey.E))
+        if (Raylib.IsKeyPressed(KeyboardKey.E) && !chatInputOpen)
         {
             d.Close();
             player.Position = d.WorldReturnPos;
@@ -13844,19 +13890,27 @@ if (Raylib.IsMouseButtonPressed(MouseButton.Left) && !multiplayerMenuOpen)
         // age the local speech bubble
         if (playerChatTimer > 0f)
             playerChatTimer -= Raylib.GetFrameTime();
+             bool blockShortcutsForChat = chatInputOpen;
 
-                multiplayer.Update(player, playerName, currentScene.ToString());
+                string mpSceneTag = currentScene == SceneState.Building && currentBuilding != null
+                ? $"Building:{currentBuilding.BuildingName}"
+                : currentScene.ToString();
+                multiplayer.Update(player, playerName, mpSceneTag);
+                CheckSendAppearanceIfChanged();
                 UpdateTutorial(dt);
                 UpdateDroppedItems(dt);
 
-                // Toolbar slot selection — number keys 1-8
-for (int k = 0; k < 8; k++)
+// Toolbar slot selection — number keys 1-8
+if (!chatInputOpen)
 {
-    if (Raylib.IsKeyPressed(KeyboardKey.One   + k))
-        toolbarSelectedSlot = k;
+    for (int k = 0; k < 8; k++)
+    {
+        if (Raylib.IsKeyPressed(KeyboardKey.One + k))
+            toolbarSelectedSlot = k;
+    }
 }
 
-if (Raylib.IsKeyPressed(KeyboardKey.Space))
+if (Raylib.IsKeyPressed(KeyboardKey.Space) && !chatInputOpen)
 {
     string held = toolbarSlots[toolbarSelectedSlot];
     if (held != null && IsUsable(held))
@@ -13872,7 +13926,7 @@ if (scroll != 0)
                 // Axe pickup
                 if (!axePickedUp && Vector2.Distance(player.Center, axePosition) < 60)
                 {
-                    if (Raylib.IsKeyPressed(KeyboardKey.E))
+                    if (Raylib.IsKeyPressed(KeyboardKey.E) && !chatInputOpen)
                     {
                         player.HasAxe = true;
                         axePickedUp = true;
@@ -13884,7 +13938,7 @@ if (scroll != 0)
                 // Pickaxe pickup
 if (!pickaxePickedUp && Vector2.Distance(player.Center, pickaxePosition) < 60)
 {
-    if (Raylib.IsKeyPressed(KeyboardKey.E))
+    if (Raylib.IsKeyPressed(KeyboardKey.E) && !chatInputOpen)
     {
         pickaxePickedUp = true;
         AddToToolbar("Pickaxe");
@@ -13895,7 +13949,7 @@ if (!pickaxePickedUp && Vector2.Distance(player.Center, pickaxePosition) < 60)
 // Fishing rod pickup
 if (!fishingRodPickedUp && Vector2.Distance(player.Center, fishingRodPosition) < 60)
 {
-    if (Raylib.IsKeyPressed(KeyboardKey.E))
+    if (Raylib.IsKeyPressed(KeyboardKey.E) && !chatInputOpen)
     {
         fishingRodPickedUp = true;
         AddToToolbar("Rod");
@@ -13906,7 +13960,7 @@ if (!fishingRodPickedUp && Vector2.Distance(player.Center, fishingRodPosition) <
 // Fishing net pickup
 if (!fishingNetPickedUp && Vector2.Distance(player.Center, fishingNetPosition) < 60)
 {
-    if (Raylib.IsKeyPressed(KeyboardKey.E))
+    if (Raylib.IsKeyPressed(KeyboardKey.E) && !chatInputOpen)
     {
         fishingNetPickedUp = true;
         AddToToolbar("Net");
@@ -13917,7 +13971,7 @@ if (!fishingNetPickedUp && Vector2.Distance(player.Center, fishingNetPosition) <
 // Torch pickup
 if (!torchPickedUp && Vector2.Distance(player.Center, torchPosition) < 60)
 {
-    if (Raylib.IsKeyPressed(KeyboardKey.E))
+    if (Raylib.IsKeyPressed(KeyboardKey.E) && !chatInputOpen)
     {
         torchPickedUp = true;
         AddToToolbar("Torch");
@@ -13928,7 +13982,7 @@ if (!torchPickedUp && Vector2.Distance(player.Center, torchPosition) < 60)
 // Stick pickup
 if (!stickPickedUp && Vector2.Distance(player.Center, stickPosition) < 60)
 {
-    if (Raylib.IsKeyPressed(KeyboardKey.E))
+    if (Raylib.IsKeyPressed(KeyboardKey.E) && !chatInputOpen)
     {
         stickPickedUp = true;
         AddToToolbar("Stick");
@@ -13939,7 +13993,7 @@ if (!stickPickedUp && Vector2.Distance(player.Center, stickPosition) < 60)
 // Sword pickup
 if (!swordPickedUp && Vector2.Distance(player.Center, swordPosition) < 60)
 {
-    if (Raylib.IsKeyPressed(KeyboardKey.E))
+    if (Raylib.IsKeyPressed(KeyboardKey.E) && !chatInputOpen)
     {
         swordPickedUp = true;
         AddToToolbar("Sword");
@@ -13948,7 +14002,7 @@ if (!swordPickedUp && Vector2.Distance(player.Center, swordPosition) < 60)
 }
 
 // Bow pickup
-if (!bowPickedUp && Vector2.Distance(player.Center, bowSpawnPos) < 50 && Raylib.IsKeyPressed(KeyboardKey.E))
+if (!bowPickedUp && Vector2.Distance(player.Center, bowSpawnPos) < 50 && Raylib.IsKeyPressed(KeyboardKey.E) && !chatInputOpen)
 {
     bowPickedUp = true;
     player.HasBow = true;
@@ -13956,31 +14010,31 @@ if (!bowPickedUp && Vector2.Distance(player.Center, bowSpawnPos) < 50 && Raylib.
 }
 
 // Crossbow pickup
-if (!crossbowPickedUp && Vector2.Distance(player.Center, crossbowSpawnPos) < 50 && Raylib.IsKeyPressed(KeyboardKey.E))
+if (!crossbowPickedUp && Vector2.Distance(player.Center, crossbowSpawnPos) < 50 && Raylib.IsKeyPressed(KeyboardKey.E) && !chatInputOpen)
 {
     crossbowPickedUp = true;
     player.HasCrossbow = true;
     AcquireGear("Crossbow");
 }
-if (Raylib.IsKeyPressed(KeyboardKey.T))
+if (Raylib.IsKeyPressed(KeyboardKey.T) && !chatInputOpen)
 {
     currentPhase = currentPhase == HandPhase.Tools ? HandPhase.Combat : HandPhase.Tools;
     ShowNotification(currentPhase == HandPhase.Tools ? "Tools equipped" : "Weapon drawn");
 }
 
-if (Raylib.IsKeyPressed(KeyboardKey.G))
+if (Raylib.IsKeyPressed(KeyboardKey.G) && !chatInputOpen)
     if (!pauseMenuOpen && !player.InventoryOpen && !skillsOpen && !questsOpen)
         armorMenuOpen = !armorMenuOpen;
 
 // Rocket — press E nearby to launch into space
                     if (Vector2.Distance(player.Center, rocketPosition) < 100
-                        && Raylib.IsKeyPressed(KeyboardKey.E))
+                        && Raylib.IsKeyPressed(KeyboardKey.E) && !chatInputOpen)
                     {
                         EnterSpace();
                     }
 
-// Dive entry — press E near deep water / ocean
-                    if (Raylib.IsKeyPressed(KeyboardKey.J) && IsNearDeepWater(player.Center))
+// Dive entry — press J near deep water / ocean
+                    if (Raylib.IsKeyPressed(KeyboardKey.J) && IsNearDeepWater(player.Center) && !chatInputOpen)
                     {
                         StartDive();
                     }
@@ -14165,12 +14219,13 @@ if (Raylib.IsKeyPressed(KeyboardKey.F8))
                         }
                     }
 
-if (Raylib.IsKeyPressed(KeyboardKey.Space))
+if (Raylib.IsKeyPressed(KeyboardKey.Space) && !chatInputOpen)
 {
     if (!player.isSwinging && !player.InventoryOpen && !chestOpen && !shopUIOpen)
     {
         player.isSwinging = true;
         player.swingTimer = 0f;
+        multiplayer.SendSwing();
 
         string equipped = GetActiveItem();   // respects phase (weapon or tool)
         if (equipped != null)
@@ -14349,7 +14404,7 @@ else if (enemy.Type == "Mountain Goat") {
 }
 
  // Space = fire in facing direction
-    if (Raylib.IsKeyPressed(KeyboardKey.Space)
+    if (Raylib.IsKeyPressed(KeyboardKey.Space) && !chatInputOpen
         && currentPhase == HandPhase.Combat
         && (equipped2H == "Bow" || equipped2H == "Crossbow"))
     {
@@ -14378,7 +14433,7 @@ else if (enemy.Type == "Mountain Goat") {
     
 
     // Space = spell in facing direction
-     if (Raylib.IsKeyPressed(KeyboardKey.Space)
+     if (Raylib.IsKeyPressed(KeyboardKey.Space) && !chatInputOpen
         && currentPhase == HandPhase.Combat
         && (equipped1H != null && equipped1H.EndsWith("Staff")
             || equipped2H != null && equipped2H.EndsWith("Staff")))
@@ -14408,8 +14463,6 @@ else if (enemy.Type == "Mountain Goat") {
     UpdateSpellProjectiles(dt);
     UpdateWorldBoss(worldBoss, dt);    // ← these two replace
      UpdateWorldBoss(superBoss, dt);
-
-                    
 
     player.Update(dt, buildings, trees, vehicles, lakes, decorativeBuildings, decorativeAssets);
 
@@ -14475,7 +14528,7 @@ else if (enemy.Type == "Mountain Goat") {
         // board bus
         if (!busMoving && busOperating && Vector2.Distance(player.Center, busPosition) < 80)
         {
-            if (Raylib.IsKeyPressed(KeyboardKey.E)) busMenuOpen = !busMenuOpen;
+            if (Raylib.IsKeyPressed(KeyboardKey.E) && !chatInputOpen) busMenuOpen = !busMenuOpen;
         }
         else if (Vector2.Distance(player.Center, busPosition) >= 80)
             busMenuOpen = false;
@@ -14658,7 +14711,7 @@ foreach (GasStation station in gasStations)
     {
         if (Vector2.Distance(player.Center, rock.Position) < 80)
         {
-            if (Raylib.IsKeyPressed(KeyboardKey.Space) && currentPhase == HandPhase.Tools)
+            if (Raylib.IsKeyPressed(KeyboardKey.Space) && !chatInputOpen && currentPhase == HandPhase.Tools)
             {
                 if (GetEquippedTool() != "Pickaxe")
                 {
@@ -14730,7 +14783,7 @@ foreach (TreeObject tree in trees)
     {
         if (Vector2.Distance(player.Center, tree.Center) < 80)
         {
-            if (Raylib.IsKeyPressed(KeyboardKey.Space) && currentPhase == HandPhase.Tools)
+            if (Raylib.IsKeyPressed(KeyboardKey.Space) && !chatInputOpen && currentPhase == HandPhase.Tools)
             {
                 if (GetEquippedTool() != "Axe")
                 {
@@ -14799,7 +14852,7 @@ foreach (Building building in buildings)
             buildingPromptTimer = 0.1f;
         }
 
-        if (Raylib.IsKeyPressed(KeyboardKey.E))
+        if (Raylib.IsKeyPressed(KeyboardKey.E) && !chatInputOpen)
         {
             // your existing entry logic here
         }
@@ -14815,7 +14868,7 @@ foreach (DecorativeBuilding building in decorativeBuildings)
 
     if (distToBuilding < 20)
     {
-        if (Raylib.IsKeyPressed(KeyboardKey.E))
+        if (Raylib.IsKeyPressed(KeyboardKey.E) && !chatInputOpen)
         {
             buildingPromptMessage = "You can't enter this building!";
             buildingPromptColor = Color.Red;
@@ -14835,7 +14888,7 @@ foreach (Lake lake in lakes)
 {
     lake.Update(dt);
 
-    if (Vector2.Distance(player.Center, lake.Position) < 200 && Raylib.IsKeyPressed(KeyboardKey.Space) && !isFishing)
+    if (Vector2.Distance(player.Center, lake.Position) < 200 && Raylib.IsKeyPressed(KeyboardKey.Space) && !chatInputOpen && !isFishing)
     {
         currentLake = lake;
         TryStartFishing("Lake");
@@ -14862,7 +14915,7 @@ if (isFishing)
     else if (fishingPhase == 1)
     {
         fishingReactWindow -= dt;
-        if (Raylib.IsKeyPressed(KeyboardKey.Space))
+        if (Raylib.IsKeyPressed(KeyboardKey.Space) && !chatInputOpen)
         {
             // hooked! start the reeling minigame
             fishingPhase = 2;
@@ -14890,7 +14943,7 @@ if (isFishing)
         if (reelBarPos >= 1f) { reelBarPos = 1f; reelBarUp = false; }
         if (reelBarPos <= 0f) { reelBarPos = 0f; reelBarUp = true; }
 
-        if (Raylib.IsKeyPressed(KeyboardKey.Space))
+        if (Raylib.IsKeyPressed(KeyboardKey.Space) && !chatInputOpen)
         {
             bool inZone = reelBarPos >= reelTargetMin && reelBarPos <= reelTargetMax;
             // how centred? closer to middle of the zone = better catch
@@ -14943,7 +14996,7 @@ if (isFishing)
                     {
                         if (Raylib.CheckCollisionRecs(player.Bounds, building.Bounds))
                         {
-                            if (Raylib.IsKeyPressed(KeyboardKey.E))
+                            if (Raylib.IsKeyPressed(KeyboardKey.E) && !chatInputOpen)
                             {
                                 currentBuilding = building;
                                 currentScene = SceneState.Building;
@@ -14977,7 +15030,7 @@ foreach (var entrance in dungeonEntrances)
 {
     if (Vector2.Distance(player.Center, entrance.pos) < 80)
     {
-        if (Raylib.IsKeyPressed(KeyboardKey.E))
+        if (Raylib.IsKeyPressed(KeyboardKey.E) && !chatInputOpen)
         {
             activeDungeon.Open(entrance.type, entrance.name, player.Position);
             dungeonQuitConfirm = false;
@@ -15055,6 +15108,11 @@ foreach (var entrance in dungeonEntrances)
     totalPlayTime += dt;
 
     player.UpdateInterior(dt, currentBuilding.InteriorObjects);
+    string mpBuildingSceneTag = currentBuilding != null
+        ? $"Building:{currentBuilding.BuildingName}"
+        : "Building";
+    multiplayer.Update(player, playerName, mpBuildingSceneTag);
+    CheckSendAppearanceIfChanged();
     if (shopMessageTimer > 0) shopMessageTimer -= dt;
 
     // My House - independent of NPC distance
@@ -15080,23 +15138,23 @@ foreach (var entrance in dungeonEntrances)
     Vector2 seqTablePos = new Vector2(260, 480);
     bool nearSeqTable = Vector2.Distance(player.Center, seqTablePos) < 100;
     if (nearSeqTable && !wardrobeOpen && !chestOpen && !cookingMenuOpen)
-        if (Raylib.IsKeyPressed(KeyboardKey.E)) StartSequenceGame();
+        if (Raylib.IsKeyPressed(KeyboardKey.E) && !chatInputOpen) StartSequenceGame();
 
     if (!chestOpen && nearWardrobe && !bedMenuOpen)
     {
-        if (Raylib.IsKeyPressed(KeyboardKey.Space))
+        if (Raylib.IsKeyPressed(KeyboardKey.Space) && !chatInputOpen)
             wardrobeOpen = !wardrobeOpen;
     }
 
     if (!wardrobeOpen && nearChest && !bedMenuOpen)
     {
-        if (Raylib.IsKeyPressed(KeyboardKey.Space))
+        if (Raylib.IsKeyPressed(KeyboardKey.Space) && !chatInputOpen)
             chestOpen = !chestOpen;
     }
 
     if (!wardrobeOpen && !chestOpen && nearBed)
     {
-        if (Raylib.IsKeyPressed(KeyboardKey.Space) && !bedMenuOpen)
+        if (Raylib.IsKeyPressed(KeyboardKey.Space) && !chatInputOpen)
         {
             bedMenuOpen = true;
             bedMenuSelected = 0;
@@ -15120,7 +15178,7 @@ foreach (var entrance in dungeonEntrances)
             if (Raylib.CheckCollisionPointRec(mouse, saveRect)  && !Raylib.CheckCollisionPointRec(mouse, sleepRect)) bedMenuSelected = 0;
             if (Raylib.CheckCollisionPointRec(mouse, sleepRect) && !Raylib.CheckCollisionPointRec(mouse, saveRect))  bedMenuSelected = 1;
 
-            bool confirm = Raylib.IsKeyPressed(KeyboardKey.Space)
+            bool confirm = (Raylib.IsKeyPressed(KeyboardKey.Space) && !chatInputOpen)
                         || (Raylib.IsMouseButtonPressed(MouseButton.Left) &&
                             (Raylib.CheckCollisionPointRec(mouse, saveRect) ||
                              Raylib.CheckCollisionPointRec(mouse, sleepRect)));
@@ -15170,7 +15228,7 @@ if (nearStove && !wardrobeOpen && !chestOpen && !fridgeOpen && !cupboardOpen)
     Raylib.DrawRectangle(0, 620, 1280, 100, new Color((byte)0,(byte)0,(byte)0,(byte)180));
     Raylib.DrawText("KITCHEN STOVE", 20, 630, 28, new Color((byte)255,(byte)160,(byte)30,(byte)255));
     Raylib.DrawText("E = Cook (all recipes available)", 20, 668, 22, Color.White);
-    if (Raylib.IsKeyPressed(KeyboardKey.E)) { cookingContext = "kitchen"; cookingMenuOpen = !cookingMenuOpen; }
+    if (Raylib.IsKeyPressed(KeyboardKey.E) && !chatInputOpen) { cookingContext = "kitchen"; cookingMenuOpen = !cookingMenuOpen; }
 }
 
 // Fridge interaction
@@ -15464,7 +15522,7 @@ if (Vector2.Distance(player.Center, new Vector2(935, 575)) < 75 && Raylib.IsKeyP
 }
 
 // Prize counter
-if (Vector2.Distance(player.Center, new Vector2(825, 545)) < 80 && Raylib.IsKeyPressed(KeyboardKey.E))
+if (Vector2.Distance(player.Center, new Vector2(825, 545)) < 80 && (Raylib.IsKeyPressed(KeyboardKey.E) && !chatInputOpen))
     prizeCounterOpen = !prizeCounterOpen;
 
 if (prizeCounterOpen)
@@ -15528,7 +15586,7 @@ if (currentBuilding.BuildingName == "MiniGolf")
 
               if (currentBuilding.BuildingName == "STORE")
 {
-    if (Raylib.IsKeyPressed(KeyboardKey.E))
+    if (Raylib.IsKeyPressed(KeyboardKey.E) && !chatInputOpen)
         shopUIOpen = !shopUIOpen;
 
     if (Raylib.IsKeyPressed(KeyboardKey.Q) && shopUIOpen)
@@ -15550,7 +15608,7 @@ if (dealerUIOpen && Raylib.IsKeyPressed(KeyboardKey.Q))
 
 if (currentBuilding.BuildingName == "GAS STATION")
 {
-    if (Raylib.IsKeyPressed(KeyboardKey.E))
+    if (Raylib.IsKeyPressed(KeyboardKey.E) && !chatInputOpen)
     {
         Vehicle unpaid = vehicles.FirstOrDefault(v => v.NeedsPayment);
         if (unpaid != null)
@@ -15703,7 +15761,7 @@ if (currentBuilding.BuildingName == "McDONALD'S")
     {
         if (Vector2.Distance(player.Center, currentBuilding.InteriorNPC.Position) < 120)
         {
-            if (Raylib.IsKeyPressed(KeyboardKey.E))
+            if (Raylib.IsKeyPressed(KeyboardKey.E) && !chatInputOpen)
                 mcdonaldsMenuOpen = true;
         }
     }
@@ -15735,7 +15793,7 @@ if (currentBuilding.BuildingName == "DOMINO'S")
     {
         if (Vector2.Distance(player.Center, currentBuilding.InteriorNPC.Position) < 120)
         {
-            if (Raylib.IsKeyPressed(KeyboardKey.E))
+            if (Raylib.IsKeyPressed(KeyboardKey.E) && !chatInputOpen)
                 dominosMenuOpen = true;
         }
     }
@@ -15768,7 +15826,7 @@ if (currentBuilding.BuildingName == "KFC")
     {
         if (Vector2.Distance(player.Center, currentBuilding.InteriorNPC.Position) < 120)
         {
-            if (Raylib.IsKeyPressed(KeyboardKey.E))
+            if (Raylib.IsKeyPressed(KeyboardKey.E) && !chatInputOpen)
                 kfcMenuOpen = true;
         }
     }
@@ -15801,7 +15859,7 @@ if (currentBuilding.BuildingName == "BURGER KING")
     {
         if (Vector2.Distance(player.Center, currentBuilding.InteriorNPC.Position) < 120)
         {
-            if (Raylib.IsKeyPressed(KeyboardKey.E))
+            if (Raylib.IsKeyPressed(KeyboardKey.E) && !chatInputOpen)
                 burgerKingMenuOpen = true;
         }
     }
@@ -15838,7 +15896,7 @@ if (currentBuilding.BuildingName == "SWIMMING COMPLEX")
             player.Hidden = true;
         }
         // diving pool — stand near it and press E
-        else if (player.Position.X >= 600 && Raylib.IsKeyPressed(KeyboardKey.E))
+        else if (player.Position.X >= 600 && (Raylib.IsKeyPressed(KeyboardKey.E) && !chatInputOpen))
         {
             swimmingActive = true;
             swimmingPoolType = "diving";
@@ -16226,7 +16284,7 @@ bool nearShelf =
      player.Center.Y > 140 && player.Center.Y < 780 &&
      (player.HasTrolley || player.HasBasket));
 
-if (nearShelf && Raylib.IsKeyPressed(KeyboardKey.E))
+if (nearShelf && (Raylib.IsKeyPressed(KeyboardKey.E) && !chatInputOpen))
     groceryShopOpen = !groceryShopOpen;
 
 if (!nearShelf && player.Center.Y < 870) groceryShopOpen = false;
@@ -16383,7 +16441,7 @@ if (currentBuilding.BuildingName == "KiwiCuts")
     {
         if (currentBuilding.BuildingName == "HOSPITAL")
 {
-    if (Raylib.IsKeyPressed(KeyboardKey.E))
+    if (Raylib.IsKeyPressed(KeyboardKey.E) && !chatInputOpen)
     {
         if (player.Money >= 20)
         {
@@ -16404,7 +16462,7 @@ if (currentBuilding.BuildingName == "KiwiCuts")
 
         if (currentBuilding.BuildingName == "WEAPONS")
         {
-            if (Raylib.IsKeyPressed(KeyboardKey.E))
+            if (Raylib.IsKeyPressed(KeyboardKey.E) && !chatInputOpen)
             {
                 int upgradeCost = player.CombatLevel * 50;
                 if (player.Money >= upgradeCost)
@@ -16424,7 +16482,7 @@ if (currentBuilding.BuildingName == "KiwiCuts")
 
 if (currentBuilding.BuildingName == "GYM")
 {
-    if (Raylib.IsKeyPressed(KeyboardKey.E))
+    if (Raylib.IsKeyPressed(KeyboardKey.E) && !chatInputOpen)
     {
         int cost = player.CombatLevel * 25;
         if (player.Money >= cost)
@@ -16450,7 +16508,7 @@ if (Vector2.Distance(player.Center, currentBuilding.InteriorNPC.Position) < 120)
         currentBuilding.BuildingName == "CAR DEALER" ||
         currentBuilding.BuildingName == "BARN DEALER")
     {
-        if (Raylib.IsKeyPressed(KeyboardKey.E))
+        if (Raylib.IsKeyPressed(KeyboardKey.E) && !chatInputOpen)
         {
             dealerUIOpen = !dealerUIOpen;
             currentDealerBuilding = currentBuilding;
@@ -16466,7 +16524,7 @@ if (Vector2.Distance(player.Center, currentBuilding.InteriorNPC.Position) < 120)
 
 if (currentBuilding.BuildingName == "POLICE STATION")
 {
-    if (Raylib.IsKeyPressed(KeyboardKey.E))
+    if (Raylib.IsKeyPressed(KeyboardKey.E) && !chatInputOpen)
     {
         if (player.Money >= 50)
         {
@@ -18993,7 +19051,7 @@ foreach (GasStation gs in gasStations)
         if (dist < 200)
         {
             Raylib.DrawText($"E = View {plot.label}", sx - 20, sy - 120, 16, Color.Yellow);
-            if (Raylib.IsKeyPressed(KeyboardKey.E) && !landForSaleUIOpen)
+            if (Raylib.IsKeyPressed(KeyboardKey.E) && !chatInputOpen && !landForSaleUIOpen)
             {
                 selectedPlot = Array.IndexOf(landPlots, plot);
                 landForSaleUIOpen = true;
@@ -19168,7 +19226,7 @@ foreach (var cf in campfirePositions)
         if (Raylib.IsKeyPressed(KeyboardKey.Space) && holdingRaw && !isCooking)
             CookRawItemFromToolbar(heldItem);
 
-        if (Raylib.IsKeyPressed(KeyboardKey.E))
+        if (Raylib.IsKeyPressed(KeyboardKey.E) && !chatInputOpen)
         {
             cookingContext = "campfire";
             cookingMenuOpen = true;
@@ -20604,7 +20662,7 @@ if (currentBuilding.BuildingName == "Hallensteins")
         Raylib.DrawText("HALLENSTEINS", 20, 630, 30, new Color((byte)180,(byte)140,(byte)20,(byte)255));
         Raylib.DrawText("E = Browse clothes", 20, 670, 24, Color.White);
 
-        if (Raylib.IsKeyPressed(KeyboardKey.E))
+        if (Raylib.IsKeyPressed(KeyboardKey.E) && !chatInputOpen)
             hallensteinShopOpen = !hallensteinShopOpen;
     }
 }
@@ -20646,7 +20704,7 @@ if (currentBuilding.BuildingName == "AA")
         Raylib.DrawRectangle(0, 620, 1280, 100, new Color((byte)0,(byte)0,(byte)0,(byte)180));
         Raylib.DrawText("AA COUNTER", 20, 630, 28, new Color((byte)0,(byte)160,(byte)255,(byte)255));
         Raylib.DrawText("E = Open Licence Menu", 20, 668, 22, Color.White);
-        if (Raylib.IsKeyPressed(KeyboardKey.E)) aaMenuOpen = !aaMenuOpen;
+        if (Raylib.IsKeyPressed(KeyboardKey.E) && !chatInputOpen) aaMenuOpen = !aaMenuOpen;
     }
 }
 
@@ -20702,7 +20760,7 @@ if (currentBuilding.BuildingName == "Airport")
         Raylib.DrawRectangle(0, 620, 1280, 100, new Color((byte)0,(byte)0,(byte)0,(byte)180));
         Raylib.DrawText("CHECK-IN DESK", 20, 630, 28, new Color((byte)40,(byte)180,(byte)255,(byte)255));
         Raylib.DrawText("E = Choose destination", 20, 668, 22, Color.White);
-        if (Raylib.IsKeyPressed(KeyboardKey.E)) airportMenuOpen = !airportMenuOpen;
+        if (Raylib.IsKeyPressed(KeyboardKey.E) && !chatInputOpen) airportMenuOpen = !airportMenuOpen;
     }
 }
 if (currentBuilding.BuildingName == "Casino")
@@ -20879,7 +20937,7 @@ if (currentBuilding.BuildingName == "MAGIC SHOP")
         Raylib.DrawRectangle(0, 620, 1280, 100, new Color((byte)0,(byte)0,(byte)0,(byte)180));
         Raylib.DrawText("MAGIC SHOP", 20, 630, 28, new Color((byte)160,(byte)80,(byte)255,(byte)255));
         Raylib.DrawText("E = Browse staffs & Arcane Essence", 20, 668, 22, Color.White);
-        if (Raylib.IsKeyPressed(KeyboardKey.E))
+        if (Raylib.IsKeyPressed(KeyboardKey.E) && !chatInputOpen)
             magicShopOpen = !magicShopOpen;
     }
 }
@@ -21446,17 +21504,6 @@ if (currentBuilding.BuildingName == "GAS STATION")
     Raylib.DrawText("WELCOME", 518, 878, 16, new Color((byte)200,(byte)195,(byte)165,(byte)255));
 }
 
-if (currentBuilding.BuildingName == "MAGIC SHOP")
-{
-    if (Vector2.Distance(player.Center, currentBuilding.InteriorNPC.Position) < 160)
-    {
-        Raylib.DrawRectangle(0, 620, 1280, 100, new Color((byte)0,(byte)0,(byte)0,(byte)180));
-        Raylib.DrawText("MAGIC SHOP", 20, 630, 28, new Color((byte)160,(byte)80,(byte)255,(byte)255));
-        Raylib.DrawText("E = Browse staffs & Arcane Essence", 20, 668, 22, Color.White);
-        if (Raylib.IsKeyPressed(KeyboardKey.E))
-            magicShopOpen = !magicShopOpen;
-    }
-}
 
 if (currentBuilding.BuildingName == "RANGING SHOP")
 {
@@ -21542,7 +21589,7 @@ if (currentBuilding.BuildingName == "RANGING SHOP")
         Raylib.DrawRectangle(0, 620, 1280, 100, new Color((byte)0,(byte)0,(byte)0,(byte)180));
         Raylib.DrawText("RANGING SHOP", 20, 630, 28, new Color((byte)200,(byte)150,(byte)40,(byte)255));
         Raylib.DrawText("E = Browse bows, crossbows & ammo", 20, 668, 22, Color.White);
-        if (Raylib.IsKeyPressed(KeyboardKey.E))
+        if (Raylib.IsKeyPressed(KeyboardKey.E) && !chatInputOpen)
             rangingShopOpen = !rangingShopOpen;
     }
 }
@@ -23451,11 +23498,23 @@ if (!player.Hidden)
     player.Draw();
     player.Position = savedPosB;
 }
-    
+
+// ── REMOTE PLAYERS INSIDE THIS BUILDING ──────────────────────────────────
+if (currentBuilding != null)
+{
+    string mpSceneTag2 = $"Building:{currentBuilding.BuildingName}";
+    foreach (var rp in remotePlayers) rp.DrawAt(mpSceneTag2);
+}
 
     Raylib.EndMode2D();
      // HUD text outside BeginMode2D
     Raylib.DrawText($"Player: {(int)player.Position.X}, {(int)player.Position.Y}", 20, 50, 24, Color.White);
+    if (currentBuilding != null)
+    {
+        Raylib.DrawText($"MyBuilding: {currentBuilding.BuildingName}", 20, 80, 18, Color.Yellow);
+        foreach (var rp in remotePlayers)
+            Raylib.DrawText($"Remote {rp.Id}: scene='{rp.Scene}' active={rp.Active}", 20, 100 + rp.Id * 20, 18, Color.Yellow);
+    }
 
      // prompts
      if (currentBuilding.BuildingName.StartsWith("PLAYER HOUSE"))
@@ -23970,7 +24029,7 @@ if (currentBuilding.BuildingName == "Casino")
         Raylib.DrawRectangle(0, 620, 1280, 100, new Color((byte)0,(byte)0,(byte)0,(byte)180));
         Raylib.DrawText("CHIP COUNTER", 20, 630, 28, new Color((byte)255,(byte)180,(byte)20,(byte)255));
         Raylib.DrawText($"Chips: {playerChips}  |  E = Buy/Cash Out", 20, 668, 22, Color.White);
-        if (Raylib.IsKeyPressed(KeyboardKey.E)) casinoChipMenuOpen = !casinoChipMenuOpen;
+        if (Raylib.IsKeyPressed(KeyboardKey.E) && !chatInputOpen) casinoChipMenuOpen = !casinoChipMenuOpen;
     }
 
     // blackjack interaction
@@ -23982,7 +24041,7 @@ if (currentBuilding.BuildingName == "Casino")
             Raylib.DrawRectangle(0, 620, 1280, 100, new Color((byte)0,(byte)0,(byte)0,(byte)180));
             Raylib.DrawText("BLACKJACK TABLE", 20, 630, 28, new Color((byte)0,(byte)200,(byte)60,(byte)255));
             Raylib.DrawText($"Chips: {playerChips}  |  E = Play ($10 min)", 20, 668, 22, Color.White);
-            if (Raylib.IsKeyPressed(KeyboardKey.E) && !blackjackOpen) { blackjackOpen = true; BjStartRound(); }
+            if (Raylib.IsKeyPressed(KeyboardKey.E) && !chatInputOpen && !blackjackOpen) { blackjackOpen = true; BjStartRound(); }
         }
     }
 
@@ -23992,7 +24051,7 @@ if (currentBuilding.BuildingName == "Casino")
         Raylib.DrawRectangle(0, 620, 1280, 100, new Color((byte)0,(byte)0,(byte)0,(byte)180));
         Raylib.DrawText("ROULETTE TABLE", 20, 630, 28, new Color((byte)200,(byte)60,(byte)0,(byte)255));
         Raylib.DrawText($"Chips: {playerChips}  |  E = Play", 20, 668, 22, Color.White);
-        if (Raylib.IsKeyPressed(KeyboardKey.E) && !rouletteOpen) rouletteOpen = true;
+        if (Raylib.IsKeyPressed(KeyboardKey.E) && !chatInputOpen && !rouletteOpen) rouletteOpen = true;
     }
 
     // euchre table interaction
@@ -24001,7 +24060,7 @@ if (currentBuilding.BuildingName == "Casino")
         Raylib.DrawRectangle(0, 620, 1280, 100, new Color((byte)0,(byte)0,(byte)0,(byte)180));
         Raylib.DrawText("EUCHRE TABLE", 20, 630, 28, new Color((byte)200,(byte)160,(byte)20,(byte)255));
         Raylib.DrawText($"Playing Cards Lv {player.PlayingCardsLevel}  |  E = Play Euchre", 20, 668, 22, Color.White);
-        if (Raylib.IsKeyPressed(KeyboardKey.E)) OpenCardsHub(CardGameType.Euchre);
+        if (Raylib.IsKeyPressed(KeyboardKey.E) && !chatInputOpen) OpenCardsHub(CardGameType.Euchre);
     }
 
     // 500 table interaction
@@ -24010,7 +24069,7 @@ if (currentBuilding.BuildingName == "Casino")
         Raylib.DrawRectangle(0, 620, 1280, 100, new Color((byte)0,(byte)0,(byte)0,(byte)180));
         Raylib.DrawText("500 TABLE", 20, 630, 28, new Color((byte)200,(byte)160,(byte)20,(byte)255));
         Raylib.DrawText($"Playing Cards Lv {player.PlayingCardsLevel}  |  E = Play 500", 20, 668, 22, Color.White);
-        if (Raylib.IsKeyPressed(KeyboardKey.E)) OpenCardsHub(CardGameType.FiveHundred);
+        if (Raylib.IsKeyPressed(KeyboardKey.E) && !chatInputOpen) OpenCardsHub(CardGameType.FiveHundred);
     }
 }
 
@@ -24496,7 +24555,7 @@ if (nearCashier && (player.HasTrolley || player.HasBasket))
     {
         Raylib.DrawText($"{itemCount} items — Total: ${totalCost}  |  E = Pay  |  Wallet: ${player.Money}", 20, 668, 22, Color.White);
 
-        if (Raylib.IsKeyPressed(KeyboardKey.E))
+        if (Raylib.IsKeyPressed(KeyboardKey.E) && !chatInputOpen)
         {
             // inventory space check — 1 slot for the shopping bag
             // REMOVE inventory space check entirely or check if all 8 slots are full
@@ -26214,6 +26273,15 @@ private void DrawMountainGoat(int x, int y)
         public FacingDirection Facing = FacingDirection.Down;
         float walkTimer = 0f;
         float bobOffset = 0f;
+        public string HeldItemOverride = null;
+        public bool   UseHeldItemOverride = false;
+
+        string GetDisplayedItem()
+        {
+            if (UseHeldItemOverride)
+                return string.IsNullOrEmpty(HeldItemOverride) ? null : HeldItemOverride;
+            return Program.GetActiveItem();
+        }
         public bool isSwinging = false;
         public float swingTimer = 0f;
         public float swingDuration = 0.3f;   // how long one swing takes
@@ -26244,6 +26312,23 @@ private void DrawMountainGoat(int x, int y)
             r >= 1800 ? "Grand Master" : r >= 1500 ? "Master" : r >= 1200 ? "Expert" :
             r >= 1000 ? "Intermediate" : "Beginner";
         public Dictionary<string, int> FishCaught = new Dictionary<string, int>();
+        public void TriggerSwing()
+        {
+            isSwinging = true;
+            swingTimer = 0f;
+        }
+        public void TickSwing(float dt)
+        {
+            if (isSwinging)
+            {
+                swingTimer += dt;
+                if (swingTimer >= swingDuration)
+                {
+                    isSwinging = false;
+                    swingTimer = 0f;
+                }
+            }
+        }
         float GetSwingAngle()
         {
             if (!isSwinging) return 0f;
@@ -26646,7 +26731,7 @@ if (Program.tutorialActive)
 
     Vector2 move = Vector2.Zero;
 
-    if (Raylib.IsKeyDown(KeyboardKey.W) || Raylib.IsKeyDown(KeyboardKey.Up))
+    if (Raylib.IsKeyDown(KeyboardKey.W)  || Raylib.IsKeyDown(KeyboardKey.Up))
         move.Y -= 1;
     if (Raylib.IsKeyDown(KeyboardKey.S) || Raylib.IsKeyDown(KeyboardKey.Down))
         move.Y += 1;
@@ -26694,6 +26779,25 @@ for (int i = dustParticles.Count - 1; i >= 0; i--)
 
 
     return move * DrunkSpeedMultiplier;
+}
+
+public void DriveAnimation(bool moving, float dt)
+{
+    isMoving = moving;
+    if (isMoving)
+    {
+        walkTimer += dt * 8f;
+        if (walkTimer >= 1f)
+        {
+            walkTimer = 0f;
+            walkFrame = !walkFrame;
+        }
+    }
+    else
+    {
+        walkTimer = 0f;
+        walkFrame = false;
+    }
 }
 
         public void AddWoodcuttingXP(int xp)
@@ -26967,19 +27071,19 @@ switch (Facing)
 {
     case FacingDirection.Down:
         DrawFacingDown(x, y);
-        DrawHeldItem(x, y, Program.GetActiveItem());
+        DrawHeldItem(x, y, GetDisplayedItem());
         break;
     case FacingDirection.Up:
         DrawFacingUp(x, y);
-        DrawHeldItem(x, y, Program.GetActiveItem());
+        DrawHeldItem(x, y, GetDisplayedItem());
         break;
     case FacingDirection.Left:
         DrawFacingLeft(x, y);
-        DrawHeldItem(x, y, Program.GetActiveItem());
+        DrawHeldItem(x, y, GetDisplayedItem());
         break;
     case FacingDirection.Right:
         DrawFacingRight(x, y);
-        DrawHeldItem(x, y, Program.GetActiveItem());
+        DrawHeldItem(x, y, GetDisplayedItem());
         DrawShieldRight(x, y); 
         break;
 }
