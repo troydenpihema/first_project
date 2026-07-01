@@ -79,7 +79,7 @@ partial class Program
     //  HUB STATE
     // ─────────────────────────────────────────────────────────────────────
 
-    enum HubScreen { GameSelect, ModeSelect, Tutorial, TutorialHelper, Playing }
+    enum HubScreen { GameSelect, ModeSelect, Tutorial, TutorialHelper, SeatSelect, Playing }
 
     static bool hubActive = false;
     static HubScreen hubScreen = HubScreen.GameSelect;
@@ -134,6 +134,113 @@ partial class Program
             AddPlayingCardsXP(5);
         }
     }
+
+    static int seatSelectPickedSeat = -1;
+
+static void DrawHubSeatSelect()
+{
+    string gameName = hubGame switch
+    {
+        CardGameType.Euchre      => "EUCHRE",
+        CardGameType.FiveHundred => "FIVE HUNDRED",
+        CardGameType.Sequence    => "SEQUENCE",
+        _ => ""
+    };
+    Raylib.DrawText($"{gameName} — CHOOSE YOUR SEAT", ScreenWidth/2 - 220, 80, 32, Color.Gold);
+    Raylib.DrawText("Empty seats are filled by AI.", ScreenWidth/2 - 130, 124, 18, Color.LightGray);
+
+    Vector2 mouse = Raylib.GetMousePosition();
+
+    string[] seatLabels = { "SOUTH (You/Host)", "WEST", "NORTH (Partner)", "EAST" };
+
+    for (int seat = 0; seat < 4; seat++)
+    {
+        int bx = ScreenWidth/2 - 260;
+        int by = 170 + seat * 90;
+        Rectangle btn = new Rectangle(bx, by, 520, 75);
+        bool hover = Raylib.CheckCollisionPointRec(mouse, btn);
+
+        bool isHostSeat = seat == 0; // host always anchors seat 0 by convention
+        bool taken = cardSeatOwner[seat] > 0; // occupied by a different remote player already
+        bool isThisLocalChoice = seatSelectPickedSeat == seat;
+
+        Color baseCol = isThisLocalChoice
+            ? new Color((byte)60,(byte)100,(byte)60,(byte)255)
+            : taken
+                ? new Color((byte)60,(byte)30,(byte)30,(byte)255)
+                : new Color((byte)25,(byte)45,(byte)25,(byte)255);
+
+        Raylib.DrawRectangleRec(btn, baseCol);
+        Raylib.DrawRectangleLinesEx(btn, 2,
+            isThisLocalChoice ? Color.Gold
+            : taken ? Color.Red
+            : hover ? Color.SkyBlue
+            : new Color((byte)80,(byte)120,(byte)80,(byte)255));
+
+        Raylib.DrawText(seatLabels[seat], bx + 20, by + 12, 22, Color.White);
+
+        string status = isThisLocalChoice ? "YOU"
+            : taken ? $"Taken (Player {cardSeatOwner[seat]})"
+            : "Open — AI or click to claim";
+        Raylib.DrawText(status, bx + 20, by + 42, 16,
+            isThisLocalChoice ? Color.Gold : taken ? Color.Red : Color.LightGray);
+
+        // host cannot click a taken seat; non-host players can't claim host's seat 0
+        bool clickable = !taken && (multiplayer.IsHost || seat != 0);
+
+        if (hover && clickable && Raylib.IsMouseButtonPressed(MouseButton.Left))
+        {
+            // release any seat we previously picked
+            if (seatSelectPickedSeat >= 0)
+                cardSeatOwner[seatSelectPickedSeat] = -1;
+
+            seatSelectPickedSeat = seat;
+            int myNetId = multiplayer.IsHost ? 0 : multiplayer.MyId;
+            cardSeatOwner[seat] = myNetId;
+
+            // tell the host (or, if we ARE the host, just update locally — host is authoritative)
+            if (!multiplayer.IsHost)
+                multiplayer.SendCardAction($"SEAT|{seat}");
+        }
+    }
+
+    // START button — only the host can actually start the game
+    if (multiplayer.IsHost)
+    {
+        Rectangle startBtn = new Rectangle(ScreenWidth/2 - 110, 560, 220, 50);
+        bool hoverStart = Raylib.CheckCollisionPointRec(mouse, startBtn);
+        Raylib.DrawRectangleRec(startBtn, hoverStart ? new Color((byte)50,(byte)100,(byte)50,(byte)255) : new Color((byte)30,(byte)60,(byte)30,(byte)255));
+        Raylib.DrawRectangleLinesEx(startBtn, 2, hoverStart ? Color.Gold : Color.White);
+        Raylib.DrawText("START GAME", (int)startBtn.X + 30, (int)startBtn.Y + 14, 22, hoverStart ? Color.Gold : Color.White);
+
+        if (hoverStart && Raylib.IsMouseButtonPressed(MouseButton.Left))
+        {
+            cardSeatOwner[0] = 0; // host always owns seat 0 if unclaimed
+            hubPracticeMode = false;
+            cardGameStarted = true;
+
+            // tell every client which game to launch, before sending state
+            if (multiplayer.Connected)
+                multiplayer.BroadcastCardTableState($"HUBSTART|{(int)hubGame}|" +
+                    $"{cardSeatOwner[0]}|{cardSeatOwner[1]}|{cardSeatOwner[2]}|{cardSeatOwner[3]}");
+
+            LaunchGame(hubGame);
+            BroadcastCardTableState();
+        }
+    }
+    else
+    {
+        Raylib.DrawText("Waiting for host to start...", ScreenWidth/2 - 130, 560, 20, Color.LightGray);
+    }
+
+    Raylib.DrawText("ESC = Back", ScreenWidth/2 - 40, ScreenHeight - 60, 20, Color.LightGray);
+    if (Raylib.IsKeyPressed(KeyboardKey.Escape))
+    {
+        if (seatSelectPickedSeat >= 0) cardSeatOwner[seatSelectPickedSeat] = -1;
+        seatSelectPickedSeat = -1;
+        hubScreen = HubScreen.ModeSelect;
+    }
+}
 
     // Scale AI difficulty from rating: 200→0.25 skill, 1000→0.95 skill
     static float AiSkillForRating(CardGameType g)
@@ -221,6 +328,7 @@ partial class Program
             case HubScreen.ModeSelect:  DrawHubModeSelect(); break;
             case HubScreen.Tutorial:    DrawHubTutorial();   break;
             case HubScreen.TutorialHelper: DrawTutorialHelper(); break;
+            case HubScreen.SeatSelect:  DrawHubSeatSelect();  break;
         }
     }
 
@@ -317,18 +425,29 @@ partial class Program
         Vector2 mouse = Raylib.GetMousePosition();
 
         // Three option buttons
-        (string label, string sublabel, Action action)[] options =
+        var optionsList = new List<(string label, string sublabel, Action action)>
         {
             ("PLAY",
-             "Rated game — win to increase your rating",
-             () => { hubPracticeMode = false; LaunchGame(hubGame); }),
+            "Rated game — win to increase your rating",
+            () => { hubPracticeMode = false; LaunchGame(hubGame); }),
             ("PRACTICE",
-             "No rating change — play casually",
-             () => { hubPracticeMode = true;  LaunchGame(hubGame); }),
+            "No rating change — play casually",
+            () => { hubPracticeMode = true;  LaunchGame(hubGame); }),
             ("TUTORIAL HELPER",
-             "Step-by-step walkthrough of the game",
-             () => { hubScreen = HubScreen.TutorialHelper; tutHelperStep = 0; }),
+            "Step-by-step walkthrough of the game",
+            () => { hubScreen = HubScreen.TutorialHelper; tutHelperStep = 0; }),
         };
+
+        if (multiplayer.Connected)
+        {
+            optionsList.Add((
+                "MULTIPLAYER",
+                "Play with connected players — choose seats",
+                () => { hubScreen = HubScreen.SeatSelect; }
+            ));
+        }
+
+        var options = optionsList.ToArray();
 
         for (int i = 0; i < options.Length; i++)
         {
@@ -732,13 +851,21 @@ partial class Program
     // Inner methods (renamed so hub can call them without recursion)
    static void DrawCardGame_Inner()
     {
+        // announce turn changes once
+        if (cardPhase == CardPhase.Playing && currentPlayer != lastAnnouncedTurn)
+        {
+            lastAnnouncedTurn = currentPlayer;
+            bool mine = currentPlayer == MyViewSeat();
+            ShowNotification(mine ? "Your turn!" : $"{PlayerName(currentPlayer)}'s turn");
+        }
+        
         Raylib.ClearBackground(new Color((byte)15,(byte)60,(byte)35,(byte)255));
         Raylib.DrawCircle(ScreenWidth/2, ScreenHeight/2, 280, new Color((byte)20,(byte)80,(byte)45,(byte)255));
         Raylib.DrawCircleLines(ScreenWidth/2, ScreenHeight/2, 280, new Color((byte)120,(byte)90,(byte)40,(byte)255));
         string title = cardGameType == CardGameType.Euchre ? "EUCHRE" : "500";
         Raylib.DrawText(title, 20, 16, 30, Color.Gold);
-        Raylib.DrawText($"You & Rala: {teamScore[0]}", 20, 56, 22, new Color((byte)120,(byte)200,(byte)255,(byte)255));
-        Raylib.DrawText($"Joy & Tipene: {teamScore[1]}", 20, 82, 22, new Color((byte)255,(byte)140,(byte)140,(byte)255));
+        Raylib.DrawText($"{TeamLabel(0)}: {teamScore[0]}", 20, 56, 22, new Color((byte)120,(byte)200,(byte)255,(byte)255));
+        Raylib.DrawText($"{TeamLabel(1)}: {teamScore[1]}", 20, 82, 22, new Color((byte)255,(byte)140,(byte)140,(byte)255));
         Raylib.DrawText($"Playing Cards Lv {player.PlayingCardsLevel}", 20, 112, 18, Color.LightGray);
         if (trumpSuit >= 0)
             Raylib.DrawText($"Trump: {SuitNames[trumpSuit]}", 20, 138, 20, SuitColor(trumpSuit));
@@ -748,7 +875,10 @@ partial class Program
         DrawOpponentHands();
         DrawCurrentTrick();
         DrawHumanHand();
-        if (cardPhase == CardPhase.Bidding && currentPlayer == 0)
+        Raylib.DrawText($"MyId={multiplayer.MyId} host={multiplayer.IsHost} cur={currentPlayer} " +
+            $"myView={MyViewSeat()} owners=[{cardSeatOwner[0]},{cardSeatOwner[1]},{cardSeatOwner[2]},{cardSeatOwner[3]}]",
+            20, ScreenHeight - 160, 18, Color.Yellow);
+        if (cardPhase == CardPhase.Bidding && currentPlayer == MyViewSeat())
             DrawBiddingUI();
         if (cardMessageTimer > 0 && cardMessage.Length > 0)
         {
@@ -778,14 +908,20 @@ partial class Program
         if (cardMessageTimer > 0) cardMessageTimer -= dt;
         if (trickPending)
         {
-            trickResolveDelay -= dt;
-            if (trickResolveDelay <= 0f)
+            // only the host resolves tricks; clients wait for the broadcast
+            if (!multiplayer.Connected || multiplayer.IsHost)
             {
-                trickPending = false;
-                ResolveTrick();
+                trickResolveDelay -= dt;
+                if (trickResolveDelay <= 0f)
+                {
+                    trickPending = false;
+                    ResolveTrick();
+                    if (multiplayer.Connected) BroadcastCardTableState();
+                }
             }
             return;
         }
+
         if (Raylib.IsKeyPressed(KeyboardKey.Q))
         {
             player.Position = returnFromCardsPos;
@@ -796,6 +932,7 @@ partial class Program
         }
         if (cardPhase == CardPhase.GameOver)
         {
+            // exiting is local — either player can leave their own screen
             if (Raylib.IsKeyPressed(KeyboardKey.Space))
             {
                 player.Position = returnFromCardsPos;
@@ -807,7 +944,9 @@ partial class Program
         }
         if (cardPhase == CardPhase.HandOver)
         {
-            if (Raylib.IsKeyPressed(KeyboardKey.Space))
+            // only the host advances to the next hand; clients wait for the broadcast
+            bool amHostHand = !multiplayer.Connected || multiplayer.IsHost;
+            if (amHostHand && Raylib.IsKeyPressed(KeyboardKey.Space))
             {
                 if (teamScore[0] >= targetScore || teamScore[1] >= targetScore
                     || (cardGameType == CardGameType.Euchre && (teamScore[0] <= -targetScore || teamScore[1] <= -targetScore)))
@@ -817,10 +956,12 @@ partial class Program
                     dealer = (dealer + 1) % 4;
                     StartNewHand();
                 }
+                if (multiplayer.Connected) BroadcastCardTableState();
             }
             return;
         }
-        if (currentPlayer != 0)
+        bool amHost = !multiplayer.Connected || multiplayer.IsHost;
+        if (amHost && CardSeatIsAI(currentPlayer))
         {
             aiThinkTimer -= dt;
             if (aiThinkTimer <= 0f)
@@ -828,6 +969,7 @@ partial class Program
                 aiThinkTimer = 0.7f;
                 if (cardPhase == CardPhase.Bidding) AiBid(currentPlayer);
                 else if (cardPhase == CardPhase.Playing) AiPlay(currentPlayer);
+                if (multiplayer.Connected) BroadcastCardTableState();
             }
         }
     }

@@ -82,6 +82,8 @@ partial class Program
     static bool seqActive = false;
     static int[] seqSequences = new int[2];     // completed sequences per team
     static int seqCurrentPlayer = 0;            // 0=You,1=Shack,2=Jake,3=CRide
+    static int lastAnnouncedTurn = -1;
+    static int lastAnnouncedSeqTurn = -1;
     static List<Card>[] seqHands = new List<Card>[4];
     static List<Card> seqDeck = new List<Card>();
     static int seqDeckIdx = 0;
@@ -111,6 +113,26 @@ partial class Program
         3 => "C Ride",
         _ => "?"
     };
+
+    // Multiplayer-aware display name for a Sequence seat.
+    static string SeqDisplayName(int p)
+    {
+        if (p < 0 || p > 3) return "?";
+        int owner = cardSeatOwner[p];
+        if (owner == -1) return SeqPlayerName(p);              // AI → Shack/Jake/C Ride/You
+        if (owner == multiplayer.MyId)
+            return multiplayer.Connected ? (playerName ?? "Me") : "Me";
+        if (owner > 0)
+        {
+            lock (multiplayer.RemotePlayers)
+            {
+                var rp = multiplayer.RemotePlayers.Find(r => r.Id == owner);
+                if (rp != null && !string.IsNullOrEmpty(rp.Name)) return rp.Name;
+            }
+            return $"Player {owner}";
+        }
+        return "Host";
+    }
 
     static int SeqTeamOf(int p) => (p == 0 || p == 2) ? 0 : 1;   // 0=You+Jake, 1=Shack+CRide
 
@@ -143,6 +165,7 @@ partial class Program
         seqSequences[0] = seqSequences[1] = 0;
         seqReturnPos = player.Position;
         seqCurrentPlayer = 0;
+        lastAnnouncedSeqTurn = -1;
         seqMessage = "Sequence! First to 2 sequences wins.";
         seqMessageTimer = 3f;
         seqSelectedCard = -1;
@@ -153,7 +176,17 @@ partial class Program
             for (int c = 0; c < 10; c++)
                 seqChips[r,c] = seqBoard[r,c].suit == -1 ? 2 : -1;
 
-        SeqBuildAndDeal();
+        // host deals; client creates empty hands and waits for the broadcast
+        if (!multiplayer.Connected || multiplayer.IsHost)
+        {
+            SeqBuildAndDeal();
+        }
+        else
+        {
+            for (int p = 0; p < 4; p++)
+                seqHands[p] = new List<Card>();
+        }
+
         currentScene = SceneState.CardGame;
     }
 
@@ -213,29 +246,43 @@ partial class Program
 
         if (seqGameOver) return;
 
-        // AI turn
-        if (seqCurrentPlayer != 0)
+        // whose turn: AI runs only on the host, only for AI-owned seats
+        bool amHost = !multiplayer.Connected || multiplayer.IsHost;
+        if (CardSeatIsAI(seqCurrentPlayer))
         {
-            seqAiTimer -= dt;
-            if (seqAiTimer <= 0f)
+            if (amHost)
             {
-                seqAiTimer = 0.9f;
-                SeqAiTurn(seqCurrentPlayer);
+                seqAiTimer -= dt;
+                if (seqAiTimer <= 0f)
+                {
+                    seqAiTimer = 0.9f;
+                    SeqAiTurn(seqCurrentPlayer);
+                    if (multiplayer.Connected) SeqBroadcastState();
+                }
             }
             return;
         }
 
-        // Human: card selection with number keys 1-7
-        for (int i = 0; i < seqHands[0].Count; i++)
+        // remote human's turn → wait for their network action
+        if (!IsMyCardSeat(seqCurrentPlayer))
+            return;
+
+        // it's MY turn
+        int mySeat = MyViewSeat();
+
+        // don't process input until our hand exists (client waiting for broadcast)
+        if (seqHands[mySeat] == null) return;
+
+        // card selection with number keys 1-7 (from my own hand)
+        for (int i = 0; i < seqHands[mySeat].Count; i++)
         {
-            if (Raylib.IsKeyPressed(KeyboardKey.One   + i))
+            if (Raylib.IsKeyPressed(KeyboardKey.One + i))
             {
                 seqSelectedCard = (seqSelectedCard == i) ? -1 : i;
                 SeqUpdateValidCells();
                 break;
             }
         }
-        // deselect with Escape
         if (Raylib.IsKeyPressed(KeyboardKey.Escape))
         {
             seqSelectedCard = -1;
@@ -246,39 +293,110 @@ partial class Program
     // Called from DrawSequenceGame when human clicks a board cell
     static void SeqHumanClickCell(int row, int col)
     {
-        if (seqSelectedCard < 0 || seqCurrentPlayer != 0) return;
-        Card c = seqHands[0][seqSelectedCard];
+        int mySeat = MyViewSeat();
+        if (seqSelectedCard < 0 || seqCurrentPlayer != mySeat) return;
+        if (seqSelectedCard >= seqHands[mySeat].Count) return;
+        Card c = seqHands[mySeat][seqSelectedCard];
+        int oppTeam = 1 - SeqTeamOf(mySeat);
 
+        // validate locally so we never send an illegal move
+        bool valid;
         if (IsTwoEyedJack(c))
         {
-            // wild: place on any empty cell
-            if (seqChips[row, col] == -1)
-            {
-                seqChips[row, col] = 0;
-                SeqFinishTurn(0, seqSelectedCard);
-            }
+            valid = seqChips[row, col] == -1;                       // wild: any empty cell
         }
         else if (IsOneEyedJack(c))
         {
-            // anti-wild: remove opponent chip only
-            if (seqChips[row, col] == 1 && !SeqIsChipInSequence(row, col, 1))
-            {
-                seqChips[row, col] = -1;
-                seqMessage = "You removed Shack/C Ride's chip!";
-                seqMessageTimer = 1.5f;
-                SeqFinishTurn(0, seqSelectedCard);
-            }
+            valid = seqChips[row, col] == oppTeam                    // anti-wild: remove an opponent chip
+                    && !SeqIsChipInSequence(row, col, oppTeam);     // not part of a locked sequence
         }
         else
         {
-            // normal: must match the card on the board cell, and cell must be empty
-            var (bs, br) = seqBoard[row, col];
-            if (br == c.Rank && bs == c.Suit && seqChips[row, col] == -1)
-            {
-                seqChips[row, col] = 0;
-                SeqFinishTurn(0, seqSelectedCard);
-            }
+            var (bs, br) = seqBoard[row, col];                      // normal: match card + empty cell
+            valid = (br == c.Rank && bs == c.Suit && seqChips[row, col] == -1);
         }
+        if (!valid) return;
+
+        if (!multiplayer.Connected || multiplayer.IsHost)
+        {
+            SeqApplyMove(mySeat, seqSelectedCard, row, col);        // host/local applies directly
+            if (multiplayer.Connected) SeqBroadcastState();
+        }
+        else
+        {
+            multiplayer.SendCardAction($"SEQPLAY|{seqSelectedCard}|{row}|{col}");  // client requests it
+        }
+    }
+
+    static void SeqBroadcastState()
+    {
+        if (!multiplayer.IsHost || !multiplayer.Connected) return;
+
+        // flatten the 10x10 chip grid into 100 comma-separated ints
+        var chips = new System.Text.StringBuilder();
+        for (int r = 0; r < 10; r++)
+            for (int c = 0; c < 10; c++)
+            {
+                chips.Append(seqChips[r, c]);
+                if (!(r == 9 && c == 9)) chips.Append(',');
+            }
+
+        string handCounts = $"{seqHands[0]?.Count ?? 0},{seqHands[1]?.Count ?? 0}," +
+                            $"{seqHands[2]?.Count ?? 0},{seqHands[3]?.Count ?? 0}";
+
+        string payload = "SEQ|" +
+            $"{seqCurrentPlayer}|{seqSequences[0]}|{seqSequences[1]}|" +
+            $"{(seqGameOver ? 1 : 0)}|{seqWinTeam}|" +
+            $"{cardSeatOwner[0]}|{cardSeatOwner[1]}|{cardSeatOwner[2]}|{cardSeatOwner[3]}|" +
+            $"{handCounts}|{chips}|" +
+            $"{seqMessage.Replace('|', '/')}|{seqMessageTimer.ToString(System.Globalization.CultureInfo.InvariantCulture)}";
+
+        multiplayer.BroadcastCardTableState(payload);
+
+        // send each remote their own private hand
+        for (int seat = 0; seat < 4; seat++)
+            if (cardSeatOwner[seat] > 0)
+                multiplayer.SendOwnHandTo(cardSeatOwner[seat], seat, SerializeCardList(seqHands[seat]));
+    }
+    static void ApplySeqState(string state)
+    {
+        if (multiplayer.IsHost) return;   // host owns state
+
+        string[] f = state.Split('|');
+        // f[0] = "SEQ"
+        int i = 1;
+        seqCurrentPlayer = int.Parse(f[i++]);
+        seqSequences[0]  = int.Parse(f[i++]);
+        seqSequences[1]  = int.Parse(f[i++]);
+        seqGameOver      = f[i++] == "1";
+        seqWinTeam       = int.Parse(f[i++]);
+        cardSeatOwner[0] = int.Parse(f[i++]);
+        cardSeatOwner[1] = int.Parse(f[i++]);
+        cardSeatOwner[2] = int.Parse(f[i++]);
+        cardSeatOwner[3] = int.Parse(f[i++]);
+
+        string[] counts = f[i++].Split(',');
+        string[] chipVals = f[i++].Split(',');
+        int idx = 0;
+        for (int r = 0; r < 10; r++)
+            for (int c = 0; c < 10; c++)
+                seqChips[r, c] = int.Parse(chipVals[idx++]);
+
+        if (i < f.Length) seqMessage = f[i++].Replace('/', '|');
+        if (i < f.Length) float.TryParse(f[i++], System.Globalization.NumberStyles.Float,
+                              System.Globalization.CultureInfo.InvariantCulture, out seqMessageTimer);
+
+        // rebuild opponent hand counts as placeholders; my own hand comes via OwnHandReceived
+        int mySeat = MyViewSeat();
+        for (int seat = 0; seat < 4; seat++)
+        {
+            if (seat == mySeat) { if (seqHands[seat] == null) seqHands[seat] = new List<Card>(); continue; }
+            seqHands[seat] = new List<Card>();
+            int cnt = int.Parse(counts[seat]);
+            for (int k = 0; k < cnt; k++) seqHands[seat].Add(new Card(-2, -2));
+        }
+
+        seqActive = true;   // make sure the client is showing the board
     }
 
     static void SeqFinishTurn(int p, int cardIdx)
@@ -295,27 +413,81 @@ partial class Program
         int team = SeqTeamOf(p);
         if (newSeqs > seqSequences[team])
         {
-            int gained = newSeqs - seqSequences[team];
             seqSequences[team] = newSeqs;
             seqMessage = $"{SeqTeamLabel(team)} completed a sequence! ({seqSequences[team]}/2)";
             seqMessageTimer = 2.5f;
-            AddPlayingCardsXP(team == 0 ? 20 : 5);
+            SeqAwardTeam(team, 20, 5, false);
         }
 
         if (seqSequences[team] >= 2)
         {
             seqGameOver = true;
             seqWinTeam = team;
-            RecordGameResult(CardGameType.Sequence, seqWinTeam == 0);
             seqMessage = $"{SeqTeamLabel(team)} WIN!";
             seqMessageTimer = 10f;
-            if (team == 0) AddPlayingCardsXP(50);
+            SeqAwardTeam(team, 50, 0, true);
             return;
         }
 
         seqCurrentPlayer = (p + 1) % 4;
         seqAiTimer = 0.9f;
     }
+
+    // Awards each human seat based on whether their team scored/won.
+    // Local player gets XP directly; remote players get a network award; AI gets nothing.
+    static void SeqAwardTeam(int scoringTeam, int winXp, int loseXp, bool recordResult)
+    {
+        for (int st = 0; st < 4; st++)
+        {
+            int owner = cardSeatOwner[st];
+            if (owner == -1) continue; // AI seat — no skills
+
+            bool onScoringTeam = SeqTeamOf(st) == scoringTeam;
+            int xp = onScoringTeam ? winXp : loseXp;
+
+            if (owner == multiplayer.MyId)
+            {
+                AddPlayingCardsXP(xp);
+                if (recordResult) RecordGameResult(CardGameType.Sequence, onScoringTeam);
+            }
+            else if (multiplayer.IsHost && owner > 0)
+            {
+                multiplayer.SendCardAward(owner, xp, onScoringTeam, (int)CardGameType.Sequence);
+            }
+        }
+    }
+
+    // Applies a validated move for seat p. Runs on the host (authoritative).
+    static void SeqApplyMove(int p, int cardIdx, int row, int col)
+    {
+        if (cardIdx < 0 || cardIdx >= seqHands[p].Count) return;
+        Card c = seqHands[p][cardIdx];
+        int myTeam = SeqTeamOf(p);
+
+        if (IsTwoEyedJack(c))
+        {
+            if (seqChips[row, col] != -1) return;
+            seqChips[row, col] = myTeam;
+        }
+        else if (IsOneEyedJack(c))
+        {
+            int oppTeam = 1 - myTeam;
+            if (seqChips[row, col] != oppTeam || SeqIsChipInSequence(row, col, oppTeam)) return;
+            seqChips[row, col] = -1;
+            seqMessage = $"{SeqPlayerName(p)} removed a chip!";
+            seqMessageTimer = 1.5f;
+        }
+        else
+        {
+            var (bs, br) = seqBoard[row, col];
+            if (!(br == c.Rank && bs == c.Suit && seqChips[row, col] == -1)) return;
+            seqChips[row, col] = myTeam;
+        }
+
+        SeqFinishTurn(p, cardIdx);
+    }
+
+    static int SeqOpponentTeamMarker(int seat) => 1 - SeqTeamOf(seat);
 
     // ─────────────────────────────────────────────────────────────────────
     //  AI TURN
@@ -588,8 +760,9 @@ partial class Program
     static void SeqUpdateValidCells()
     {
         seqValidCells.Clear();
-        if (seqSelectedCard < 0 || seqSelectedCard >= seqHands[0].Count) return;
-        Card c = seqHands[0][seqSelectedCard];
+        int mySeat = MyViewSeat();
+        if (seqSelectedCard < 0 || seqSelectedCard >= seqHands[mySeat].Count) return;
+        Card c = seqHands[mySeat][seqSelectedCard];
 
         if (IsTwoEyedJack(c))
         {
@@ -627,7 +800,22 @@ partial class Program
     // ─────────────────────────────────────────────────────────────────────
     static void DrawSequenceGame()
     {
+        for (int p = 0; p < 4; p++)
+            if (seqHands[p] == null)
+            {
+                Raylib.DrawText("Waiting for host...", ScreenWidth/2 - 100, ScreenHeight/2, 24, Color.White);
+                return;
+            }
+
         if (!seqActive) return;
+
+        if (!seqGameOver && seqCurrentPlayer != lastAnnouncedSeqTurn)
+        {
+            lastAnnouncedSeqTurn = seqCurrentPlayer;
+            bool mine = seqCurrentPlayer == MyViewSeat();
+            seqMessage = mine ? "Your turn!" : $"{SeqDisplayName(seqCurrentPlayer)}'s turn";
+            seqMessageTimer = 1.8f;
+        }
 
         Raylib.ClearBackground(new Color((byte)15,(byte)35,(byte)15,(byte)255));
 
@@ -695,15 +883,19 @@ partial class Program
         int midY = ScreenHeight / 2;
 
         // Me (player 0)
+        bool turn0 = seqCurrentPlayer == 0 && !seqGameOver;
         Raylib.DrawRectangle(leftX, midY - 160, 170, 60, new Color((byte)20,(byte)20,(byte)40,(byte)200));
-        Raylib.DrawRectangleLines(leftX, midY - 160, 170, 60, SeqTeamColor(0));
-        Raylib.DrawText("Me", leftX + 8, midY - 152, 20, Color.White);
+        Raylib.DrawRectangleLinesEx(new Rectangle(leftX, midY - 160, 170, 60), turn0 ? 4 : 2,
+            turn0 ? Color.Gold : SeqTeamColor(0));
+        Raylib.DrawText(SeqDisplayName(0), leftX + 8, midY - 152, 20, Color.White);
         SeqDrawPlayerPortrait(0, leftX + 140, midY - 130);
 
         // Jake (player 2)
+        bool turn2 = seqCurrentPlayer == 2 && !seqGameOver;
         Raylib.DrawRectangle(leftX, midY - 80, 170, 60, new Color((byte)20,(byte)20,(byte)40,(byte)200));
-        Raylib.DrawRectangleLines(leftX, midY - 80, 170, 60, SeqTeamColor(0));
-        Raylib.DrawText("Jake", leftX + 8, midY - 72, 20, Color.White);
+        Raylib.DrawRectangleLinesEx(new Rectangle(leftX, midY - 80, 170, 60), turn2 ? 4 : 2,
+            turn2 ? Color.Gold : SeqTeamColor(0));
+        Raylib.DrawText(SeqDisplayName(2), leftX + 8, midY - 72, 20, Color.White);
         SeqDrawPlayerPortrait(2, leftX + 140, midY - 50);
 
         // Tricks (team 0 sequences)
@@ -732,15 +924,19 @@ partial class Program
         int rightX = boardOffX + boardW + 8;
 
         // C Ride (player 3)
+        bool turn3 = seqCurrentPlayer == 3 && !seqGameOver;
         Raylib.DrawRectangle(rightX + 160, midY - 160, 170, 60, new Color((byte)40,(byte)20,(byte)20,(byte)200));
-        Raylib.DrawRectangleLines(rightX + 160, midY - 160, 170, 60, SeqTeamColor(1));
-        Raylib.DrawText("C Ride", rightX + 168, midY - 152, 20, Color.White);
+        Raylib.DrawRectangleLinesEx(new Rectangle(rightX + 160, midY - 160, 170, 60), turn3 ? 4 : 2,
+            turn3 ? Color.Gold : SeqTeamColor(1));
+        Raylib.DrawText(SeqDisplayName(3), rightX + 168, midY - 152, 20, Color.White);
         SeqDrawPlayerPortrait(3, rightX + 300, midY - 130);
 
         // Shack (player 1)
+        bool turn1 = seqCurrentPlayer == 1 && !seqGameOver;
         Raylib.DrawRectangle(rightX + 160, midY - 80, 170, 60, new Color((byte)40,(byte)20,(byte)20,(byte)200));
-        Raylib.DrawRectangleLines(rightX + 160, midY - 80, 170, 60, SeqTeamColor(1));
-        Raylib.DrawText("Shack", rightX + 168, midY - 72, 20, Color.White);
+        Raylib.DrawRectangleLinesEx(new Rectangle(rightX + 160, midY - 80, 170, 60), turn1 ? 4 : 2,
+            turn1 ? Color.Gold : SeqTeamColor(1));
+        Raylib.DrawText(SeqDisplayName(1), rightX + 168, midY - 72, 20, Color.White);
         SeqDrawPlayerPortrait(1, rightX + 300, midY - 50);
 
         // Tricks (team 1 sequences)
@@ -789,17 +985,26 @@ partial class Program
         }
 
         // ── dead card D key ──
-        if (seqSelectedCard >= 0 && seqCurrentPlayer == 0 &&
+        int mySeatDead = MyViewSeat();
+        if (seqSelectedCard >= 0 && seqCurrentPlayer == mySeatDead &&
             seqValidCells.Count == 0 && Raylib.IsKeyPressed(KeyboardKey.D))
         {
-            seqHands[0].RemoveAt(seqSelectedCard);
-            if (seqDeckIdx < seqDeck.Count) seqHands[0].Add(SeqDrawCard());
-            seqSelectedCard = -1;
-            seqValidCells.Clear();
-            seqMessage = "Dead card discarded, drew a new one.";
-            seqMessageTimer = 1.5f;
-            seqCurrentPlayer = 1;
-            seqAiTimer = 0.9f;
+            if (!multiplayer.Connected || multiplayer.IsHost)
+            {
+                seqHands[mySeatDead].RemoveAt(seqSelectedCard);
+                if (seqDeckIdx < seqDeck.Count) seqHands[mySeatDead].Add(SeqDrawCard());
+                seqSelectedCard = -1;
+                seqValidCells.Clear();
+                seqMessage = "Dead card discarded, drew a new one.";
+                seqMessageTimer = 1.5f;
+                seqCurrentPlayer = (mySeatDead + 1) % 4;
+                seqAiTimer = 0.9f;
+                if (multiplayer.Connected) SeqBroadcastState();
+            }
+            else
+            {
+                multiplayer.SendCardAction($"SEQDISCARD|{seqSelectedCard}");
+            }
         }
 
         // ── game over overlay ──
@@ -818,7 +1023,9 @@ partial class Program
 
     static void SeqDrawHumanHand(Vector2 mouse)
 {
-    var hand = seqHands[0];
+    int mySeat = MyViewSeat();
+    var hand = seqHands[mySeat];
+    if (hand == null) return;
     int n = hand.Count;
     if (n == 0) return;
 

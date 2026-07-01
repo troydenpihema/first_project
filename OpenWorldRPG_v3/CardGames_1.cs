@@ -60,6 +60,11 @@ partial class Program
 
     static CardGameType cardGameType = CardGameType.Euchre;
     static CardPhase cardPhase = CardPhase.Bidding;
+    static bool cardGameStarted = false;
+    static int[] cardSeatOwner = { 0, -1, -1, -1 };
+    static bool CardSeatIsLocalHuman(int seat) => cardSeatOwner[seat] == 0;
+    static bool CardSeatIsAI(int seat)         => cardSeatOwner[seat] == -1;
+    static bool CardSeatIsRemote(int seat)     => cardSeatOwner[seat] > 0;
 
     // 4 players: index 0 = YOU (south), 1 = West, 2 = North (your partner), 3 = East
     // Teams: {0,2} = You + North,  {1,3} = West + East
@@ -102,6 +107,16 @@ partial class Program
 
     // hovered/clickable card rects for the human
     static List<Rectangle> humanCardRects = new();
+    static string SerializeCard(Card c) => $"{c.Suit}:{c.Rank}";
+    static Card DeserializeCard(string s)
+    {
+        var parts = s.Split(':');
+        return new Card(int.Parse(parts[0]), int.Parse(parts[1]));
+    }
+    static string SerializeCardList(List<Card> cards) =>
+    cards == null ? "" : string.Join(",", cards.Select(SerializeCard));
+    static List<Card> DeserializeCardList(string s) =>
+        string.IsNullOrEmpty(s) ? new List<Card>() : s.Split(',').Select(DeserializeCard).ToList();
 
     // ─────────────────────────────────────────────────────────────────────
     //  XP / SKILL  (PlayingCards)
@@ -141,6 +156,7 @@ partial class Program
 
     static void StartNewHand()
     {
+        lastAnnouncedTurn = -1;
         for (int i = 0; i < 4; i++) hands[i] = new List<Card>();
         currentTrick.Clear();
         kitty.Clear();
@@ -162,16 +178,55 @@ partial class Program
         cardMessageTimer = 2f;
     }
 
-    static string PlayerName(int p) => p switch
+    static readonly string[] aiSeatNames = { "You", "Joy", "Rala", "Tipene" };
+
+    static string PlayerName(int p)
     {
-        0 => "You",
-        1 => "Joy",
-        2 => "Rala",     // your partner (North)
-        3 => "Tipene",
-        _ => "?"
-    };
+        if (p < 0 || p > 3) return "?";
+
+        int owner = cardSeatOwner[p];
+
+        // AI seat → default character name
+        if (owner == -1) return aiSeatNames[p];
+
+        // the local player's own seat
+        if (owner == multiplayer.MyId)
+            return multiplayer.Connected ? (playerName ?? "You") : "You";
+
+        // a remote human's seat → look up their network name
+        if (owner > 0)
+        {
+            lock (multiplayer.RemotePlayers)
+            {
+                var rp = multiplayer.RemotePlayers.Find(r => r.Id == owner);
+                if (rp != null && !string.IsNullOrEmpty(rp.Name)) return rp.Name;
+            }
+            return $"Player {owner}";
+        }
+
+        // owner == 0 and it's not me → the host, when I'm a client
+        return "Host";
+    }
 
     static int TeamOf(int p) => (p == 0 || p == 2) ? 0 : 1;
+
+    // Seats
+
+    static int MyViewSeat()
+    {
+        if (!multiplayer.Connected) return 0;
+        for (int s = 0; s < 4; s++)
+            if (cardSeatOwner[s] == multiplayer.MyId) return s;
+        return 0;
+    }
+
+    static bool IsMyCardSeat(int seat) => cardSeatOwner[seat] == multiplayer.MyId;
+
+    static int SeatToScreenSlot(int seat)
+    {
+        int mySeat = MyViewSeat();
+        return (seat - mySeat + 4) % 4;
+    }
 
     // ─────────────────────────────────────────────────────────────────────
     //  DEALING
@@ -347,6 +402,40 @@ partial class Program
         }
     }
 
+    // Broadcast table
+
+    static void BroadcastCardTableState()
+{
+    if (!multiplayer.IsHost || !multiplayer.Connected) return;
+
+    // public info — visible to everyone, no privacy concerns
+    string trickStr = string.Join(";", currentTrick.Select(t => $"{SerializeCard(t.card)}:{t.player}"));
+    string handCounts = string.Join(",", hands.Select(h => h?.Count ?? 0));
+
+    string payload = $"{(int)cardGameType}|{(int)cardPhase}|{currentPlayer}|{dealer}" +
+                  $"|{teamScore[0]}|{teamScore[1]}|{tricksWon[0]}|{tricksWon[1]}" +
+                  $"|{trumpSuit}|{cardSeatOwner[0]}|{cardSeatOwner[1]}|{cardSeatOwner[2]}|{cardSeatOwner[3]}" +
+                  $"|{handCounts}|{trickStr}" +
+                  $"|{maker}|{makerTeam}|{(goingAlone ? 1 : 0)}" +
+                  $"|{SerializeCard(upCard)}|{euchreBidRound}" +
+                  $"|{fiveHundredBid}|{fiveHundredBidSuit}|{fiveHundredHighBidder}|{fiveHundredBidValue}" +
+                  $"|{cardMessage.Replace('|', '/')}|{cardMessageTimer}" +
+                  $"|{(cardGameStarted ? 1 : 0)}";
+
+    multiplayer.BroadcastCardTableState(payload);
+
+    // then send each connected client THEIR OWN hand privately
+    for (int seat = 0; seat < 4; seat++)
+    {
+        if (cardSeatOwner[seat] > 0) // a remote player's seat
+        {
+            string ownHand = SerializeCardList(hands[seat]);
+            multiplayer.SendOwnHandTo(cardSeatOwner[seat], seat, ownHand);
+        }
+    }
+}
+
+
     // ─────────────────────────────────────────────────────────────────────
     //  UPDATE  (called from your Update switch)
     // ─────────────────────────────────────────────────────────────────────
@@ -375,6 +464,7 @@ partial class Program
 
         if (cardPhase == CardPhase.GameOver)
         {
+            // exiting is local — either player can leave their own screen
             if (Raylib.IsKeyPressed(KeyboardKey.Space))
             {
                 player.Position = returnFromCardsPos;
@@ -385,7 +475,9 @@ partial class Program
 
         if (cardPhase == CardPhase.HandOver)
         {
-            if (Raylib.IsKeyPressed(KeyboardKey.Space))
+            // only the host advances to the next hand; clients wait for the broadcast
+            bool amHost = !multiplayer.Connected || multiplayer.IsHost;
+            if (amHost && Raylib.IsKeyPressed(KeyboardKey.Space))
             {
                 // check for game over
                 if (teamScore[0] >= targetScore || teamScore[1] >= targetScore
@@ -398,12 +490,18 @@ partial class Program
                     dealer = (dealer + 1) % 4;   // dealer rotates every hand
                     StartNewHand();
                 }
+                if (multiplayer.Connected) BroadcastCardTableState();
             }
             return;
         }
 
         // AI turns run on a small timer so they feel natural
-        if (currentPlayer != 0)
+        if (multiplayer.Connected && !multiplayer.IsHost)
+        {
+            return; // joiner: input for their own seat is handled separately in DrawCardGame via network send
+        }
+
+        if (CardSeatIsAI(currentPlayer))
         {
             aiThinkTimer -= dt;
             if (aiThinkTimer <= 0f)
@@ -411,7 +509,14 @@ partial class Program
                 aiThinkTimer = 0.7f;
                 if (cardPhase == CardPhase.Bidding) AiBid(currentPlayer);
                 else if (cardPhase == CardPhase.Playing) AiPlay(currentPlayer);
+                BroadcastCardTableState();
             }
+            return;
+        }
+
+        if (CardSeatIsRemote(currentPlayer))
+        {
+            // waiting for that remote player's network input — nothing to do locally
             return;
         }
 
@@ -587,10 +692,30 @@ partial class Program
         }
     }
 
+    //Request bid and Seat request
+    static void RequestBidAction(string netMsg, Action hostApply)
+{
+    if (multiplayer.IsHost || !multiplayer.Connected)
+    {
+        hostApply();
+        if (multiplayer.Connected) BroadcastCardTableState();
+    }
+    else
+    {
+        multiplayer.SendCardAction(netMsg);
+    }
+}
+
+static int SeatOfSender(int fromId)
+{
+    for (int s = 0; s < 4; s++) if (cardSeatOwner[s] == fromId) return s;
+    return -1;
+}
+
     // ─────────────────────────────────────────────────────────────────────
     //  SCORING
     // ─────────────────────────────────────────────────────────────────────
-    static void ScoreHand()
+static void ScoreHand()
     {
         cardPhase = CardPhase.HandOver;
 
@@ -617,11 +742,12 @@ partial class Program
             }
             teamScore[team] += pts;
 
-            // XP: more for you doing well
-            int yourTeam = TeamOf(0);
-            if (team == yourTeam) AddPlayingCardsXP(pts * 6);
-            else                  AddPlayingCardsXP(2);
-            RecordGameResult(cardGameType, team == yourTeam);
+            // award every human seat based on whether their team won the hand
+            for (int st = 0; st < 4; st++)
+            {
+                bool seatWon = TeamOf(st) == team;
+                AwardSeat(st, seatWon ? pts * 6 : 2, seatWon);
+            }
 
             cardMessage = $"{result}  ({TeamLabel(team)})";
             cardMessageTimer = 4f;
@@ -638,25 +764,53 @@ partial class Program
                 // all 10 tricks but bid under 10 → still cap unless slam; keep simple
                 teamScore[makerTeam] += gained;
                 result = $"Contract made! +{gained}";
-                if (TeamOf(0) == makerTeam) AddPlayingCardsXP(12);
             }
             else
             {
                 teamScore[makerTeam] -= fiveHundredBidValue;
                 result = $"Contract FAILED! -{fiveHundredBidValue}";
-                if (TeamOf(0) != makerTeam) AddPlayingCardsXP(8);
             }
             // defenders score 10 per trick
             teamScore[defTeam] += tricksWon[defTeam] * 10;
             cardMessage = result;
             cardMessageTimer = 4f;
-             if (teamScore[0] >= 500 || teamScore[1] >= 500 ||
-                teamScore[0] <= -500 || teamScore[1] <= -500)
-                RecordGameResult(CardGameType.FiveHundred, teamScore[0] > teamScore[1]);
+
+            // per-hand XP to every human seat (contract made → makers win, else defenders)
+            int winningSide = (makerTricks >= fiveHundredBid) ? makerTeam : defTeam;
+            for (int st = 0; st < 4; st++)
+            {
+                bool seatWon = TeamOf(st) == winningSide;
+                AwardSeat(st, seatWon ? 12 : 8, seatWon);
+            }
         }
     }
 
-    static string TeamLabel(int t) => t == 0 ? "You & Rala" : "Joy & Tipene";
+    // Awards XP + rating to whoever occupies `seat`, on the correct machine.
+// Host calls this for every human seat after scoring.
+static void AwardSeat(int seat, int xp, bool won)
+{
+    int owner = cardSeatOwner[seat];
+    if (owner == -1) return; // AI seat — no skills
+
+    if (owner == multiplayer.MyId)
+    {
+        // this machine's own player
+        AddPlayingCardsXP(xp);
+        RecordGameResult(cardGameType, won);
+    }
+    else if (multiplayer.IsHost && owner > 0)
+    {
+        // a remote human — tell their machine to award itself
+        multiplayer.SendCardAward(owner, xp, won, (int)cardGameType);
+    }
+}
+
+    static string TeamLabel(int t)
+    {
+        // team 0 = seats 0 & 2, team 1 = seats 1 & 3
+        if (t == 0) return $"{PlayerName(0)} & {PlayerName(2)}";
+        return $"{PlayerName(1)} & {PlayerName(3)}";
+    }
 
     // ─────────────────────────────────────────────────────────────────────
     //  AI
@@ -825,8 +979,8 @@ partial class Program
         // title + scores
         string title = cardGameType == CardGameType.Euchre ? "EUCHRE" : "500";
         Raylib.DrawText(title, 20, 16, 30, Color.Gold);
-        Raylib.DrawText($"You & Rala: {teamScore[0]}", 20, 56, 22, new Color((byte)120,(byte)200,(byte)255,(byte)255));
-        Raylib.DrawText($"Joy & Tipene: {teamScore[1]}", 20, 82, 22, new Color((byte)255,(byte)140,(byte)140,(byte)255));
+        Raylib.DrawText($"{TeamLabel(0)}: {teamScore[0]}", 20, 56, 22, new Color((byte)120,(byte)200,(byte)255,(byte)255));
+        Raylib.DrawText($"{TeamLabel(1)}: {teamScore[1]}", 20, 82, 22, new Color((byte)255,(byte)140,(byte)140,(byte)255));
         Raylib.DrawText($"Playing Cards Lv {player.PlayingCardsLevel}", 20, 112, 18, Color.LightGray);
         if (trumpSuit >= 0)
             Raylib.DrawText($"Trump: {SuitNames[trumpSuit]}", 20, 138, 20, SuitColor(trumpSuit));
@@ -952,13 +1106,21 @@ partial class Program
         {
             Color c = TeamOf(p) == 0 ? new Color((byte)120,(byte)200,(byte)255,(byte)255)
                                      : new Color((byte)255,(byte)140,(byte)140,(byte)255);
-            string nm = PlayerName(p);
+             string nm = PlayerName(p);
             int w = Raylib.MeasureText(nm, 18);
-            Raylib.DrawText(nm, seats[p].x - w/2, seats[p].y + (p==0?70:p==2?-90:-50), 18, c);
+            int nx = seats[p].x - w/2;
+            int ny = seats[p].y + (p==0?70:p==2?-90:-50);
+            bool isTurn = p == currentPlayer && cardPhase != CardPhase.HandOver && cardPhase != CardPhase.GameOver;
+
+            // highlight box around the current player's name
+            if (isTurn)
+            {
+                Raylib.DrawRectangle(nx - 8, ny - 4, w + 16, 26, new Color((byte)60,(byte)50,(byte)10,(byte)200));
+                Raylib.DrawRectangleLinesEx(new Rectangle(nx - 8, ny - 4, w + 16, 26), 3, Color.Gold);
+            }
+            Raylib.DrawText(nm, nx, ny, 18, isTurn ? Color.Gold : c);
             if (p == dealer)
                 Raylib.DrawText("[DEALER]", seats[p].x - 38, seats[p].y + (p==0?92:p==2?-68:-28), 14, Color.Gold);
-            if (p == currentPlayer && cardPhase != CardPhase.HandOver && cardPhase != CardPhase.GameOver)
-                Raylib.DrawCircle(seats[p].x, seats[p].y + (p==0?60:p==2?-100:-60), 6, Color.Yellow);
             
             int portraitY = p == 0 ? seats[p].y + 110
                           : p == 2 ? seats[p].y - 130
@@ -968,18 +1130,29 @@ partial class Program
     }
 
     static void DrawOpponentHands()
+{
+    int mySeat = MyViewSeat();
+
+    // West/North/East screen slots, but populated by whichever ACTUAL seat
+    // rotates into that slot relative to the local viewer
+    for (int seat = 0; seat < 4; seat++)
     {
-        // West (vertical stack left), North (horizontal top), East (vertical right)
-        // West
-        for (int i = 0; i < hands[1].Count; i++)
-            DrawCardBack(120, ScreenHeight/2 - 80 + i * 26, true);
-        // North
-        for (int i = 0; i < hands[2].Count; i++)
-            DrawCardBack(ScreenWidth/2 - 90 + i * 34, 90, false);
-        // East
-        for (int i = 0; i < hands[3].Count; i++)
-            DrawCardBack(ScreenWidth - 160, ScreenHeight/2 - 80 + i * 26, true);
+        if (seat == mySeat) continue; // that's "my" hand, drawn separately
+        int slot = SeatToScreenSlot(seat); // 1=left, 2=top, 3=right
+
+        if (hands[seat] == null) continue;
+
+        if (slot == 1) // west
+            for (int i = 0; i < hands[seat].Count; i++)
+                DrawCardBack(120, ScreenHeight/2 - 80 + i * 26, true);
+        else if (slot == 2) // north
+            for (int i = 0; i < hands[seat].Count; i++)
+                DrawCardBack(ScreenWidth/2 - 90 + i * 34, 90, false);
+        else if (slot == 3) // east
+            for (int i = 0; i < hands[seat].Count; i++)
+                DrawCardBack(ScreenWidth - 160, ScreenHeight/2 - 80 + i * 26, true);
     }
+}
 
     static void DrawCardBack(int x, int y, bool small)
     {
@@ -990,60 +1163,75 @@ partial class Program
     }
 
     static void DrawCurrentTrick()
+{
+    (int x, int y)[] spot =
     {
-        // place each played card near its owner's side of the centre
-        (int x, int y)[] spot =
-        {
-            (ScreenWidth/2 - 25,  ScreenHeight/2 + 60),  // you
-            (ScreenWidth/2 - 110, ScreenHeight/2 - 30),  // west
-            (ScreenWidth/2 - 25,  ScreenHeight/2 - 120), // north
-            (ScreenWidth/2 + 60,  ScreenHeight/2 - 30),  // east
-        };
-        foreach (var (card, p) in currentTrick)
-            DrawCardFace(card, spot[p].x, spot[p].y, false);
+        (ScreenWidth/2 - 25,  ScreenHeight/2 + 60),  // bottom (you)
+        (ScreenWidth/2 - 110, ScreenHeight/2 - 30),  // left
+        (ScreenWidth/2 - 25,  ScreenHeight/2 - 120), // top
+        (ScreenWidth/2 + 60,  ScreenHeight/2 - 30),  // right
+    };
+    foreach (var (card, p) in currentTrick)
+    {
+        int slot = SeatToScreenSlot(p);
+        DrawCardFace(card, spot[slot].x, spot[slot].y, false);
     }
+}
 
   static void DrawHumanHand()
+{
+    int mySeat = MyViewSeat();
+    
+    if (hands[mySeat] == null) return;
+
+    humanCardRects.Clear();
+    var hand = new List<Card>(hands[mySeat]);
+    int n = hand.Count;
+    if (n == 0) return;
+    int cw = 60, gap = 66;
+    int totalW = n * gap;
+    int startX = ScreenWidth/2 - totalW/2;
+    int y = ScreenHeight - 110;
+
+    Vector2 mouse = Raylib.GetMousePosition();
+    var legal = (cardPhase == CardPhase.Playing && currentPlayer == mySeat)
+                ? LegalMoves(mySeat, trumpSuit) : new List<Card>();
+
+    Card? clicked = null;
+
+    for (int i = 0; i < n; i++)
     {
-        humanCardRects.Clear();
-        // snapshot the hand so removing a card mid-loop can't break indexing
-        var hand = new List<Card>(hands[0]);
-        int n = hand.Count;
-        if (n == 0) return;
-        int cw = 60, gap = 66;
-        int totalW = n * gap;
-        int startX = ScreenWidth/2 - totalW/2;
-        int y = ScreenHeight - 110;
+        Card card = hand[i];
+        int x = startX + i * gap;
+        var rect = new Rectangle(x, y, cw, 84);
+        humanCardRects.Add(rect);
+        bool hover = Raylib.CheckCollisionPointRec(mouse, rect);
+        bool playable = legal.Any(c => c.Suit == card.Suit && c.Rank == card.Rank && c.IsJoker == card.IsJoker);
+        int lift = (hover && playable) ? 18 : 0;
+        DrawCardFace(card, x, y - lift, true, playable && currentPlayer == mySeat && cardPhase == CardPhase.Playing);
 
-        Vector2 mouse = Raylib.GetMousePosition();
-        var legal = (cardPhase == CardPhase.Playing && currentPlayer == 0)
-                    ? LegalMoves(0, trumpSuit) : new List<Card>();
-
-        Card? clicked = null;   // defer the actual play until after the loop
-
-        for (int i = 0; i < n; i++)
+        if (cardPhase == CardPhase.Playing && currentPlayer == mySeat
+            && !trickPending
+            && hover && playable && Raylib.IsMouseButtonPressed(MouseButton.Left))
         {
-            Card card = hand[i];
-            int x = startX + i * gap;
-            var rect = new Rectangle(x, y, cw, 84);
-            humanCardRects.Add(rect);
-            bool hover = Raylib.CheckCollisionPointRec(mouse, rect);
-            bool playable = legal.Any(c => c.Suit == card.Suit && c.Rank == card.Rank && c.IsJoker == card.IsJoker);
-            int lift = (hover && playable) ? 18 : 0;
-            DrawCardFace(card, x, y - lift, true, playable && currentPlayer == 0 && cardPhase == CardPhase.Playing);
-
-            if (cardPhase == CardPhase.Playing && currentPlayer == 0
-                && !trickPending
-                && hover && playable && Raylib.IsMouseButtonPressed(MouseButton.Left))
-            {
-                clicked = card;
-            }
+            clicked = card;
         }
-
-        // play after the draw loop has finished — hand is no longer being indexed
-        if (clicked.HasValue)
-            PlayCard(0, clicked.Value);
     }
+
+    if (clicked.HasValue)
+    {
+        if (multiplayer.IsHost || !multiplayer.Connected)
+        {
+            PlayCard(mySeat, clicked.Value);
+            if (multiplayer.Connected) BroadcastCardTableState();
+        }
+        else
+        {
+            // joiner: request the play, let the host apply it authoritatively
+            multiplayer.SendCardAction($"PLAY|{SerializeCard(clicked.Value)}");
+        }
+    }
+}
 
     static void DrawCardFace(Card c, int x, int y, bool large, bool highlight = false)
     {
@@ -1068,6 +1256,7 @@ partial class Program
     {
         int bx = ScreenWidth/2 - 260, by = ScreenHeight - 230;
         Vector2 mouse = Raylib.GetMousePosition();
+        int seat = MyViewSeat();
 
         if (cardGameType == CardGameType.Euchre)
         {
@@ -1076,9 +1265,12 @@ partial class Program
                 // show up-card + Order Up / Pass / Alone
                 Raylib.DrawText("Up-card:", bx, by - 30, 18, Color.White);
                 DrawCardFace(upCard, bx + 80, by - 50, false);
-                if (CardButton("Order Up", bx + 150, by, 130, mouse)) EuchreOrderUp(0, false);
-                if (CardButton("Alone",    bx + 290, by, 90,  mouse)) EuchreOrderUp(0, true);
-                if (CardButton("Pass",     bx + 390, by, 100, mouse)) EuchrePass(0);
+                if (CardButton("Order Up", bx + 150, by, 130, mouse))
+                    RequestBidAction($"ORDERUP|{seat}|0", () => EuchreOrderUp(seat, false));
+                if (CardButton("Alone",    bx + 290, by, 90,  mouse))
+                    RequestBidAction($"ORDERUP|{seat}|1", () => EuchreOrderUp(seat, true));
+                if (CardButton("Pass",     bx + 390, by, 100, mouse))
+                    RequestBidAction($"PASS|{seat}", () => EuchrePass(seat));
             }
             else
             {
@@ -1087,11 +1279,13 @@ partial class Program
                 for (int s = 0; s < 4; s++)
                 {
                     if (s == upCard.Suit) continue;
+                    int suit = s; // capture for the closure
                     if (CardButton(SuitNames[s], bx + drawn * 110, by, 100, mouse))
-                        EuchreNameSuit(0, s, false);
+                        RequestBidAction($"NAMESUIT|{seat}|{suit}|0", () => EuchreNameSuit(seat, suit, false));
                     drawn++;
                 }
-                if (CardButton("Pass", bx + drawn * 110, by, 90, mouse)) EuchrePass(0);
+                if (CardButton("Pass", bx + drawn * 110, by, 90, mouse))
+                    RequestBidAction($"PASS|{seat}", () => EuchrePass(seat));
             }
         }
         else // 500 bidding
@@ -1110,12 +1304,15 @@ partial class Program
                 {
                     int val = FiveHundredBidValue(tricks, s);
                     if (val <= fiveHundredBidValue) continue;
+                    int bidTricks = tricks; // capture for the closure
+                    int bidSuit = s;
                     if (CardButton($"{tricks}{SuitGlyphs[s]}", bx + (col%6)*82, by + (col/6)*40, 76, mouse))
-                        FiveHundredMakeBid(0, tricks, s);
+                        RequestBidAction($"BID500|{seat}|{bidTricks}|{bidSuit}", () => FiveHundredMakeBid(seat, bidTricks, bidSuit));
                     col++;
                 }
             }
-            if (CardButton("PASS", bx + (col%6)*82, by + (col/6)*40, 76, mouse)) FiveHundredPass(0);
+            if (CardButton("PASS", bx + (col%6)*82, by + (col/6)*40, 76, mouse))
+                RequestBidAction($"PASS|{seat}", () => FiveHundredPass(seat));
         }
     }
 

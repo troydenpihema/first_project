@@ -108,6 +108,7 @@ public static readonly Dictionary<SlotSymbol, float> TwoMatchMultiplier = new()
         const int ScreenHeight = 720;
         static SceneState currentScene = SceneState.MainMenu;
         static SceneState preTestScene = SceneState.World; // add this alongside your other static vars
+        static SceneState lastScene = SceneState.Building;
         static Camera2D camera = new Camera2D();
         public static Player player = new Player(new Vector2(-1917, -9720));
         static float GetCurrentHour() => timeOfDay * 24f;
@@ -115,6 +116,13 @@ public static readonly Dictionary<SlotSymbol, float> TwoMatchMultiplier = new()
         // COMBAT
         enum HandPhase { Tools, Combat }
         static HandPhase currentPhase = HandPhase.Tools;
+
+        // ── COMBO / CRIT ──
+        static int comboCount = 0;
+        static float comboTimer = 0f;            // counts down; combo resets at 0
+        const float comboWindow = 2.5f;          // seconds to land the next hit
+        static float critChance = 0.15f;         // 15% base crit chance
+        const float critMultiplier = 2f;
         
         // SAVE GAME
         static float autoSaveTimer = 0f;
@@ -123,6 +131,10 @@ public static readonly Dictionary<SlotSymbol, float> TwoMatchMultiplier = new()
         static string[] savePaths = { "savegame1.txt", "savegame2.txt", "savegame3.txt" };
         static string savePath => savePaths[selectedSlot];
         static float totalPlayTime = 0f;
+        static int dungeonsCleared = 0;
+        static int timesCheated = 0;
+        static Dictionary<string,int> sportPlayCounts = new();
+        static Dictionary<string,int> minigamePlayCounts = new();
 
         // NPCS
         static float cRideAnimTimer = 0f;
@@ -371,6 +383,32 @@ public static readonly Dictionary<SlotSymbol, float> TwoMatchMultiplier = new()
         static float dayCounter = 0f; // tracks full day cycles
         static float timeOfDay = 0f; // 0 to 1, full day cycle
         static float daySpeed = 0.01f; // how fast the day progresses
+        // ── PETS ──
+        static List<string> ownedEggs = new();        // egg item names the player holds
+        static string incubatingEgg = null;           // egg currently in the incubator (null = empty)
+        static float incubationProgress = 0f;          // accumulates dt; hatches at one full day
+        static float incubationNeeded = 0f;            // set when incubation starts = seconds in a day cycle
+        static Pet activePet = null;                    // the one pet currently following (null = none)
+        static int eggDropChance = 10;
+        static Pet pendingPet = null;
+        const float petCollectRange = 80f;
+        static List<string> storedPets = new();    // pet types in storage (boxed)
+        const float petTeleportRange = 700f;       // auto-teleport if pet falls this far behind
+        static bool petStorageMenuOpen = false;
+
+        // ── INCUBATOR ──
+        static List<Vector2> incubatorPositions = new();
+        static float incubatorAnimTimer = 0f;
+        static bool incubatorMenuOpen = false;
+        static bool nearIncubator = false;
+
+        // maps a boss/egg name to its pet color (extend with your real boss names)
+        static Color PetColorFor(string bossOrEggName)
+        {
+            if (bossOrEggName.Contains("Colossus")) return new Color((byte)90,(byte)40,(byte)120,(byte)255);
+            if (bossOrEggName.Contains("Titan"))    return new Color((byte)140,(byte)20,(byte)20,(byte)255);
+            return new Color((byte)80,(byte)180,(byte)200,(byte)255);
+        }
 
         // BIOMES
         static string currentBiome = "SAFE ZONE";
@@ -523,6 +561,11 @@ public static readonly Dictionary<SlotSymbol, float> TwoMatchMultiplier = new()
         // ── ROCKET (space entry point) ──
         static Vector2 rocketPosition = new Vector2(-14300, 6500);   // pick a spot on your map
 
+        // Player menu
+         static bool playerMenuOpen = false;
+        enum PlayerMenuTab { Identity, Stats, Crafting, Achievements, Unlocks, Relationships, Collectables }
+        static PlayerMenuTab playerMenuTab = PlayerMenuTab.Identity;
+
         // MINI GAMES
         public static PokieMachine activePokieMachine = new PokieMachine();
         public static DartsGame activeDartsGame = new DartsGame();
@@ -574,7 +617,7 @@ public static readonly Dictionary<SlotSymbol, float> TwoMatchMultiplier = new()
         {
             "Cooked Fish" or "Apple" or "Bread" or "Bandage" or "Health Potion" or "Cooked Meat"  or "Shopping Bag" or "Roast Potato" or "Cooked Corn" or "Bacon & Eggs" or "Pasta Meal"
             or "Sandwich" or "Fruit Salad" or "Steak & Chips" or "Vegetable Soup"
-            or "Pancakes" or "Homemade Pizza" => true,
+            or "Pancakes" or "Homemade Pizza" or "Colossus Egg" or "Titan Egg" => true,
             _ => false
         };
 
@@ -603,32 +646,40 @@ static void DoInventoryAction(string action, string item)
                 equippedAmmo = item;
                 ShowNotification($"{item} equipped as ammo.");
             }
-            else if (item == "Sword" || item == "Stick" || (item.EndsWith("Staff") && !item.Contains("Great")))
+            else if ((item.Contains("Sword") && !item.Contains("Great Sword"))
+                     || item == "Stick"
+                     || (item.EndsWith("Staff") && !item.Contains("Great")))
             {
                 // return the currently-equipped 2H weapon to inventory before clearing
-                if (equipped2H == "Bow") player.HasBow = true;
-                else if (equipped2H == "Crossbow") player.HasCrossbow = true;
+                if (IsRangedWeapon(equipped2H))
+                {
+                    if (equipped2H.Contains("Crossbow")) player.HasCrossbow = true;
+                    else                                 player.HasBow = true;
+                }
 
                 equipped1H = item;
                 equipped2H = null;
                 armorWeapon = item;
-                if (item == "Sword") swordPickedUp = true;
+                if (item.Contains("Sword")) swordPickedUp = true;
                 else if (item == "Stick") stickPickedUp = true;
                 if (item.EndsWith("Staff")) player.EquippedStaff = item;
                 ShowNotification($"{item} set as 1H weapon. Press T to draw it.");
             }
-            else if (item == "Bow" || item == "Crossbow" || (item.Contains("Great") && item.EndsWith("Staff")))
+            else if (IsRangedWeapon(item)
+                     || item.Contains("Great Sword")
+                     || item.Contains("War Axe")
+                     || (item.Contains("Great") && item.EndsWith("Staff")))
             {
                 // return the currently-equipped 1H weapon to inventory before clearing
-                if (equipped1H == "Sword") swordPickedUp = true;
+                if (equipped1H != null && equipped1H.Contains("Sword")) swordPickedUp = true;
                 else if (equipped1H == "Stick") stickPickedUp = true;
 
                 equipped2H = item;
                 equipped1H = null;
                 armorShield = null;
                 armorWeapon = item;
-                if (item == "Bow") player.HasBow = true;
-                else if (item == "Crossbow") player.HasCrossbow = true;
+                if (item.Contains("Crossbow")) player.HasCrossbow = true;
+                else if (item.Contains("Bow")) player.HasBow = true;
                 if (item.EndsWith("Staff")) player.EquippedStaff = item;
                 ShowNotification($"{item} set as 2H weapon. Press T to draw it.");
             }
@@ -638,7 +689,8 @@ static void DoInventoryAction(string action, string item)
                 AcquireGear(item);
             break;
         case "Move to Toolbar":
-            if (item == "Sword" || item == "Stick" || item == "Bow" || item == "Crossbow" || item.EndsWith("Staff"))
+            if (item.Contains("Sword") || item == "Stick" || IsRangedWeapon(item)
+                || item.Contains("War Axe") || item.EndsWith("Staff"))
                 ShowNotification($"{item} is a weapon — use Equip instead.");
             else if (item == "Arrows" || item == "Bolts" || item == "Arcane Essence")
                 ShowNotification($"{item} is ammo — use Equip to load it.");
@@ -755,7 +807,22 @@ static void UseToolbarItem(int slot)
 {
     if (slot < 0 || slot >= toolbarSlots.Length) return;
     string item = toolbarSlots[slot];
-    if (item == null || !IsUsable(item)) return;
+     if (item == null || !IsUsable(item)) return;
+
+    // ── egg: incubate if near an incubator ──
+    if (IsEgg(item))
+    {
+        bool nearIncubator = incubatorPositions.Any(p => Vector2.Distance(player.Center, p) <= 120f);
+        if (!nearIncubator)
+        {
+            ShowNotification("Stand next to an incubator to use an egg.");
+            return;
+        }
+        StartIncubation(item);
+        toolbarCounts[slot]--;
+        if (toolbarCounts[slot] <= 0) toolbarSlots[slot] = null;
+        return;
+    }
 
     // figure out the heal amount
     int heal = item switch
@@ -845,6 +912,17 @@ static void RemoveOneItem(string item)
 
         static bool rangingShopOpen = false;
 
+        // Eggs
+        static bool IsEgg(string item) =>
+            item == "Colossus Egg" || item == "Titan Egg";
+
+        static Color EggColor(string egg) => egg switch
+        {
+            "Colossus Egg" => new Color((byte)90,(byte)40,(byte)120,(byte)255),
+            "Titan Egg"    => new Color((byte)140,(byte)20,(byte)20,(byte)255),
+            _              => new Color((byte)200,(byte)200,(byte)200,(byte)255)
+        };
+
 
         //Tools in toolbelt
         static Vector2 axePosition = new Vector2(-2954, -9938);
@@ -916,6 +994,8 @@ static void RemoveOneItem(string item)
             ("Mining",      () => player.MiningLevel,      v => player.MiningLevel = v),
             ("Fishing",     () => player.FishingLevel,     v => player.FishingLevel = v),
             ("Combat",      () => player.CombatLevel,      v => player.CombatLevel = v),
+            ("1H Melee",    () => player.OneHandMeleeLevel, v => player.OneHandMeleeLevel = v),
+            ("2H Melee",    () => player.TwoHandMeleeLevel, v => player.TwoHandMeleeLevel = v),
             ("Ranged",      () => player.RangedLevel,      v => player.RangedLevel = v),
             ("Strength",    () => player.StrengthLevel,    v => player.StrengthLevel = v),
             ("Cooking",     () => player.CookingLevel,     v => player.CookingLevel = v),
@@ -969,6 +1049,7 @@ static void RemoveOneItem(string item)
                 {
                     if (hMinus && s.get() > 1) s.set(s.get() - 1);
                     if (hPlus) s.set(s.get() + 1);
+                    if (hMinus || hPlus) timesCheated++;
                 }
             }
         }
@@ -1071,6 +1152,16 @@ static void RemoveOneItem(string item)
 
         record struct SpellProjectile(Vector2 Pos, Vector2 Vel, string SpellType, float Life, float MaxLife);
         static List<SpellProjectile> spellProjectiles = new();
+        static List<RemoteVisualProjectile> remoteVisualProjectiles = new();
+
+        class RemoteVisualProjectile
+        {
+            public Vector2 Pos;
+            public Vector2 Vel;
+            public float   Life;
+            public string  Kind;      // "Arrows", "Bolts", or a spell type like "Fire","Lightning","Dark"
+            public bool    IsSpell;
+        }
         static float spellCooldown = 0f;
 
         static Color GetSpellColor(string spellType) => spellType switch
@@ -1164,6 +1255,8 @@ static void RemoveOneItem(string item)
         static bool hoverCooking = false;
         static bool hoverElemental = false;
         static bool hoverCards = false;
+        static bool hoverOneHand = false;
+        static bool hoverTwoHand = false;
 
         // TUTORIAL
         public static bool tutorialActive = true;        // on for a new game, off after finishing/loading
@@ -1295,6 +1388,10 @@ static void RemoveOneItem(string item)
         static Music musicRain;
         static Music musicSafezone;
         static Music musicFarm;
+        static Music musicOcean;
+        static Music musicVolcano;
+        static Music musicCity;
+        static Music musicMeadowlands;
         static Music musicTakeaways;
         static Music musicDbar;
         static Music musicHouse;
@@ -1431,8 +1528,11 @@ static void RemoveOneItem(string item)
         static List<FloatingText> floatingTexts = new();
         static List<Enemy> enemies = new();
         static List<LootDrop> lootDrops = new();
+        static List<(Vector2 pos, string egg, float age)> droppedEggs = new();
         static List<(Vector2 pos, float radius, Color color)> grassPatches = new();
         static List<(Vector2 pos, Color color)> flowers = new();
+        static List<Splat> splats = new();
+        static List<DeathFx> deathFx = new();
 
         // MULTIPLAYER
         static MultiplayerManager multiplayer = new MultiplayerManager();
@@ -1728,42 +1828,33 @@ static void RemoveOneItem(string item)
             new FishSpecies("Sturgeon",  50, 3,  "River", "Rod"),   // rare rod
         };
 
-        static (bool exists, string name, string info) GetSlotInfo(int slot)
-        {
-            string path = savePaths[slot];
-            if (!System.IO.File.Exists(path)) return (false, "", "");
-
-            string[] lines = System.IO.File.ReadAllLines(path);
-            if (lines.Length < 50) return (false, "", "");
-
-            string name = lines[49];
-            int wcLv = int.Parse(lines[15]);
-            int fishLv = int.Parse(lines[17]);
-            int combatLv = int.Parse(lines[19]);
-            float playTime = 0f;
-int gearIdx = Array.IndexOf(lines, "GEAR_START");
-if (gearIdx > 0)
+       static (bool exists, string name, string info) GetSlotInfo(int slot)
 {
-    // Walk back from GEAR_START to find totalPlayTime:
-    // OwnedGear count (1) + tutorial tasks (tutorialStep+3 lines back) — unreliable
-    // Instead, search backwards for the first float-parseable line
-    // after the known quest block ends around idx 53
-    for (int i = 0; i < lines.Length; i++)
-    {
-        if (lines[i].StartsWith("PLAYTIME:") &&
-            float.TryParse(lines[i].Substring(9), System.Globalization.NumberStyles.Float,
-                System.Globalization.CultureInfo.InvariantCulture, out float candidate))
-        {
-            playTime = candidate;
-            break;
-        }
-    }
-}
-            int hours = (int)(playTime / 3600);
-            int minutes = (int)((playTime % 3600) / 60);
+    string path = savePaths[slot];
+    if (!System.IO.File.Exists(path)) return (false, "", "");
 
-            return (true, name, $"WC:{wcLv} Fish:{fishLv} Combat:{combatLv} | {hours}h {minutes}m");
-        }
+    var map = new Dictionary<string, string>();
+    foreach (var line in System.IO.File.ReadAllLines(path))
+    {
+        int eq = line.IndexOf('=');
+        if (eq > 0) map[line.Substring(0, eq)] = line.Substring(eq + 1);
+    }
+    if (map.Count == 0) return (false, "", "");
+
+    string GS(string k, string def = "") => map.TryGetValue(k, out var v) ? v : def;
+    int GI(string k) => map.TryGetValue(k, out var v) && int.TryParse(v, out var r) ? r : 0;
+    float GF(string k) => map.TryGetValue(k, out var v) && float.TryParse(v, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var r) ? r : 0f;
+
+    string name = GS("name", "Player");
+    int wcLv = GI("woodcutLv");
+    int fishLv = GI("fishLv");
+    int combatLv = GI("combatLv");
+    float playTime = GF("playtime");
+    int hours = (int)(playTime / 3600);
+    int minutes = (int)((playTime % 3600) / 60);
+
+    return (true, name, $"WC:{wcLv} Fish:{fishLv} Combat:{combatLv} | {hours}h {minutes}m");
+}
 
  static void SwitchMusic(Music newTrack)
 {
@@ -1785,8 +1876,43 @@ static void CheckZoneMusic()
     {
         zoneMusic = musicFarm;
     }
-    else if (player.Position.X > -6100 && player.Position.X < 4000 &&
-             player.Position.Y > -12000 && player.Position.Y < -5000)
+    else if (player.Position.X > -3000 && player.Position.X < 4000 &&
+             player.Position.Y > -1500 && player.Position.Y < 2500)
+    {
+        zoneMusic = musicCity;
+    }
+    else if (player.Position.X > -10000 && player.Position.X < 8000 &&
+             player.Position.Y > -12000 && player.Position.Y < 12000)
+    {
+        zoneMusic = musicMeadowlands;
+    }
+    else if (player.Position.X > 8000 && player.Position.X < 22000 &&
+             player.Position.Y > -12000 && player.Position.Y < 12000)
+    {
+        zoneMusic = musicDesert;
+    }
+    else if (player.Position.X > -10000 && player.Position.X < 22000 &&
+         player.Position.Y > -38000 && player.Position.Y < -12000)
+    {
+        zoneMusic = musicForest;
+    }
+    else if (player.Position.X > 22000 && player.Position.X < 40000 &&
+         player.Position.Y > -40000 && player.Position.Y < -12000)
+    {
+        zoneMusic = musicVolcano;
+    }
+     else if (player.Position.X > 22000 && player.Position.X < 28000 &&
+         player.Position.Y > -12000 && player.Position.Y < 38000)
+    {
+        zoneMusic = musicBeach;
+    }
+    else if (player.Position.X > 28000 && player.Position.X < 50000 &&
+             player.Position.Y > -12000 && player.Position.Y < 38000)
+    {
+        zoneMusic = musicOcean;
+    }
+    else if (player.Position.X > -10000 && player.Position.X < 8000 &&
+             player.Position.Y > 12000 && player.Position.Y < 38000)
     {
         zoneMusic = musicForest;
     }
@@ -1819,6 +1945,117 @@ static void UpdateMusicFade(float dt)
         Raylib.SetMusicVolume(currentMusic, musicVolume); // restore full volume
         Raylib.PlayMusicStream(currentMusic);
         isFadingOut = false;
+    }
+}
+
+static void StartIncubation(string egg)
+{
+    if (incubatingEgg != null) { ShowNotification("The incubator is already in use."); return; }
+    if (pendingPet != null)    { ShowNotification("Claim the hatched pet before incubating another egg."); return; }
+    incubatingEgg = egg;
+    incubationProgress = 0f;
+    incubationNeeded = 1f / daySpeed;   // one full day cycle
+    ShowNotification($"Incubating {egg}. It will hatch in one full day.");
+}
+
+static void UpdateIncubation(float dt)
+{
+    if (incubatingEgg == null) return;
+    incubationProgress += dt;
+    if (incubationProgress >= incubationNeeded)
+    {
+        string type = incubatingEgg.Replace(" Egg", "");
+        // spawn at the incubator that's currently running it (nearest one to player as fallback)
+        Vector2 spawnAt = incubatorPositions.Count > 0
+            ? incubatorPositions.OrderBy(p => Vector2.Distance(player.Center, p)).First()
+            : player.Center;
+        pendingPet = new Pet(spawnAt, type, PetColorFor(incubatingEgg));
+        ShowNotification($"Your {type} egg hatched! Walk over to collect it.");
+        incubatingEgg = null;
+        incubationProgress = 0f;
+    }
+}
+static void UpdatePendingPet()
+{
+    if (pendingPet == null) return;
+    if (Vector2.Distance(player.Center, pendingPet.Position) > petCollectRange) return;
+
+    if (activePet != null)
+    {
+        // can't claim while a pet is already following — prompt is shown in the draw loop
+        return;
+    }
+
+    activePet = pendingPet;
+    pendingPet = null;
+    ShowNotification($"{activePet.Type} joined you!");
+}
+static void StoreActivePet()
+{
+    if (activePet == null) { ShowNotification("No pet is following you."); return; }
+    storedPets.Add(activePet.Type);
+    ShowNotification($"{activePet.Type} was sent to storage.");
+    activePet = null;
+}
+
+static void WithdrawPet(int index)
+{
+    if (index < 0 || index >= storedPets.Count) return;
+    if (activePet != null) { ShowNotification("Store your current pet first."); return; }
+    string type = storedPets[index];
+    storedPets.RemoveAt(index);
+    activePet = new Pet(player.Center, type, PetColorFor(type + " Egg"));
+    ShowNotification($"{type} is now following you!");
+}
+static void DrawPetStorageMenu()
+{
+    if (!petStorageMenuOpen) return;
+
+    int pw = 480, ph = 360;
+    int px = ScreenWidth / 2 - pw / 2, py = ScreenHeight / 2 - ph / 2;
+    Raylib.DrawRectangle(0, 0, ScreenWidth, ScreenHeight, new Color((byte)0,(byte)0,(byte)0,(byte)120));
+    Raylib.DrawRectangle(px, py, pw, ph, new Color((byte)24,(byte)24,(byte)34,(byte)245));
+    Raylib.DrawRectangleLines(px, py, pw, ph, Color.Gold);
+    Raylib.DrawText("PET STORAGE", px + 20, py + 18, 26, Color.Gold);
+    Raylib.DrawText("[Q] Close", px + pw - 110, py + 22, 16, Color.LightGray);
+    if (Raylib.IsKeyPressed(KeyboardKey.Q)) { petStorageMenuOpen = false; return; }
+
+    // currently following pet + store button
+    Raylib.DrawText("Following:", px + 20, py + 60, 18, Color.White);
+    if (activePet != null)
+    {
+        Raylib.DrawCircle(px + 130, py + 70, 12, activePet.BodyColor);
+        Raylib.DrawText(activePet.Type, px + 150, py + 60, 18, Color.White);
+        Rectangle storeBtn = new Rectangle(px + pw - 150, py + 54, 120, 30);
+        bool hs = Raylib.CheckCollisionPointRec(Raylib.GetMousePosition(), storeBtn);
+        Raylib.DrawRectangleRec(storeBtn, hs ? Color.Gold : new Color((byte)50,(byte)50,(byte)65,(byte)255));
+        Raylib.DrawText("Store", px + pw - 120, py + 60, 18, hs ? Color.Black : Color.White);
+        if (hs && Raylib.IsMouseButtonPressed(MouseButton.Left)) StoreActivePet();
+    }
+    else
+    {
+        Raylib.DrawText("(none)", px + 130, py + 60, 18, Color.Gray);
+    }
+
+    // stored list
+    Raylib.DrawText("Stored pets:", px + 20, py + 110, 18, Color.LightGray);
+    if (storedPets.Count == 0)
+        Raylib.DrawText("Storage is empty.", px + 20, py + 140, 16, Color.Gray);
+
+    for (int i = 0; i < storedPets.Count; i++)
+    {
+        int ry = py + 140 + i * 44;
+        Rectangle r = new Rectangle(px + 20, ry, pw - 40, 38);
+        bool hov = Raylib.CheckCollisionPointRec(Raylib.GetMousePosition(), r);
+        Raylib.DrawRectangleRec(r, hov ? new Color((byte)60,(byte)60,(byte)80,(byte)255)
+                                       : new Color((byte)40,(byte)40,(byte)55,(byte)255));
+        Raylib.DrawRectangleLinesEx(r, 2, hov ? Color.Gold : Color.DarkGray);
+        Raylib.DrawCircle(px + 44, ry + 19, 10, PetColorFor(storedPets[i] + " Egg"));
+        Raylib.DrawText(storedPets[i], px + 64, ry + 9, 18, Color.White);
+        Raylib.DrawText(activePet == null ? "[Withdraw]" : "[Store current first]",
+            px + pw - 190, ry + 10, 16, activePet == null ? Color.Gold : Color.Gray);
+        if (hov && activePet == null && Raylib.IsMouseButtonPressed(MouseButton.Left))
+            WithdrawPet(i);
     }
 }
 
@@ -2091,6 +2328,18 @@ static void ConsumeIngredients(CookingRecipe recipe)
     }
 }
 
+public static void SpawnRemoteVisualProjectile(float x, float y, float vx, float vy, float life, string kind, bool isSpell)
+{
+    remoteVisualProjectiles.Add(new RemoteVisualProjectile
+    {
+        Pos = new Vector2(x, y),
+        Vel = new Vector2(vx, vy),
+        Life = life,
+        Kind = kind,
+        IsSpell = isSpell
+    });
+}
+
 static void DrawFridgeUI()
 {
     if (!fridgeOpen) return;
@@ -2297,6 +2546,8 @@ static void TryFireSpell(Vector2 dir)
 
     player.ArcaneEssence--;
     spellProjectiles.Add(new SpellProjectile(player.Center, dir * speed, spell, maxLife, maxLife));
+    multiplayer.SendProjectile(player.Center.X, player.Center.Y, (dir * speed).X, (dir * speed).Y,
+    maxLife, spell, true);
     player.AddElementalXP(1);
 
     // auto-clear ammo slot when essence runs out
@@ -2327,7 +2578,13 @@ static void UpdateSpellProjectiles(float dt)
 
             int actualDmg = Math.Min(dmg, enemy.Health);
             enemy.Health -= dmg;
-            if (enemy.Health <= 0) enemy.Dead = true;
+            enemy.TriggerFlash();
+            SpawnSplat(enemy.Center, GetSpellColor(p.SpellType));
+            if (enemy.Health <= 0)
+            {
+                enemy.Dead = true;
+                SpawnDeathFx(enemy.Center, enemy.EnemyColor, enemy.Type);
+            }
 
             floatingTexts.Add(new FloatingText {
                 Position = enemy.Position - new Vector2(0, 20),
@@ -2343,24 +2600,38 @@ static void UpdateSpellProjectiles(float dt)
 
         // ── world boss hit ──
         if (!hit && worldBoss != null && !worldBoss.Dead
-            && Raylib.CheckCollisionPointRec(p.Pos, worldBoss.Bounds))
+    && Raylib.CheckCollisionPointRec(p.Pos, worldBoss.Bounds))
+{
+    int dmg = GetSpellDamage(p.SpellType) + player.ElementalLevel / 3;
+
+    if (multiplayer.IsHost || !multiplayer.Connected)
+    {
+        // host (or single-player) applies damage directly
+        worldBoss.Health -= dmg;
+        if (worldBoss.Health <= 0)
         {
-            int dmg = GetSpellDamage(p.SpellType) + player.ElementalLevel / 3;
-            worldBoss.Health -= dmg;
-            floatingTexts.Add(new FloatingText {
-                Position = worldBoss.Center - new Vector2(0, worldBoss.Size / 2f),
-                Text = $"-{dmg}", Timer = 1f, TextColor = GetSpellColor(p.SpellType)
-            });
-            player.AddElementalXP(dmg);
-            if (worldBoss.Health <= 0)
-            {
-                worldBoss.Dead = true;
-                player.AddCombatXP(500);
-                player.Money += 1000;
-                ShowLevelUp($"{worldBoss.Name} defeated!", 0);
-            }
-            hit = true;
+            worldBoss.Dead = true;
+            player.AddCombatXP(500);
+            player.Money += 1000;
+            ShowLevelUp($"{worldBoss.Name} defeated!", 0);
         }
+        if (multiplayer.Connected)
+            multiplayer.BroadcastBossState(false, worldBoss.Health, worldBoss.MaxHealth, worldBoss.Dead,
+                worldBoss.Position.X, worldBoss.Position.Y);
+    }
+    else
+    {
+        // client: report the hit, let the host apply real damage and broadcast back
+        multiplayer.SendBossHit(false, dmg);
+    }
+
+    floatingTexts.Add(new FloatingText {
+        Position = worldBoss.Center - new Vector2(0, worldBoss.Size / 2f),
+        Text = $"-{dmg}", Timer = 1f, TextColor = GetSpellColor(p.SpellType)
+    });
+    player.AddElementalXP(dmg);
+    hit = true;
+}
 
         if (hit) spellProjectiles.RemoveAt(i);
         else     spellProjectiles[i] = p;
@@ -2368,18 +2639,24 @@ static void UpdateSpellProjectiles(float dt)
 }
 static void TryFireProjectile(Vector2 dir)
 {
-    bool hasBow      = equipped2H == "Bow"      && equippedAmmo == "Arrows" && player.Arrows > 0;
-    bool hasCrossbow = equipped2H == "Crossbow" && equippedAmmo == "Bolts"  && player.Bolts  > 0;
+    
+    bool isBow      = equipped2H != null && equipped2H.Contains("Bow") && !equipped2H.Contains("Crossbow");
+    bool isCrossbow = equipped2H != null && equipped2H.Contains("Crossbow");
+
+    bool hasBow      = isBow      && equippedAmmo == "Arrows" && player.Arrows > 0;
+    bool hasCrossbow = isCrossbow && equippedAmmo == "Bolts"  && player.Bolts  > 0;
 
     if (!hasBow && !hasCrossbow)
     {
-        if (equipped2H == "Bow" || equipped2H == "Crossbow")
+        if (isBow || isCrossbow)
         {
-            floatingTexts.Add(new FloatingText {
-                Position = player.Position - new Vector2(0, 40),
-                Text = equipped2H == "Bow" ? "Equip Arrows as ammo!" : "Equip Bolts as ammo!",
-                Timer = 1.5f, TextColor = Color.Red
-            });
+            string requiredAmmo = isCrossbow ? "Bolts" : "Arrows";
+            int    have         = isCrossbow ? player.Bolts : player.Arrows;
+            string msg = have <= 0
+                ? $"Out of {requiredAmmo}! This {equipped2H} needs {requiredAmmo}."
+                : $"Equip {requiredAmmo} as ammo to fire the {equipped2H}!";
+
+            ShowNotification(msg);
         }
         return;
     }
@@ -2392,6 +2669,9 @@ static void TryFireProjectile(Vector2 dir)
 
     projectiles.Add(new Projectile(player.Center, dir * speed,
         hasCrossbow ? "Bolts" : "Arrows", 3f));
+
+    multiplayer.SendProjectile(player.Center.X, player.Center.Y, (dir * speed).X, (dir * speed).Y,
+    3f, hasCrossbow ? "Bolts" : "Arrows", false);
 
     if (hasCrossbow) player.Bolts--;
     else             player.Arrows--;
@@ -2419,7 +2699,13 @@ static void UpdateProjectiles(float dt)
             int baseDmg  = p.AmmoType == "Bolts" ? 18 : 12;
             int dmg      = baseDmg + (player.RangedLevel / 5);
             enemy.Health -= dmg;
-            if (enemy.Health <= 0) enemy.Dead = true;
+            enemy.TriggerFlash();
+            SpawnSplat(enemy.Center, new Color((byte)170, (byte)20, (byte)20, (byte)255));
+            if (enemy.Health <= 0)
+            {
+                enemy.Dead = true;
+                SpawnDeathFx(enemy.Center, enemy.EnemyColor, enemy.Type);
+            }
 
 
             floatingTexts.Add(new FloatingText {
@@ -2437,25 +2723,82 @@ static void UpdateProjectiles(float dt)
 
         // also check the world boss
         if (!hit && worldBoss != null && !worldBoss.Dead
-            && Raylib.CheckCollisionPointRec(p.Pos, worldBoss.Bounds))
-        {
-            int dmg = p.AmmoType == "Bolts" ? 18 : 12;
-            worldBoss.Health -= dmg;
-            if (worldBoss.Health <= 0) worldBoss.Dead = true;
-            player.AddRangedXP(p.AmmoType == "Bolts" ? 6 : 4);
-            hit = true;
-        }
+    && Raylib.CheckCollisionPointRec(p.Pos, worldBoss.Bounds))
+{
+    int dmg = p.AmmoType == "Bolts" ? 18 : 12;
+
+    if (multiplayer.IsHost || !multiplayer.Connected)
+    {
+        worldBoss.Health -= dmg;
+        if (worldBoss.Health <= 0) worldBoss.Dead = true;
+        if (multiplayer.Connected)
+            multiplayer.BroadcastBossState(false, worldBoss.Health, worldBoss.MaxHealth, worldBoss.Dead,
+                worldBoss.Position.X, worldBoss.Position.Y);
+    }
+    else
+    {
+        multiplayer.SendBossHit(false, dmg);
+    }
+
+    player.AddRangedXP(p.AmmoType == "Bolts" ? 6 : 4);
+    hit = true;
+}
 
         if (hit) projectiles.RemoveAt(i);
         else     projectiles[i] = p;
     }
 }
 
+static void UpdateRemoteVisualProjectiles(float dt)
+{
+    for (int i = remoteVisualProjectiles.Count - 1; i >= 0; i--)
+    {
+        var p = remoteVisualProjectiles[i];
+        p.Pos += p.Vel * dt;
+        p.Life -= dt;
+        if (p.Life <= 0) remoteVisualProjectiles.RemoveAt(i);
+    }
+}
+static float bossSyncTimer = 0f;
+static float superBossSyncTimer = 0f;
 static void UpdateWorldBoss(WorldBoss boss, float dt)
 {
-    if (boss == null || boss.Dead) return;
+    if (boss == null) return;
+    bool isSuper = boss.ShakesWhenNear;
+    bool amHost = multiplayer.IsHost && multiplayer.Connected;
 
-    boss.Update(dt, player.Center);
+    if (amHost)
+    {
+        boss.Update(dt, player.Center);
+
+        if (isSuper)
+        {
+            superBossSyncTimer -= dt;
+            if (superBossSyncTimer <= 0f)
+            {
+                superBossSyncTimer = 0.1f;
+                multiplayer.BroadcastBossState(true, boss.Health, boss.MaxHealth, boss.Dead,
+                    boss.Position.X, boss.Position.Y);
+            }
+        }
+        else
+        {
+            bossSyncTimer -= dt;
+            if (bossSyncTimer <= 0f)
+            {
+                bossSyncTimer = 0.1f;
+                multiplayer.BroadcastBossState(false, boss.Health, boss.MaxHealth, boss.Dead,
+                    boss.Position.X, boss.Position.Y);
+            }
+        }
+    }
+    else if (!multiplayer.Connected)
+    {
+        boss.Update(dt, player.Center);
+    }
+    // else: client — boss state comes entirely from BossStateReceived; no local Update() at all.
+
+    if (boss.Dead) return;
 
     // proximity rumble for super bosses
     if (boss.ShakesWhenNear)
@@ -2463,7 +2806,6 @@ static void UpdateWorldBoss(WorldBoss boss, float dt)
         float dist = Vector2.Distance(player.Center, boss.Center);
         if (dist < boss.ProximityShakeRange)
         {
-            // stronger shake the closer you are
             float intensity = 0.15f * (1f - dist / boss.ProximityShakeRange);
             TriggerShake(intensity);
         }
@@ -2497,18 +2839,37 @@ static void UpdateWorldBoss(WorldBoss boss, float dt)
         if (equipped != null && GetItemSlot(equipped) == "WEAPON")
         {
             int dmg = 1 + (player.CombatLevel / 10) + GetWeaponDamage(equipped);
-            boss.Health -= dmg;
+
+            if (amHost || !multiplayer.Connected)
+            {
+                boss.Health -= dmg;
+                if (boss.Health <= 0)
+                {
+                    boss.Dead = true;
+                    player.AddCombatXP(isSuper ? 1500 : 500);
+                    player.Money += isSuper ? 3000 : 1000;
+                    ShowLevelUp($"{boss.Name} defeated!", 0);
+                    if (Raylib.GetRandomValue(1, 100) <= eggDropChance)
+                    {
+                        string egg = $"{boss.Name} Egg";
+                        droppedEggs.Add((boss.Center, egg, 0f));
+                        ShowNotification($" RARE DROP   {egg}!");
+                        TriggerShake(0.25f);
+                    }
+                }
+                if (multiplayer.Connected)
+                    multiplayer.BroadcastBossState(isSuper, boss.Health, boss.MaxHealth, boss.Dead,
+                        boss.Position.X, boss.Position.Y);
+            }
+            else
+            {
+                multiplayer.SendBossHit(isSuper, dmg);
+            }
+
             floatingTexts.Add(new FloatingText {
                 Position = boss.Center - new Vector2(0, boss.Size / 2f),
                 Text = $"-{dmg}", Timer = 1f, TextColor = Color.Orange
             });
-            if (boss.Health <= 0)
-            {
-                boss.Dead = true;
-                player.AddCombatXP(boss.ShakesWhenNear ? 1500 : 500);
-                player.Money += boss.ShakesWhenNear ? 3000 : 1000;
-                ShowLevelUp($"{boss.Name} defeated!", 0);
-            }
         }
     }
 }
@@ -2590,11 +2951,20 @@ static int GetGearSellPrice(string item)
         _ => 0
     };
 }
+static bool IsTwoHandedMeleeWeapon(string w) =>
+    w != null && (w.Contains("Great Sword") || w.Contains("War Axe"));
+
 static bool IsOneHandedWeapon(string w) =>
-    w == "Sword" || w == "Stick";
+    w != null && !IsTwoHandedMeleeWeapon(w) && (w.Contains("Sword") || w.Contains("Stick"));
 
 static bool IsRangedWeapon(string w) =>
-    w == "Bow" || w == "Crossbow";
+    w != null && (w.Contains("Bow") || w.Contains("Crossbow"));
+
+static void AwardMeleeXP(string weapon, int amount)
+{
+    if (IsTwoHandedMeleeWeapon(weapon)) player.AddTwoHandMeleeXP(amount);
+    else                                player.AddOneHandMeleeXP(amount);
+}
 
 // weapons the player owns, split by hand
 static List<string> OwnedOneHanded()
@@ -2615,12 +2985,15 @@ static List<string> OwnedOneHanded()
 
     return list;
 }
-
 static List<string> OwnedTwoHanded()
 {
     var list = new List<string>();
     foreach (var g in player.OwnedGear)
-        if (IsTwoHandedWeapon(g) && !list.Contains(g)) list.Add(g);
+        if ((IsTwoHandedWeapon(g) || IsRangedWeapon(g)) && !list.Contains(g)) list.Add(g);
+
+    // flag-based ranged weapons (plain Bow / Crossbow)
+    if (player.HasBow && !list.Contains("Bow")) list.Add("Bow");
+    if (player.HasCrossbow && !list.Contains("Crossbow")) list.Add("Crossbow");
 
     // great staffs (2H)
     foreach (var g in player.OwnedGear)
@@ -4816,6 +5189,7 @@ player.Position = d.PlayerPos;
         int slotBonus   = GetWeaponDamage(armorWeapon);
         int atk         = 1 + (player.CombatLevel / 10) + weaponBonus + slotBonus;
         enemy.Health   -= atk;
+        AwardMeleeXP(equipped, Math.Max(1, atk));
 
         // knock enemy away from player
         if (Vector2.Distance(d.PlayerPos, enemy.Position) > 0.01f)
@@ -4833,6 +5207,7 @@ player.Position = d.PlayerPos;
         if (enemy.Health <= 0)
         {
             enemy.Dead = true;
+            SpawnDeathFx(enemy.Position, enemy.EnemyColor, enemy.Type);
             player.AddCombatXP(enemy.XPReward);
             player.Money += enemy.MoneyDrop;
 
@@ -4847,6 +5222,8 @@ player.Position = d.PlayerPos;
     }
 }
 }
+UpdateSplats(dt);
+UpdateDeathFx(dt);
 
     // Collect loot
     foreach (var loot in room.Loot)
@@ -4880,6 +5257,7 @@ player.Position = d.PlayerPos;
             d.Message = $"Dungeon Complete!  +${reward}  +250 Combat XP!";
             d.MessageTimer = 4f;
             d.Complete = true;
+            dungeonsCleared++;
         }
     }
 
@@ -5030,6 +5408,8 @@ static void DrawDungeon()
     // ── ENEMIES ──────────────────────────────────────────────────────────────
     foreach (var enemy in room.Enemies)
         enemy.Draw();
+    DrawSplats();
+    DrawDeathFx();
 
     // ── FLOATING TEXTS ───────────────────────────────────────────────────────
     foreach (var ft in floatingTexts)
@@ -5169,7 +5549,7 @@ if (dungeonQuitConfirm)
 public static bool IsTwoHandedWeapon(string weapon)
 {
     if (weapon == null) return false;
-    return weapon == "Great Sword" || weapon == "War Axe" || weapon == "Battle Staff";
+    return weapon.Contains("Great Sword") || weapon.Contains("War Axe") || weapon.Contains("Battle Staff");
     // add any future 2H weapons here
 }
 static int GetTotalDefense()
@@ -5686,6 +6066,23 @@ static void DrawArmorUI()
     Raylib.DrawText("EQUIPMENT", panelX + 270, panelY + 12, 28, Color.Gold);
     Raylib.DrawText($"Defence: {GetTotalDefense()}", panelX + 20, panelY + 14, 20, Color.LightGray);
 
+    // ── offensive stats from the equipped weapon ──
+    string eqWeapon = GetActiveWeapon();
+    int meleeDmg = 0, rangedDmg = 0, elementalDmg = 0;
+    if (eqWeapon != null)
+    {
+        if (IsRangedWeapon(eqWeapon))
+            rangedDmg = GetWeaponDamage(eqWeapon) + player.RangedLevel / 5;
+        else if (eqWeapon.EndsWith("Staff"))
+            elementalDmg = GetWeaponDamage(eqWeapon) + player.ElementalLevel / 3;
+        else
+            meleeDmg = 1 + (player.CombatLevel / 10) + GetWeaponDamage(eqWeapon);
+    }
+
+    Raylib.DrawText($"Melee: {meleeDmg}",      panelX + 20, panelY + 40, 18, new Color((byte)255,(byte)150,(byte)80,(byte)255));
+    Raylib.DrawText($"Ranged: {rangedDmg}",    panelX + 20, panelY + 62, 18, new Color((byte)140,(byte)220,(byte)120,(byte)255));
+    Raylib.DrawText($"Elemental: {elementalDmg}", panelX + 20, panelY + 84, 18, new Color((byte)150,(byte)180,(byte)255,(byte)255));
+
     Vector2 mouse = Raylib.GetMousePosition();
 
     // ── EQUIPPED SLOTS (unchanged) ──
@@ -5972,8 +6369,16 @@ static void TryEquipItem(string item)
     // sync the combat column with the gear-menu weapon slot
 if (slot == "WEAPON")
 {
-    if (IsTwoHandedWeapon(item)) { equipped2H = item; equipped1H = null; }
-    else                          { equipped1H = item; equipped2H = null; }
+    if (IsTwoHandedWeapon(item) || IsRangedWeapon(item))
+    {
+        equipped2H = item; equipped1H = null;
+        if (item.Contains("Crossbow")) player.HasCrossbow = true;
+        else if (item.Contains("Bow")) player.HasBow = true;
+    }
+    else
+    {
+        equipped1H = item; equipped2H = null;
+    }
 }
     ShowNotification($"Equipped {item}!");
 }
@@ -6303,6 +6708,237 @@ static void DrawFishingUI()
         Raylib.DrawRectangleLines(barX, by, barW, 28, Color.White);
         Raylib.DrawText("SPACE in the green!  Q = Stop", ScreenWidth / 2 - 130, by + 36, 16, Color.LightGray);
     }
+}
+
+static readonly (PlayerMenuTab tab, string label)[] playerMenuTabs =
+{
+    (PlayerMenuTab.Identity,      "Identity"),
+    (PlayerMenuTab.Stats,         "Stats"),
+    (PlayerMenuTab.Crafting,      "Crafting"),
+    (PlayerMenuTab.Achievements,  "Achievements"),
+    (PlayerMenuTab.Unlocks,       "Unlocks"),
+    (PlayerMenuTab.Relationships, "Relationships"),
+    (PlayerMenuTab.Collectables,  "Collectables"),
+};
+
+static void DrawPlayerMenu()
+{
+    if (!playerMenuOpen) return;
+    Vector2 mouse = Raylib.GetMousePosition();
+
+    // full-screen dark backdrop
+     Raylib.DrawRectangle(0, 0, ScreenWidth, ScreenHeight, new Color((byte)10,(byte)12,(byte)18,(byte)255));
+
+    // ── left tab rail ──
+    int railW = 220;
+    Raylib.DrawRectangle(0, 0, railW, ScreenHeight, new Color((byte)18,(byte)20,(byte)30,(byte)255));
+    Raylib.DrawRectangle(railW - 2, 0, 2, ScreenHeight, Color.Gold);
+    Raylib.DrawText("PLAYER", 24, 24, 30, Color.Gold);
+    Raylib.DrawText("[J] or ESC to close", 24, 60, 14, Color.Gray);
+
+    for (int i = 0; i < playerMenuTabs.Length; i++)
+    {
+        var (tab, label) = playerMenuTabs[i];
+        int ty = 110 + i * 54;
+        Rectangle r = new Rectangle(12, ty, railW - 24, 46);
+        bool hov = Raylib.CheckCollisionPointRec(mouse, r);
+        bool active = playerMenuTab == tab;
+        Raylib.DrawRectangleRec(r, active ? new Color((byte)50,(byte)55,(byte)80,(byte)255)
+                                          : hov ? new Color((byte)30,(byte)33,(byte)48,(byte)255)
+                                                : new Color((byte)22,(byte)24,(byte)36,(byte)255));
+        if (active) Raylib.DrawRectangle(12, ty, 4, 46, Color.Gold);
+        Raylib.DrawText(label, 30, ty + 13, 20, active ? Color.Gold : Color.White);
+        if (hov && Raylib.IsMouseButtonPressed(MouseButton.Left)) playerMenuTab = tab;
+    }
+
+    // ── content panel ──
+    int cx = railW + 30, cy = 30, cw = ScreenWidth - railW - 60;
+    switch (playerMenuTab)
+    {
+        case PlayerMenuTab.Identity:      DrawPMIdentity(cx, cy, cw); break;
+        case PlayerMenuTab.Stats:         DrawPMStats(cx, cy, cw); break;
+        case PlayerMenuTab.Crafting:      DrawPMPlaceholder(cx, cy, "Crafting"); break;
+        case PlayerMenuTab.Achievements:  DrawPMPlaceholder(cx, cy, "Achievements"); break;
+        case PlayerMenuTab.Unlocks:       DrawPMUnlocks(cx, cy, cw); break;
+        case PlayerMenuTab.Relationships: DrawPMPlaceholder(cx, cy, "Relationships"); break;
+        case PlayerMenuTab.Collectables:  DrawPMPlaceholder(cx, cy, "Collectables"); break;
+    }
+
+    
+}
+
+static void DrawPMIdentity(int x, int y, int w)
+{
+    Raylib.DrawText("IDENTITY", x, y, 34, Color.Gold);
+
+    // ── ID CARD ──
+    int cardX = x, cardY = y + 52, cardW = 440, cardH = 150;
+    // card body + border
+    Raylib.DrawRectangle(cardX, cardY, cardW, cardH, new Color((byte)28,(byte)34,(byte)52,(byte)255));
+    Raylib.DrawRectangleLinesEx(new Rectangle(cardX, cardY, cardW, cardH), 2, Color.Gold);
+    // header strip
+    Raylib.DrawRectangle(cardX, cardY, cardW, 30, new Color((byte)40,(byte)48,(byte)72,(byte)255));
+    Raylib.DrawText("CITIZEN ID", cardX + 12, cardY + 7, 18, Color.Gold);
+    Raylib.DrawText("MAORI SIDE", cardX + cardW - 150, cardY + 9, 14, Color.LightGray);
+
+    // photo box
+    int photoX = cardX + 14, photoY = cardY + 42, photoW = 96, photoH = 96;
+    Raylib.DrawRectangle(photoX, photoY, photoW, photoH, new Color((byte)18,(byte)20,(byte)30,(byte)255));
+    Raylib.DrawRectangleLinesEx(new Rectangle(photoX, photoY, photoW, photoH), 1, Color.Gray);
+    
+    Raylib.BeginScissorMode(photoX, photoY, photoW, photoH);
+    
+    float sc = 2.6f;
+    int ax = photoX + photoW/2 - (int)(20 * sc);
+    int ay = photoY + (int)(photoH * 0.20f);   // was 0.14f — nudges the head down
+
+    int HX(int off) => ax + (int)(off * sc);
+    int HY(int off) => ay + (int)(off * sc);
+    int SZ(int v)   => (int)(v * sc);
+
+    // shoulders/shirt first (behind head), only the top sliver visible at box bottom
+    Raylib.DrawRectangle(HX(8), HY(20), SZ(24), SZ(20), player.ShirtColor);
+    // head
+    Raylib.DrawRectangle(HX(9), HY(0), SZ(22), SZ(20), player.SkinColor);
+    // eyes
+    Raylib.DrawRectangle(HX(13), HY(7), SZ(3), SZ(3), Color.Black);
+    Raylib.DrawRectangle(HX(24), HY(7), SZ(3), SZ(3), Color.Black);
+    
+
+    // facial hair
+    Color fc = playerFacialHairColor;
+    switch (playerFacialHair)
+    {
+        case "Stubble":
+            Raylib.DrawRectangle(HX(13), HY(17), SZ(14), SZ(4), new Color(fc.R, fc.G, fc.B, (byte)140));
+            break;
+        case "Moustache":
+            Raylib.DrawRectangle(HX(13), HY(16), SZ(14), SZ(3), fc);
+            break;
+        case "Goatee":
+            Raylib.DrawRectangle(HX(13), HY(16), SZ(14), SZ(3), fc);
+            Raylib.DrawRectangle(HX(16), HY(19), SZ(8),  SZ(5), fc);
+            break;
+        case "Full Beard":
+            Raylib.DrawRectangle(HX(11), HY(16), SZ(18), SZ(3), fc);
+            Raylib.DrawRectangle(HX(10), HY(19), SZ(20), SZ(6), fc);
+            break;
+    }
+    // mouth
+    Raylib.DrawRectangle(HX(15), HY(17), SZ(10), SZ(2), new Color((byte)150,(byte)80,(byte)80,(byte)255));
+
+    // hair
+    Color hc = playerHairColor;
+    switch (playerHairStyle)
+    {
+        case "Buzz Cut":
+            Raylib.DrawRectangle(HX(9), HY(-2), SZ(22), SZ(6), hc);
+            break;
+        case "Flow":
+            Raylib.DrawRectangle(HX(8), HY(2), SZ(24), SZ(8), hc);
+            Raylib.DrawRectangle(HX(6), HY(8), SZ(6), SZ(14), hc);
+            Raylib.DrawRectangle(HX(28), HY(8), SZ(6), SZ(14), hc);
+            break;
+        case "Curtains":
+            Raylib.DrawRectangle(HX(8), HY(-2), SZ(24), SZ(7), hc);
+            Raylib.DrawRectangle(HX(8), HY(4), SZ(8), SZ(10), hc);
+            Raylib.DrawRectangle(HX(24), HY(4), SZ(8), SZ(10), hc);
+            break;
+        case "Mohawk":
+            Raylib.DrawRectangle(HX(17), HY(-8), SZ(6), SZ(14), hc);
+            break;
+        case "Bald":
+            break;
+    }
+    Raylib.EndScissorMode();
+
+    // card text fields
+    int fldX = photoX + photoW + 20, fld = cardY + 44;
+    void CardLine(string k, string v)
+    {
+        Raylib.DrawText(k, fldX, fld, 14, Color.Gray);
+        Raylib.DrawText(v, fldX + 90, fld, 16, Color.White);
+        fld += 24;
+    }
+    CardLine("NAME", playerName ?? "—");
+    CardLine("HEALTH", $"{player.Health}/{player.MaxHealth}");
+    CardLine("FUNDS", $"${player.Money}");
+    CardLine("ISSUED", $"{GetMonthString()} {dayOfMonth}");
+
+    // ── STATS BELOW THE CARD ──
+    int ly = cardY + cardH + 24;
+    void Line(string k, string v)
+    {
+        Raylib.DrawText(k, x, ly, 20, Color.LightGray);
+        Raylib.DrawText(v, x + 300, ly, 20, Color.White);
+        ly += 30;
+    }
+
+    int hrs = (int)(totalPlayTime / 3600), mins = (int)((totalPlayTime % 3600) / 60);
+
+    string topName = "—"; int topLv = 0;
+    foreach (var s in cheatSkills)
+        if (s.get() > topLv) { topLv = s.get(); topName = s.name; }
+
+    string MostPlayed(Dictionary<string,int> d)
+    {
+        string best = "None yet"; int bestC = 0;
+        foreach (var kv in d) if (kv.Value > bestC) { bestC = kv.Value; best = kv.Key; }
+        return bestC > 0 ? $"{best} ({bestC})" : best;
+    }
+
+    Line("Time Played:", $"{hrs}h {mins}m");
+    Line("Date:", $"{dayNames[dayOfWeek]}, {GetMonthString()} {dayOfMonth}");
+    Line("Highest Skill:", $"{topName} (Lv {topLv})");
+    Line("Most Played Sport:", MostPlayed(sportPlayCounts));
+    Line("Most Played Minigame:", MostPlayed(minigamePlayCounts));
+    Line("Dropzone Tickets:", player.Tickets.ToString());
+    Line("Land Plots Owned:", ownedHousePlots.Count.ToString());
+    Line("Dungeons Cleared:", dungeonsCleared.ToString());
+    if (timesCheated > 0)
+        Line("Times Cheated:", timesCheated.ToString());
+}
+
+static void DrawPMStats(int x, int y, int w)
+{
+    Raylib.DrawText("SKILLS", x, y, 34, Color.Gold);
+    int col0 = x, col1 = x + w/2;
+    int ry = y + 60, half = (cheatSkills.Length + 1) / 2;
+    for (int i = 0; i < cheatSkills.Length; i++)
+    {
+        var s = cheatSkills[i];
+        int colX = i < half ? col0 : col1;
+        int rowY = y + 60 + (i % half) * 40;
+        int lv = s.get();
+        Raylib.DrawText(s.name, colX, rowY, 20, Color.White);
+        Raylib.DrawText($"Lv {lv}", colX + 200, rowY, 20, Color.Gold);
+        // mini level bar
+        Raylib.DrawRectangle(colX, rowY + 24, 260, 6, new Color((byte)40,(byte)40,(byte)40,(byte)255));
+        Raylib.DrawRectangle(colX, rowY + 24, (int)(260 * Math.Min(1f, lv / 100f)), 6, Color.Gold);
+    }
+}
+
+static void DrawPMUnlocks(int x, int y, int w)
+{
+    Raylib.DrawText("LICENCES & THEORIES", x, y, 34, Color.Gold);
+    int ly = y + 60;
+    void L(string label, bool have)
+    {
+        Raylib.DrawText(label, x, ly, 20, Color.White);
+        Raylib.DrawText(have ? "OWNED" : "—", x + 300, ly, 20, have ? Color.Green : Color.Gray);
+        ly += 30;
+    }
+    L("Theory D", hasTheoryD); L("Theory C", hasTheoryC); L("Theory B", hasTheoryB);
+    L("Theory A", hasTheoryA); L("Theory S", hasTheoryS);
+    ly += 10;
+    L("Practical D", hasPracticalD); L("Practical C", hasPracticalC); L("Practical B", hasPracticalB);
+    L("Practical A", hasPracticalA); L("Practical S", hasPracticalS);
+}
+
+static void DrawPMPlaceholder(int x, int y, string title)
+{
+    Raylib.DrawText(title.ToUpper(), x, y, 34, Color.Gold);
+    Raylib.DrawText("Coming soon.", x, y + 60, 22, Color.Gray);
 }
 static void DrawDroppedItems()
 {
@@ -8955,6 +9591,39 @@ static void AddPoliceStation(float x, float y)
     Raylib.DrawText(text, bx + padding, by + padding, fontSize,
         new Color((byte)20,(byte)20,(byte)20,(byte)255));
 }
+static void DrawEggIcon(string egg, int cx, int cy, int size, bool rareGlow = false, float glowPhase = 0f)
+{
+    Color shell = EggColor(egg);
+    Color light = new Color(
+        (byte)Math.Min(255, shell.R + 50),
+        (byte)Math.Min(255, shell.G + 50),
+        (byte)Math.Min(255, shell.B + 50), (byte)255);
+
+    // pulsing yellow rare-drop glow (drawn behind the egg)
+    if (rareGlow)
+    {
+        float pulse = (MathF.Sin(glowPhase * 4f) + 1f) * 0.5f;   // 0→1
+        for (int g = 3; g >= 1; g--)
+        {
+            byte ga = (byte)((22 + 30 * pulse) * g / 3f);
+            Raylib.DrawCircle(cx, cy, size * (0.7f + 0.12f * g),
+                new Color((byte)255,(byte)220,(byte)60, ga));
+        }
+    }
+
+    // egg body (taller than wide)
+    Raylib.DrawEllipse(cx, cy, size / 2, (int)(size * 0.62f), shell);
+    Raylib.DrawEllipse(cx - size / 8, cy - size / 6, size / 8, size / 5, light); // highlight
+    // speckles
+    Raylib.DrawCircle(cx + size / 6, cy + size / 8, 2, light);
+    Raylib.DrawCircle(cx - size / 5, cy + size / 4, 2, light);
+
+    // bright golden outline when rare
+    Color outline = rareGlow
+        ? new Color((byte)255,(byte)215,(byte)40,(byte)255)
+        : new Color((byte)0,(byte)0,(byte)0,(byte)70);
+    Raylib.DrawEllipseLines(cx, cy, size / 2, (int)(size * 0.62f), outline);
+}
 
 static void DrawSpeechBubbleScreen(int sx, int sy, string text, float alphaPct = 1f)
 {
@@ -9752,247 +10421,177 @@ static void DrawBiomeTextures()
         DrawStreetLight(-15410, 3800);
     }
 
-       static void SaveGame()
+      static void SaveGame()
 {
-    List<string> lines = new List<string>();
+    var d = new List<string>();
+    void S(string k, object v) => d.Add(k + "=" + v.ToString());
+    void SF(string k, float v) => d.Add(k + "=" + v.ToString(System.Globalization.CultureInfo.InvariantCulture));
+    void SB(string k, bool v) => d.Add(k + "=" + (v ? "1" : "0"));
+    string NN(string s) => s ?? "empty";
+
+    S("version", 2);
 
     // ── Position & core ──
-    lines.Add(player.Position.X.ToString());
-    lines.Add(player.Position.Y.ToString());
-    lines.Add(player.Money.ToString());
-    lines.Add(player.BankBalance.ToString());
+    SF("pos.x", player.Position.X); SF("pos.y", player.Position.Y);
+    S("money", player.Money); S("bank", player.BankBalance);
 
-    // ── Resources (player) ──
-    lines.Add(player.Logs.ToString());
-    lines.Add(player.BirchLogs.ToString());
-    lines.Add(player.OakLogs.ToString());
-    lines.Add(player.PineLogs.ToString());
-    lines.Add(player.ArcticLogs.ToString());
-    lines.Add(player.DeadWood.ToString());
-    lines.Add(player.Fish.ToString());
-    lines.Add(player.Bones.ToString());
-    lines.Add(player.Fur.ToString());
-    lines.Add(player.Stingers.ToString());
-    lines.Add(player.BearPelts.ToString());
+    // ── Resources ──
+    S("logs", player.Logs); S("birchLogs", player.BirchLogs); S("oakLogs", player.OakLogs);
+    S("pineLogs", player.PineLogs); S("arcticLogs", player.ArcticLogs); S("deadWood", player.DeadWood);
+    S("fish", player.Fish); S("bones", player.Bones); S("fur", player.Fur);
+    S("stingers", player.Stingers); S("bearPelts", player.BearPelts);
 
     // ── Skills ──
-    lines.Add(player.WoodcuttingLevel.ToString());
-    lines.Add(player.WoodcuttingXP.ToString());
-    lines.Add(player.FishingLevel.ToString());
-    lines.Add(player.FishingXP.ToString());
-    lines.Add(player.CombatLevel.ToString());
-    lines.Add(player.CombatXP.ToString());
-    lines.Add(player.StrengthLevel.ToString());
-    lines.Add(player.StrengthXP.ToString());
-    lines.Add(player.DrivingLevel.ToString());
-    lines.Add(player.DrivingXP.ToString());
-    lines.Add(player.AthleticsLevel.ToString());
-    lines.Add(player.AthleticsXP.ToString());
-    lines.Add(player.GamblingLevel.ToString());
-    lines.Add(player.GamblingXP.ToString());
-    lines.Add(player.RidingLevel.ToString());
-    lines.Add(player.RidingXP.ToString());
-    lines.Add(player.CyclingLevel.ToString());
-    lines.Add(player.CyclingXP.ToString());
-    lines.Add(player.MiningLevel.ToString());
-    lines.Add(player.MiningXP.ToString());
-    lines.Add(player.SwimmingLevel.ToString());
-    lines.Add(player.SwimmingXP.ToString());
-    lines.Add(player.DivingLevel.ToString());
-    lines.Add(player.DivingXP.ToString());
-    lines.Add(player.SportsLevel.ToString());
-    lines.Add(player.SportsXP.ToString());
-    lines.Add(player.RangedLevel.ToString());
-    lines.Add(player.RangedXP.ToString());
-    lines.Add(player.ElementalLevel.ToString());
-    lines.Add(player.ElementalXP.ToString());
-    lines.Add(player.CookingLevel.ToString());
-    lines.Add(player.CookingXP.ToString());
+    S("woodcutLv", player.WoodcuttingLevel); S("woodcutXp", player.WoodcuttingXP);
+    S("fishLv", player.FishingLevel); S("fishXp", player.FishingXP);
+    S("combatLv", player.CombatLevel); S("combatXp", player.CombatXP);
+    S("oneHandLv", player.OneHandMeleeLevel); S("oneHandXp", player.OneHandMeleeXP);
+    S("twoHandLv", player.TwoHandMeleeLevel); S("twoHandXp", player.TwoHandMeleeXP);
+    S("strengthLv", player.StrengthLevel); S("strengthXp", player.StrengthXP);
+    S("drivingLv", player.DrivingLevel); S("drivingXp", player.DrivingXP);
+    S("athleticsLv", player.AthleticsLevel); S("athleticsXp", player.AthleticsXP);
+    S("gamblingLv", player.GamblingLevel); S("gamblingXp", player.GamblingXP);
+    S("ridingLv", player.RidingLevel); S("ridingXp", player.RidingXP);
+    S("cyclingLv", player.CyclingLevel); S("cyclingXp", player.CyclingXP);
+    S("miningLv", player.MiningLevel); S("miningXp", player.MiningXP);
+    S("swimmingLv", player.SwimmingLevel); S("swimmingXp", player.SwimmingXP);
+    S("divingLv", player.DivingLevel); S("divingXp", player.DivingXP);
+    S("sportsLv", player.SportsLevel); S("sportsXp", player.SportsXP);
+    S("rangedLv", player.RangedLevel); S("rangedXp", player.RangedXP);
+    S("elementalLv", player.ElementalLevel); S("elementalXp", player.ElementalXP);
+    S("cookingLv", player.CookingLevel); S("cookingXp", player.CookingXP);
 
     // ── Health & identity ──
-    lines.Add(player.Health.ToString());
-    lines.Add(player.MaxHealth.ToString());
-    lines.Add(playerName);
+    S("health", player.Health); S("maxHealth", player.MaxHealth); S("name", playerName);
 
     // ── Appearance ──
-    lines.Add(player.ShirtColor.R.ToString());
-    lines.Add(player.ShirtColor.G.ToString());
-    lines.Add(player.ShirtColor.B.ToString());
-    lines.Add(player.SkinColor.R.ToString());
-    lines.Add(player.SkinColor.G.ToString());
-    lines.Add(player.SkinColor.B.ToString());
-    lines.Add(player.PantsColor.R.ToString());
-    lines.Add(player.PantsColor.G.ToString());
-    lines.Add(player.PantsColor.B.ToString());
-    lines.Add(playerHairStyle ?? "None");
-    lines.Add(playerHairColor.R.ToString());
-    lines.Add(playerHairColor.G.ToString());
-    lines.Add(playerHairColor.B.ToString());
-    lines.Add(playerFacialHair ?? "None");
-    lines.Add(playerFacialHairColor.R.ToString());
-    lines.Add(playerFacialHairColor.G.ToString());
-    lines.Add(playerFacialHairColor.B.ToString());
+    S("shirtR", player.ShirtColor.R); S("shirtG", player.ShirtColor.G); S("shirtB", player.ShirtColor.B);
+    S("skinR", player.SkinColor.R); S("skinG", player.SkinColor.G); S("skinB", player.SkinColor.B);
+    S("pantsR", player.PantsColor.R); S("pantsG", player.PantsColor.G); S("pantsB", player.PantsColor.B);
+    S("hairStyle", playerHairStyle ?? "None");
+    S("hairR", playerHairColor.R); S("hairG", playerHairColor.G); S("hairB", playerHairColor.B);
+    S("facialHair", playerFacialHair ?? "None");
+    S("facialR", playerFacialHairColor.R); S("facialG", playerFacialHairColor.G); S("facialB", playerFacialHairColor.B);
 
     // ── Chest storage ──
-    lines.Add(chestLogs.ToString());
-    lines.Add(chestFish.ToString());
-    lines.Add(chestBones.ToString());
-    lines.Add(chestFur.ToString());
-    lines.Add(chestStingers.ToString());
-    lines.Add(chestBearPelts.ToString());
-    lines.Add(chestDogFangs.ToString());
-    lines.Add(chestWolfClaws.ToString());
-    lines.Add(chestVenomSacs.ToString());
-    lines.Add(chestCrabClaws.ToString());
-    lines.Add(chestBearClaws.ToString());
-    lines.Add(chestCrabShells.ToString());
-    lines.Add(chestSharkFins.ToString());
-    lines.Add(chestSharkTeeth.ToString());
-    lines.Add(chestSnakeSkins.ToString());
-    lines.Add(chestSnakeFangs.ToString());
-    lines.Add(chestCrocScales.ToString());
-    lines.Add(chestCrocTeeth.ToString());
-    lines.Add(chestLizardScales.ToString());
-    lines.Add(chestEmberStones.ToString());
-    lines.Add(chestMagmaShards.ToString());
-    lines.Add(chestLavaCores.ToString());
-    lines.Add(chestFeathers.ToString());
-    lines.Add(chestEagleTalons.ToString());
-    lines.Add(chestHorns.ToString());
-    lines.Add(chestGoatHooves.ToString());
+    S("chestLogs", chestLogs); S("chestFish", chestFish); S("chestBones", chestBones);
+    S("chestFur", chestFur); S("chestStingers", chestStingers); S("chestBearPelts", chestBearPelts);
+    S("chestDogFangs", chestDogFangs); S("chestWolfClaws", chestWolfClaws); S("chestVenomSacs", chestVenomSacs);
+    S("chestCrabClaws", chestCrabClaws); S("chestBearClaws", chestBearClaws); S("chestCrabShells", chestCrabShells);
+    S("chestSharkFins", chestSharkFins); S("chestSharkTeeth", chestSharkTeeth); S("chestSnakeSkins", chestSnakeSkins);
+    S("chestSnakeFangs", chestSnakeFangs); S("chestCrocScales", chestCrocScales); S("chestCrocTeeth", chestCrocTeeth);
+    S("chestLizardScales", chestLizardScales); S("chestEmberStones", chestEmberStones); S("chestMagmaShards", chestMagmaShards);
+    S("chestLavaCores", chestLavaCores); S("chestFeathers", chestFeathers); S("chestEagleTalons", chestEagleTalons);
+    S("chestHorns", chestHorns); S("chestGoatHooves", chestGoatHooves);
 
     // ── Player loot materials ──
-    lines.Add(player.DogFangs.ToString());
-    lines.Add(player.WolfClaws.ToString());
-    lines.Add(player.VenomSacs.ToString());
-    lines.Add(player.CrabClaws.ToString());
-    lines.Add(player.BearClaws.ToString());
-    lines.Add(player.CrabShells.ToString());
-    lines.Add(player.SharkFins.ToString());
-    lines.Add(player.SharkTeeth.ToString());
-    lines.Add(player.SnakeSkins.ToString());
-    lines.Add(player.SnakeFangs.ToString());
-    lines.Add(player.CrocScales.ToString());
-    lines.Add(player.CrocTeeth.ToString());
-    lines.Add(player.LizardScales.ToString());
-    lines.Add(player.EmberStones.ToString());
-    lines.Add(player.MagmaShards.ToString());
-    lines.Add(player.LavaCores.ToString());
-    lines.Add(player.Feathers.ToString());
-    lines.Add(player.EagleTalons.ToString());
-    lines.Add(player.Horns.ToString());
-    lines.Add(player.GoatHooves.ToString());
+    S("dogFangs", player.DogFangs); S("wolfClaws", player.WolfClaws); S("venomSacs", player.VenomSacs);
+    S("crabClaws", player.CrabClaws); S("bearClaws", player.BearClaws); S("crabShells", player.CrabShells);
+    S("sharkFins", player.SharkFins); S("sharkTeeth", player.SharkTeeth); S("snakeSkins", player.SnakeSkins);
+    S("snakeFangs", player.SnakeFangs); S("crocScales", player.CrocScales); S("crocTeeth", player.CrocTeeth);
+    S("lizardScales", player.LizardScales); S("emberStones", player.EmberStones); S("magmaShards", player.MagmaShards);
+    S("lavaCores", player.LavaCores); S("feathers", player.Feathers); S("eagleTalons", player.EagleTalons);
+    S("horns", player.Horns); S("goatHooves", player.GoatHooves);
 
     // ── Quests ──
-    lines.Add(quests[0].Progress.ToString());
-    lines.Add(quests[0].Completed ? "1" : "0");
-    lines.Add(quests[1].Progress.ToString());
-    lines.Add(quests[1].Completed ? "1" : "0");
-    lines.Add(quests[2].Progress.ToString());
-    lines.Add(quests[2].Completed ? "1" : "0");
+    S("quest0prog", quests[0].Progress); SB("quest0done", quests[0].Completed);
+    S("quest1prog", quests[1].Progress); SB("quest1done", quests[1].Completed);
+    S("quest2prog", quests[2].Progress); SB("quest2done", quests[2].Completed);
 
     // ── World / time ──
-    lines.Add("PLAYTIME:" + totalPlayTime.ToString(System.Globalization.CultureInfo.InvariantCulture));
-    lines.Add(dayOfMonth.ToString());
-    lines.Add(currentMonth.ToString());
-    lines.Add(timeOfDay.ToString(System.Globalization.CultureInfo.InvariantCulture));
-    lines.Add(dayOfWeek.ToString());
-    lines.Add(player.Tickets.ToString());
+    SF("playtime", totalPlayTime);
+    S("dayOfMonth", dayOfMonth); S("currentMonth", currentMonth);
+    SF("timeOfDay", timeOfDay); S("dayOfWeek", dayOfWeek); S("tickets", player.Tickets);
 
     // ── Tool pickup flags ──
-    lines.Add(axePickedUp ? "1" : "0");
-    lines.Add(pickaxePickedUp ? "1" : "0");
-    lines.Add(fishingRodPickedUp ? "1" : "0");
-    lines.Add(fishingNetPickedUp ? "1" : "0");
-    lines.Add(torchPickedUp ? "1" : "0");
-    lines.Add(player.HasAxe ? "1" : "0");
+    SB("axePicked", axePickedUp); SB("pickaxePicked", pickaxePickedUp);
+    SB("rodPicked", fishingRodPickedUp); SB("netPicked", fishingNetPickedUp);
+    SB("torchPicked", torchPickedUp); SB("hasAxe", player.HasAxe);
 
     // ── Weapons / ammo ──
-    lines.Add(player.Arrows.ToString());
-    lines.Add(player.Bolts.ToString());
-    lines.Add(player.HasBow ? "1" : "0");
-    lines.Add(player.HasCrossbow ? "1" : "0");
-    lines.Add(equipped1H ?? "empty");
-    lines.Add(equipped2H ?? "empty");
-    lines.Add(equippedAmmo ?? "empty");
+    S("arrows", player.Arrows); S("bolts", player.Bolts);
+    SB("hasBow", player.HasBow); SB("hasCrossbow", player.HasCrossbow);
+    S("equipped1H", NN(equipped1H)); S("equipped2H", NN(equipped2H)); S("equippedAmmo", NN(equippedAmmo));
 
     // ── Elemental / staff ──
-    lines.Add(player.ArcaneEssence.ToString());
-    lines.Add(player.EquippedStaff ?? "empty");
+    S("arcaneEssence", player.ArcaneEssence); S("equippedStaff", NN(player.EquippedStaff));
 
     // ── Armor ──
-    lines.Add(armorHelmet ?? "empty");
-    lines.Add(armorBody   ?? "empty");
-    lines.Add(armorLegs   ?? "empty");
-    lines.Add(armorBoots  ?? "empty");
-    lines.Add(armorGloves ?? "empty");
-    lines.Add(armorCape   ?? "empty");
-    lines.Add(armorShield ?? "empty");
+    S("armorHelmet", NN(armorHelmet)); S("armorBody", NN(armorBody)); S("armorLegs", NN(armorLegs));
+    S("armorBoots", NN(armorBoots)); S("armorGloves", NN(armorGloves)); S("armorCape", NN(armorCape));
+    S("armorShield", NN(armorShield));
 
     // ── Licences ──
-    lines.Add(hasTheoryD ? "1" : "0");
-    lines.Add(hasTheoryC ? "1" : "0");
-    lines.Add(hasTheoryB ? "1" : "0");
-    lines.Add(hasTheoryA ? "1" : "0");
-    lines.Add(hasTheoryS ? "1" : "0");
-    lines.Add(hasPracticalD ? "1" : "0");
-    lines.Add(hasPracticalC ? "1" : "0");
-    lines.Add(hasPracticalB ? "1" : "0");
-    lines.Add(hasPracticalA ? "1" : "0");
-    lines.Add(hasPracticalS ? "1" : "0");
+    SB("theoryD", hasTheoryD); SB("theoryC", hasTheoryC); SB("theoryB", hasTheoryB);
+    SB("theoryA", hasTheoryA); SB("theoryS", hasTheoryS);
+    SB("pracD", hasPracticalD); SB("pracC", hasPracticalC); SB("pracB", hasPracticalB);
+    SB("pracA", hasPracticalA); SB("pracS", hasPracticalS);
+
+    // Stats
+    S("dungeonsCleared", dungeonsCleared);
+    S("timesCheated", timesCheated);
+    S("sportCounts.count", sportPlayCounts.Count);
+    int spi = 0;
+    foreach (var kv in sportPlayCounts) { S("sportCount." + spi + ".k", kv.Key); S("sportCount." + spi + ".v", kv.Value); spi++; }
+    S("miniCounts.count", minigamePlayCounts.Count);
+    int mpi = 0;
+    foreach (var kv in minigamePlayCounts) { S("miniCount." + mpi + ".k", kv.Key); S("miniCount." + mpi + ".v", kv.Value); mpi++; }
 
     // ── Tutorial state ──
-    lines.Add(tutorialCompleted ? "1" : "0");
-    lines.Add(tutorialActive ? "1" : "0");
-    lines.Add(tutorialStep.ToString());
-    for (int i = 0; i < tutorialTasks.Count; i++)
-        lines.Add(tutorialTasks[i].Done ? "1" : "0");
+    SB("tutDone", tutorialCompleted); SB("tutActive", tutorialActive); S("tutStep", tutorialStep);
+    S("tutTaskCount", tutorialTasks.Count);
+    for (int i = 0; i < tutorialTasks.Count; i++) SB("tutTask." + i, tutorialTasks[i].Done);
 
-    lines.Add(player.PlayingCardsLevel.ToString());
-    lines.Add(player.PlayingCardsXP.ToString());
-    lines.Add(player.EuchreRating.ToString());
-    lines.Add(player.FiveHundredRating.ToString());
-    lines.Add(player.SequenceRating.ToString());
-    lines.Add(player.EuchreWins.ToString());
-    lines.Add(player.FiveHundredWins.ToString());
-    lines.Add(player.SequenceWins.ToString());
+    // ── Cards ──
+    S("cardsLv", player.PlayingCardsLevel); S("cardsXp", player.PlayingCardsXP);
+    S("euchreRating", player.EuchreRating); S("fiveHundredRating", player.FiveHundredRating);
+    S("sequenceRating", player.SequenceRating); S("euchreWins", player.EuchreWins);
+    S("fiveHundredWins", player.FiveHundredWins); S("sequenceWins", player.SequenceWins);
 
-    // ── Variable-length: owned gear (marker) ──
-    lines.Add("GEAR_START");
-    lines.Add(player.OwnedGear.Count.ToString());
-    foreach (var g in player.OwnedGear) lines.Add(g);
+    // ── Gear ──
+    S("gear.count", player.OwnedGear.Count);
+    for (int i = 0; i < player.OwnedGear.Count; i++) S("gear." + i, player.OwnedGear[i]);
 
-    // ── Variable-length: toolbar (marker) ──
-    lines.Add("TOOLBAR_START");
-    for (int i = 0; i < 8; i++)
-    {
-        lines.Add(toolbarSlots[i] ?? "empty");
-        lines.Add(toolbarCounts[i].ToString());
-    }
+    // ── Toolbar ──
+    for (int i = 0; i < 8; i++) { S("toolbar." + i + ".item", NN(toolbarSlots[i])); S("toolbar." + i + ".count", toolbarCounts[i]); }
 
-    // ── Variable-length: backpack (marker) ──
-    lines.Add("BACKPACK_START");
-    lines.Add(backpack.Count.ToString());
-    foreach (var kv in backpack) { lines.Add(kv.Key); lines.Add(kv.Value.ToString()); }
+    // ── Backpack ──
+    S("backpack.count", backpack.Count);
+    int bi = 0;
+    foreach (var kv in backpack) { S("backpack." + bi + ".key", kv.Key); S("backpack." + bi + ".val", kv.Value); bi++; }
 
-    // ── Variable-length: player houses (marker) ──
-    lines.Add("HOUSES_START");
-    lines.Add(ownedHousePlots.Count.ToString());
+    // ── Houses ──
+    S("houses.count", ownedHousePlots.Count);
     for (int i = 0; i < ownedHousePlots.Count; i++)
     {
-        lines.Add(ownedHousePlots[i].x.ToString());
-        lines.Add(ownedHousePlots[i].y.ToString());
-        // house data
+        S("house." + i + ".x", ownedHousePlots[i].x);
+        S("house." + i + ".y", ownedHousePlots[i].y);
         var hd = i < houseDataList.Count ? houseDataList[i] : new HouseData(0, 0);
-        lines.Add(hd.WallColor);
-        lines.Add(hd.FloorColor);
-        // furniture
-        lines.Add(hd.Furniture.Count.ToString());
-        foreach (var f in hd.Furniture)
-            lines.Add($"{f.Type}|{f.RoomX}|{f.RoomY}|{f.Cost}");
+        S("house." + i + ".wall", hd.WallColor);
+        S("house." + i + ".floor", hd.FloorColor);
+        S("house." + i + ".furnCount", hd.Furniture.Count);
+        for (int j = 0; j < hd.Furniture.Count; j++)
+        {
+            var f = hd.Furniture[j];
+            S("house." + i + ".furn." + j, $"{f.Type}|{f.RoomX}|{f.RoomY}|{f.Cost}");
+        }
     }
 
-    System.IO.File.WriteAllLines(savePath, lines);
+    // ── Pets ──
+    S("eggs.count", ownedEggs.Count);
+    for (int i = 0; i < ownedEggs.Count; i++) S("egg." + i, ownedEggs[i]);
+    S("incubatingEgg", NN(incubatingEgg));
+    SF("incubationProgress", incubationProgress);
+    S("activePet.type", activePet != null ? activePet.Type : "empty");
+    SF("activePet.x", activePet != null ? activePet.Position.X : 0f);
+    SF("activePet.y", activePet != null ? activePet.Position.Y : 0f);
+    S("pendingPet.type", pendingPet != null ? pendingPet.Type : "empty");
+    SF("pendingPet.x", pendingPet != null ? pendingPet.Position.X : 0f);
+    SF("pendingPet.y", pendingPet != null ? pendingPet.Position.Y : 0f);
+    S("storedPets.count", storedPets.Count);
+    for (int i = 0; i < storedPets.Count; i++) S("storedPet." + i, storedPets[i]);
+
+    System.IO.File.WriteAllLines(savePath, d);
     ShowNotification("Game Saved!");
 }
 
@@ -10000,264 +10599,282 @@ static void LoadGame()
 {
     if (!System.IO.File.Exists(savePath)) return;
     string[] lines = System.IO.File.ReadAllLines(savePath);
-    if (lines.Length < 50) return;
 
-    int idx = 0;
-    int   NextInt()   => int.Parse(lines[idx++]);
-    float NextFloat() => float.Parse(lines[idx++], System.Globalization.CultureInfo.InvariantCulture);
-    string NextStr()  => lines[idx++];
-    bool  NextBool()  => lines[idx++] == "1";
-    string NextOrNull() { string s = lines[idx++]; return s == "empty" ? null : s; }
+    var map = new Dictionary<string, string>();
+    foreach (var line in lines)
+    {
+        int eq = line.IndexOf('=');
+        if (eq <= 0) continue;
+        map[line.Substring(0, eq)] = line.Substring(eq + 1);
+    }
+    if (map.Count == 0) return;
+
+    string GS(string k, string def = "") => map.TryGetValue(k, out var v) ? v : def;
+    int GI(string k, int def = 0) => map.TryGetValue(k, out var v) && int.TryParse(v, out var r) ? r : def;
+    float GF(string k, float def = 0f) => map.TryGetValue(k, out var v) && float.TryParse(v, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var r) ? r : def;
+    bool GB(string k, bool def = false) => map.TryGetValue(k, out var v) ? v == "1" : def;
+    string GN(string k) { var v = GS(k, "empty"); return v == "empty" ? null : v; }
 
     // ── Position & core ──
-    player.Position = new Vector2(NextFloat(), NextFloat());
-    player.Money = NextInt();
-    player.BankBalance = NextInt();
+    player.Position = new Vector2(GF("pos.x"), GF("pos.y"));
+    player.Money = GI("money"); player.BankBalance = GI("bank");
 
     // ── Resources ──
-    player.Logs = NextInt();
-    player.BirchLogs = NextInt();
-    player.OakLogs = NextInt();
-    player.PineLogs = NextInt();
-    player.ArcticLogs = NextInt();
-    player.DeadWood = NextInt();
-    player.Fish = NextInt();
-    player.Bones = NextInt();
-    player.Fur = NextInt();
-    player.Stingers = NextInt();
-    player.BearPelts = NextInt();
+    player.Logs = GI("logs"); player.BirchLogs = GI("birchLogs"); player.OakLogs = GI("oakLogs");
+    player.PineLogs = GI("pineLogs"); player.ArcticLogs = GI("arcticLogs"); player.DeadWood = GI("deadWood");
+    player.Fish = GI("fish"); player.Bones = GI("bones"); player.Fur = GI("fur");
+    player.Stingers = GI("stingers"); player.BearPelts = GI("bearPelts");
 
     // ── Skills ──
-    player.WoodcuttingLevel = NextInt(); player.WoodcuttingXP = NextInt();
-    player.FishingLevel = NextInt();     player.FishingXP = NextInt();
-    player.CombatLevel = NextInt();      player.CombatXP = NextInt();
-    player.StrengthLevel = NextInt();    player.StrengthXP = NextInt();
-    player.DrivingLevel = NextInt();     player.DrivingXP = NextInt();
-    player.AthleticsLevel = NextInt();   player.AthleticsXP = NextInt();
-    player.GamblingLevel = NextInt();    player.GamblingXP = NextInt();
-    player.RidingLevel = NextInt();      player.RidingXP = NextInt();
-    player.CyclingLevel = NextInt();     player.CyclingXP = NextInt();
-    player.MiningLevel = NextInt();      player.MiningXP = NextInt();
-    player.SwimmingLevel = NextInt();    player.SwimmingXP = NextInt();
-    player.DivingLevel = NextInt();      player.DivingXP = NextInt();
-    player.SportsLevel = NextInt();      player.SportsXP = NextInt();
-    player.RangedLevel = NextInt();      player.RangedXP = NextInt();
-    player.ElementalLevel = NextInt();   player.ElementalXP = NextInt();
-    player.CookingLevel = NextInt();     player.CookingXP = NextInt();
+    player.WoodcuttingLevel = GI("woodcutLv", 1); player.WoodcuttingXP = GI("woodcutXp");
+    player.FishingLevel = GI("fishLv", 1); player.FishingXP = GI("fishXp");
+    player.CombatLevel = GI("combatLv", 1); player.CombatXP = GI("combatXp");
+    player.OneHandMeleeLevel = GI("oneHandLv", 1); player.OneHandMeleeXP = GI("oneHandXp");
+    player.TwoHandMeleeLevel = GI("twoHandLv", 1); player.TwoHandMeleeXP = GI("twoHandXp");
+    player.StrengthLevel = GI("strengthLv", 1); player.StrengthXP = GI("strengthXp");
+    player.DrivingLevel = GI("drivingLv", 1); player.DrivingXP = GI("drivingXp");
+    player.AthleticsLevel = GI("athleticsLv", 1); player.AthleticsXP = GI("athleticsXp");
+    player.GamblingLevel = GI("gamblingLv", 1); player.GamblingXP = GI("gamblingXp");
+    player.RidingLevel = GI("ridingLv", 1); player.RidingXP = GI("ridingXp");
+    player.CyclingLevel = GI("cyclingLv", 1); player.CyclingXP = GI("cyclingXp");
+    player.MiningLevel = GI("miningLv", 1); player.MiningXP = GI("miningXp");
+    player.SwimmingLevel = GI("swimmingLv", 1); player.SwimmingXP = GI("swimmingXp");
+    player.DivingLevel = GI("divingLv", 1); player.DivingXP = GI("divingXp");
+    player.SportsLevel = GI("sportsLv", 1); player.SportsXP = GI("sportsXp");
+    player.RangedLevel = GI("rangedLv", 1); player.RangedXP = GI("rangedXp");
+    player.ElementalLevel = GI("elementalLv", 1); player.ElementalXP = GI("elementalXp");
+    player.CookingLevel = GI("cookingLv", 1); player.CookingXP = GI("cookingXp");
 
     // ── Health & identity ──
-    player.Health = NextInt();
-    player.MaxHealth = NextInt();
-    playerName = NextStr();
-    nameEntered = true;
+    player.Health = GI("health", 100); player.MaxHealth = GI("maxHealth", 100);
+    playerName = GS("name"); nameEntered = true;
 
     // ── Appearance ──
-    player.ShirtColor = new Color((byte)NextInt(), (byte)NextInt(), (byte)NextInt(), (byte)255);
-    player.SkinColor  = new Color((byte)NextInt(), (byte)NextInt(), (byte)NextInt(), (byte)255);
-    player.PantsColor = new Color((byte)NextInt(), (byte)NextInt(), (byte)NextInt(), (byte)255);
-    playerHairStyle = NextStr();
-    playerHairColor = new Color((byte)NextInt(), (byte)NextInt(), (byte)NextInt(), (byte)255);
-    playerFacialHair = NextStr();
-    playerFacialHairColor = new Color((byte)NextInt(), (byte)NextInt(), (byte)NextInt(), (byte)255);
+    player.ShirtColor = new Color((byte)GI("shirtR"), (byte)GI("shirtG"), (byte)GI("shirtB"), (byte)255);
+    player.SkinColor  = new Color((byte)GI("skinR"), (byte)GI("skinG"), (byte)GI("skinB"), (byte)255);
+    player.PantsColor = new Color((byte)GI("pantsR"), (byte)GI("pantsG"), (byte)GI("pantsB"), (byte)255);
+    playerHairStyle = GS("hairStyle", "None");
+    playerHairColor = new Color((byte)GI("hairR"), (byte)GI("hairG"), (byte)GI("hairB"), (byte)255);
+    playerFacialHair = GS("facialHair", "None");
+    playerFacialHairColor = new Color((byte)GI("facialR"), (byte)GI("facialG"), (byte)GI("facialB"), (byte)255);
 
     // ── Chest storage ──
-    chestLogs = NextInt(); chestFish = NextInt(); chestBones = NextInt();
-    chestFur = NextInt(); chestStingers = NextInt(); chestBearPelts = NextInt();
-    chestDogFangs = NextInt(); chestWolfClaws = NextInt(); chestVenomSacs = NextInt();
-    chestCrabClaws = NextInt(); chestBearClaws = NextInt(); chestCrabShells = NextInt();
-    chestSharkFins = NextInt(); chestSharkTeeth = NextInt(); chestSnakeSkins = NextInt();
-    chestSnakeFangs = NextInt(); chestCrocScales = NextInt(); chestCrocTeeth = NextInt();
-    chestLizardScales = NextInt(); chestEmberStones = NextInt(); chestMagmaShards = NextInt();
-    chestLavaCores = NextInt(); chestFeathers = NextInt(); chestEagleTalons = NextInt();
-    chestHorns = NextInt(); chestGoatHooves = NextInt();
+    chestLogs = GI("chestLogs"); chestFish = GI("chestFish"); chestBones = GI("chestBones");
+    chestFur = GI("chestFur"); chestStingers = GI("chestStingers"); chestBearPelts = GI("chestBearPelts");
+    chestDogFangs = GI("chestDogFangs"); chestWolfClaws = GI("chestWolfClaws"); chestVenomSacs = GI("chestVenomSacs");
+    chestCrabClaws = GI("chestCrabClaws"); chestBearClaws = GI("chestBearClaws"); chestCrabShells = GI("chestCrabShells");
+    chestSharkFins = GI("chestSharkFins"); chestSharkTeeth = GI("chestSharkTeeth"); chestSnakeSkins = GI("chestSnakeSkins");
+    chestSnakeFangs = GI("chestSnakeFangs"); chestCrocScales = GI("chestCrocScales"); chestCrocTeeth = GI("chestCrocTeeth");
+    chestLizardScales = GI("chestLizardScales"); chestEmberStones = GI("chestEmberStones"); chestMagmaShards = GI("chestMagmaShards");
+    chestLavaCores = GI("chestLavaCores"); chestFeathers = GI("chestFeathers"); chestEagleTalons = GI("chestEagleTalons");
+    chestHorns = GI("chestHorns"); chestGoatHooves = GI("chestGoatHooves");
 
     // ── Player loot materials ──
-    player.DogFangs = NextInt(); player.WolfClaws = NextInt(); player.VenomSacs = NextInt();
-    player.CrabClaws = NextInt(); player.BearClaws = NextInt(); player.CrabShells = NextInt();
-    player.SharkFins = NextInt(); player.SharkTeeth = NextInt(); player.SnakeSkins = NextInt();
-    player.SnakeFangs = NextInt(); player.CrocScales = NextInt(); player.CrocTeeth = NextInt();
-    player.LizardScales = NextInt(); player.EmberStones = NextInt(); player.MagmaShards = NextInt();
-    player.LavaCores = NextInt(); player.Feathers = NextInt(); player.EagleTalons = NextInt();
-    player.Horns = NextInt(); player.GoatHooves = NextInt();
+    player.DogFangs = GI("dogFangs"); player.WolfClaws = GI("wolfClaws"); player.VenomSacs = GI("venomSacs");
+    player.CrabClaws = GI("crabClaws"); player.BearClaws = GI("bearClaws"); player.CrabShells = GI("crabShells");
+    player.SharkFins = GI("sharkFins"); player.SharkTeeth = GI("sharkTeeth"); player.SnakeSkins = GI("snakeSkins");
+    player.SnakeFangs = GI("snakeFangs"); player.CrocScales = GI("crocScales"); player.CrocTeeth = GI("crocTeeth");
+    player.LizardScales = GI("lizardScales"); player.EmberStones = GI("emberStones"); player.MagmaShards = GI("magmaShards");
+    player.LavaCores = GI("lavaCores"); player.Feathers = GI("feathers"); player.EagleTalons = GI("eagleTalons");
+    player.Horns = GI("horns"); player.GoatHooves = GI("goatHooves");
 
     // ── Quests ──
-    quests[0].Progress = NextInt(); quests[0].Completed = NextBool();
-    quests[1].Progress = NextInt(); quests[1].Completed = NextBool();
-    quests[2].Progress = NextInt(); quests[2].Completed = NextBool();
+    quests[0].Progress = GI("quest0prog"); quests[0].Completed = GB("quest0done");
+    quests[1].Progress = GI("quest1prog"); quests[1].Completed = GB("quest1done");
+    quests[2].Progress = GI("quest2prog"); quests[2].Completed = GB("quest2done");
 
     // ── World / time ──
-    // ── World / time ──
-    string ptLine = NextStr();
-    totalPlayTime = ptLine.StartsWith("PLAYTIME:")
-        ? float.Parse(ptLine.Substring(9), System.Globalization.CultureInfo.InvariantCulture)
-        : float.TryParse(ptLine, System.Globalization.NumberStyles.Float,
-            System.Globalization.CultureInfo.InvariantCulture, out float ptFallback) ? ptFallback : 0f;
-    dayOfMonth = NextInt();
-    currentMonth = NextInt();
-    timeOfDay = NextFloat();
-    dayOfWeek = NextInt();
-    player.Tickets = NextInt();
+    totalPlayTime = GF("playtime");
+    dayOfMonth = GI("dayOfMonth"); currentMonth = GI("currentMonth");
+    timeOfDay = GF("timeOfDay"); dayOfWeek = GI("dayOfWeek"); player.Tickets = GI("tickets");
 
     // ── Tool pickup flags ──
-    axePickedUp = NextBool();
-    pickaxePickedUp = NextBool();
-    fishingRodPickedUp = NextBool();
-    fishingNetPickedUp = NextBool();
-    torchPickedUp = NextBool();
-    player.HasAxe = NextBool();
+    axePickedUp = GB("axePicked"); pickaxePickedUp = GB("pickaxePicked");
+    fishingRodPickedUp = GB("rodPicked"); fishingNetPickedUp = GB("netPicked");
+    torchPickedUp = GB("torchPicked"); player.HasAxe = GB("hasAxe");
 
     // ── Weapons / ammo ──
-    player.Arrows = NextInt();
-    player.Bolts = NextInt();
-    player.HasBow = NextBool();
-    player.HasCrossbow = NextBool();
-    equipped1H = NextOrNull();
-    equipped2H = NextOrNull();
-    equippedAmmo = NextOrNull();
+    player.Arrows = GI("arrows"); player.Bolts = GI("bolts");
+    player.HasBow = GB("hasBow"); player.HasCrossbow = GB("hasCrossbow");
+    equipped1H = GN("equipped1H"); equipped2H = GN("equipped2H"); equippedAmmo = GN("equippedAmmo");
     if (equipped2H != null) armorWeapon = equipped2H;
     else if (equipped1H != null) armorWeapon = equipped1H;
 
     // ── Elemental / staff ──
-    player.ArcaneEssence = NextInt();
-    player.EquippedStaff = NextOrNull();
+    player.ArcaneEssence = GI("arcaneEssence"); player.EquippedStaff = GN("equippedStaff");
 
     // ── Armor ──
-    armorHelmet = NextOrNull();
-    armorBody   = NextOrNull();
-    armorLegs   = NextOrNull();
-    armorBoots  = NextOrNull();
-    armorGloves = NextOrNull();
-    armorCape   = NextOrNull();
-    armorShield = NextOrNull();
+    armorHelmet = GN("armorHelmet"); armorBody = GN("armorBody"); armorLegs = GN("armorLegs");
+    armorBoots = GN("armorBoots"); armorGloves = GN("armorGloves"); armorCape = GN("armorCape");
+    armorShield = GN("armorShield");
 
     // ── Licences ──
-    hasTheoryD = NextBool(); hasTheoryC = NextBool(); hasTheoryB = NextBool();
-    hasTheoryA = NextBool(); hasTheoryS = NextBool();
-    hasPracticalD = NextBool(); hasPracticalC = NextBool(); hasPracticalB = NextBool();
-    hasPracticalA = NextBool(); hasPracticalS = NextBool();
+    hasTheoryD = GB("theoryD"); hasTheoryC = GB("theoryC"); hasTheoryB = GB("theoryB");
+    hasTheoryA = GB("theoryA"); hasTheoryS = GB("theoryS");
+    hasPracticalD = GB("pracD"); hasPracticalC = GB("pracC"); hasPracticalB = GB("pracB");
+    hasPracticalA = GB("pracA"); hasPracticalS = GB("pracS");
 
     // ── Tutorial state ──
-    tutorialCompleted = NextBool();
-    tutorialActive = NextBool();
-    tutorialStep = NextInt();
-    for (int i = 0; i < tutorialTasks.Count; i++)
-        tutorialTasks[i].Done = NextBool();
+    tutorialCompleted = GB("tutDone"); tutorialActive = GB("tutActive"); tutorialStep = GI("tutStep");
+    for (int i = 0; i < tutorialTasks.Count; i++) tutorialTasks[i].Done = GB("tutTask." + i);
+    tutorialMessage = ""; tutorialMessageTimer = 0f;
+    SnapshotTutorialMarks();
 
-    tutorialMessage = "";
-    tutorialMessageTimer = 0f;
-    SnapshotTutorialMarks(); // so XP detection resumes cleanly from current values
+    // Stats
+    dungeonsCleared = GI("dungeonsCleared");
+    timesCheated = GI("timesCheated");
+    sportPlayCounts.Clear();
+    int spc = GI("sportCounts.count");
+    for (int i = 0; i < spc; i++) { var k = GS("sportCount." + i + ".k", ""); if (k != "") sportPlayCounts[k] = GI("sportCount." + i + ".v"); }
+    minigamePlayCounts.Clear();
+    int mpc = GI("miniCounts.count");
+    for (int i = 0; i < mpc; i++) { var k = GS("miniCount." + i + ".k", ""); if (k != "") minigamePlayCounts[k] = GI("miniCount." + i + ".v"); }
 
-   // NEW — safe for old save files that don't have these lines yet:
-    if (idx < lines.Length && int.TryParse(lines[idx], out int cl))  { player.PlayingCardsLevel        = cl;  idx++; } else idx = Math.Min(idx, lines.Length);
-    if (idx < lines.Length && int.TryParse(lines[idx], out int cx))  { player.PlayingCardsXP           = cx;  idx++; }
-    if (idx < lines.Length && int.TryParse(lines[idx], out int er))  { player.EuchreRating      = er;  idx++; }
-    if (idx < lines.Length && int.TryParse(lines[idx], out int fr))  { player.FiveHundredRating = fr;  idx++; }
-    if (idx < lines.Length && int.TryParse(lines[idx], out int sr))  { player.SequenceRating    = sr;  idx++; }
-    if (idx < lines.Length && int.TryParse(lines[idx], out int ew))  { player.EuchreWins        = ew;  idx++; }
-    if (idx < lines.Length && int.TryParse(lines[idx], out int fw))  { player.FiveHundredWins   = fw;  idx++; }
-    if (idx < lines.Length && int.TryParse(lines[idx], out int sw2)) { player.SequenceWins      = sw2; idx++; }
+    // ── Cards ──
+    player.PlayingCardsLevel = GI("cardsLv", 1); player.PlayingCardsXP = GI("cardsXp");
+    player.EuchreRating = GI("euchreRating"); player.FiveHundredRating = GI("fiveHundredRating");
+    player.SequenceRating = GI("sequenceRating"); player.EuchreWins = GI("euchreWins");
+    player.FiveHundredWins = GI("fiveHundredWins"); player.SequenceWins = GI("sequenceWins");
 
-    // ── Owned gear (marker) ──
+    // ── Gear ──
     player.OwnedGear.Clear();
-    int gearStart = Array.IndexOf(lines, "GEAR_START");
-    if (gearStart >= 0)
+    int gearCount = GI("gear.count");
+    for (int i = 0; i < gearCount; i++) { var g = GS("gear." + i, "empty"); if (g != "empty") player.OwnedGear.Add(g); }
+
+    // ── Toolbar ──
+    for (int i = 0; i < 8; i++)
     {
-        int count = int.Parse(lines[gearStart + 1]);
-        for (int g = 0; g < count; g++)
-        {
-            int li = gearStart + 2 + g;
-            if (lines.Length > li) player.OwnedGear.Add(lines[li]);
-        }
+        toolbarSlots[i] = GN("toolbar." + i + ".item");
+        toolbarCounts[i] = GI("toolbar." + i + ".count");
     }
 
-    // ── Backpack (marker) ──
+    // ── Backpack ──
     backpack.Clear();
-    int bpStart = Array.IndexOf(lines, "BACKPACK_START");
-    if (bpStart >= 0 && lines.Length > bpStart + 1)
+    int bpCount = GI("backpack.count");
+    for (int i = 0; i < bpCount; i++)
     {
-        int n = int.Parse(lines[bpStart + 1]);
-        for (int i = 0; i < n; i++)
-        {
-            int nameLine = bpStart + 2 + i * 2;
-            if (lines.Length > nameLine + 1)
-                backpack[lines[nameLine]] = int.Parse(lines[nameLine + 1]);
-        }
+        string k = GS("backpack." + i + ".key", "");
+        if (k != "") backpack[k] = GI("backpack." + i + ".val");
     }
 
-    // ── Toolbar (marker) ──
-    for (int i = 0; i < 8; i++) { toolbarSlots[i] = null; toolbarCounts[i] = 0; }
-    int tbStart = Array.IndexOf(lines, "TOOLBAR_START");
-    if (tbStart >= 0)
-    {
-        for (int i = 0; i < 8; i++)
-        {
-            int slotLine  = tbStart + 1 + i * 2;
-            int countLine = slotLine + 1;
-            if (lines.Length > countLine)
-            {
-                string name = lines[slotLine];
-                toolbarSlots[i] = name == "empty" ? null : name;
-                int.TryParse(lines[countLine], out toolbarCounts[i]);
-            }
-        }
-    }
-
-    // ── Player houses (marker) ──
+    // ── Houses ──
     ownedHousePlots.Clear();
     houseDataList.Clear();
-    int housesStart = Array.IndexOf(lines, "HOUSES_START");
-    if (housesStart >= 0 && lines.Length > housesStart + 1)
+    int houseCount = GI("houses.count");
+    for (int i = 0; i < houseCount; i++)
     {
-        if (int.TryParse(lines[housesStart + 1], out int houseCount))
+        int hx = GI("house." + i + ".x");
+        int hy = GI("house." + i + ".y");
+        var hd = new HouseData(hx, hy)
         {
-            int hi = housesStart + 2;
-            for (int i = 0; i < houseCount && hi < lines.Length; i++)
+            WallColor = GS("house." + i + ".wall", "Beige"),
+            FloorColor = GS("house." + i + ".floor", "Oak")
+        };
+        int furnCount = GI("house." + i + ".furnCount");
+        for (int j = 0; j < furnCount; j++)
+        {
+            string[] fp = GS("house." + i + ".furn." + j, "").Split('|');
+            if (fp.Length >= 4 &&
+                int.TryParse(fp[1], out int rx) &&
+                int.TryParse(fp[2], out int ry) &&
+                int.TryParse(fp[3], out int cost))
             {
-                // plot position
-                if (!int.TryParse(lines[hi], out int hx)) break; hi++;
-                if (!int.TryParse(lines[hi], out int hy)) break; hi++;
-
-                // house data
-                string wallColor  = hi < lines.Length ? lines[hi++] : "Beige";
-                string floorColor = hi < lines.Length ? lines[hi++] : "Oak";
-
-                var hd = new HouseData(hx, hy)
-                {
-                    WallColor  = wallColor,
-                    FloorColor = floorColor
-                };
-
-                // furniture
-                if (hi < lines.Length && int.TryParse(lines[hi++], out int fCount))
-                {
-                    for (int j = 0; j < fCount && hi < lines.Length; j++)
-                    {
-                        string[] fp = lines[hi++].Split('|');
-                        if (fp.Length >= 4 &&
-                            int.TryParse(fp[1], out int rx) &&
-                            int.TryParse(fp[2], out int ry) &&
-                            int.TryParse(fp[3], out int cost))
-                        {
-                            hd.Furniture.Add(new HouseFurniture(fp[0], rx, ry, cost, Color.Gray));
-                        }
-                    }
-                }
-
-                ownedHousePlots.Add((hx, hy));
-                houseDataList.Add(hd);
+                hd.Furniture.Add(new HouseFurniture(fp[0], rx, ry, cost, Color.Gray));
             }
-
-            // spawn all houses back into the world
-            for (int i = 0; i < ownedHousePlots.Count; i++)
-            {
-                activeHousePlotIndex = i;
-                SpawnPlayerHouse(i);
-            }
-            // restore active index to last house
-            activeHousePlotIndex = Math.Max(0, ownedHousePlots.Count - 1);
         }
+        ownedHousePlots.Add((hx, hy));
+        houseDataList.Add(hd);
     }
-}      
+    for (int i = 0; i < ownedHousePlots.Count; i++) { activeHousePlotIndex = i; SpawnPlayerHouse(i); }
+    activeHousePlotIndex = Math.Max(0, ownedHousePlots.Count - 1);
+
+    // ── Pets ──
+    ownedEggs.Clear();
+    int eggCount = GI("eggs.count");
+    for (int i = 0; i < eggCount; i++) { var e = GS("egg." + i, "empty"); if (e != "empty") ownedEggs.Add(e); }
+    incubatingEgg = GN("incubatingEgg");
+    incubationProgress = GF("incubationProgress");
+    incubationNeeded = 1f / daySpeed;
+    storedPets.Clear();
+    int spCount = GI("storedPets.count");
+    for (int i = 0; i < spCount; i++) { var sp = GS("storedPet." + i, "empty"); if (sp != "empty") storedPets.Add(sp); }
+
+    string apType = GS("activePet.type", "empty");
+    activePet = apType == "empty" ? null
+        : new Pet(new Vector2(GF("activePet.x"), GF("activePet.y")), apType, PetColorFor(apType + " Egg"));
+
+    string ppType = GS("pendingPet.type", "empty");
+    pendingPet = ppType == "empty" ? null
+        : new Pet(new Vector2(GF("pendingPet.x"), GF("pendingPet.y")), ppType, PetColorFor(ppType + " Egg"));
+}  
+
+static void DrawIncubatorMenu()
+{
+    if (!incubatorMenuOpen) return;
+
+    int pw = 460, ph = 320;
+    int px = ScreenWidth / 2 - pw / 2, py = ScreenHeight / 2 - ph / 2;
+    Raylib.DrawRectangle(0, 0, ScreenWidth, ScreenHeight, new Color((byte)0,(byte)0,(byte)0,(byte)120));
+    Raylib.DrawRectangle(px, py, pw, ph, new Color((byte)24,(byte)24,(byte)34,(byte)245));
+    Raylib.DrawRectangleLines(px, py, pw, ph, Color.Gold);
+    Raylib.DrawText("INCUBATOR", px + 20, py + 18, 26, Color.Gold);
+
+    Raylib.DrawText("[Q] Close", px + pw - 110, py + 22, 16, Color.LightGray);
+
+    if (Raylib.IsKeyPressed(KeyboardKey.Q))
+    {
+        incubatorMenuOpen = false;
+        return;
+    }
+
+    if (incubatingEgg != null)
+    {
+        // currently incubating: show egg + progress
+        DrawEggIcon(incubatingEgg, px + 90, py + 150, 70);
+        Raylib.DrawText(incubatingEgg, px + 150, py + 90, 22, Color.White);
+
+        float prog = incubationNeeded > 0 ? incubationProgress / incubationNeeded : 0f;
+        prog = Math.Clamp(prog, 0f, 1f);
+        int barX = px + 150, barY = py + 140, barW = 260;
+        Raylib.DrawRectangle(barX, barY, barW, 22, new Color((byte)40,(byte)40,(byte)40,(byte)255));
+        Raylib.DrawRectangle(barX, barY, (int)(barW * prog), 22, new Color((byte)255,(byte)160,(byte)40,(byte)255));
+        Raylib.DrawRectangleLines(barX, barY, barW, 22, Color.White);
+        Raylib.DrawText($"{(int)(prog * 100)}%  —  hatches after one full day",
+            barX, barY + 30, 16, Color.LightGray);
+    }
+    else
+    {
+        Raylib.DrawText("Select an egg to incubate:", px + 20, py + 60, 18, Color.LightGray);
+
+        // list eggs found in the toolbar
+        int row = 0;
+        for (int s = 0; s < toolbarSlots.Length; s++)
+        {
+            if (toolbarSlots[s] == null || !IsEgg(toolbarSlots[s])) continue;
+            string egg = toolbarSlots[s];
+            int ry = py + 95 + row * 56;
+            Rectangle r = new Rectangle(px + 20, ry, pw - 40, 48);
+            bool hov = Raylib.CheckCollisionPointRec(Raylib.GetMousePosition(), r);
+            Raylib.DrawRectangleRec(r, hov ? new Color((byte)60,(byte)60,(byte)80,(byte)255)
+                                           : new Color((byte)40,(byte)40,(byte)55,(byte)255));
+            Raylib.DrawRectangleLinesEx(r, 2, hov ? Color.Gold : Color.DarkGray);
+            DrawEggIcon(egg, px + 48, ry + 24, 34);
+            Raylib.DrawText($"{egg}  x{toolbarCounts[s]}", px + 78, ry + 14, 20, Color.White);
+            Raylib.DrawText("[Incubate]", px + pw - 130, ry + 16, 18, Color.Gold);
+
+            if (hov && Raylib.IsMouseButtonPressed(MouseButton.Left))
+            {
+                StartIncubation(egg);
+                toolbarCounts[s]--;
+                if (toolbarCounts[s] <= 0) toolbarSlots[s] = null;
+            }
+            row++;
+        }
+        if (row == 0)
+            Raylib.DrawText("No eggs. Defeat a world boss for a chance at one.",
+                px + 20, py + 110, 18, Color.Gray);
+    }
+}
 
 static void DrawTrolley(int x, int y, bool takenAway)
 {
@@ -10415,11 +11032,20 @@ static void DrawSupermarketInventoryUI()
     Raylib.DrawText("CLOSE (Q)", wx + 240, wy + 432, 20, Color.White);
 }
         static void TriggerShake(float duration) => shakeDuration = duration;
+        static void RegisterComboHit()
+        {
+            comboCount++;
+            comboTimer = comboWindow;
+        }
+        // bonus damage scales gently with combo (every 5 hits = +1 flat)
+        static int ComboDamageBonus() => comboCount / 5;
                 public static void ShowLevelUp(string skill, int level)
                     {
                     levelUpMessage = $"{skill} LEVEL UP! {level}";
                     levelUpTimer = 2.5f;
                     }
+
+
  static void DrawShopUI()
 {
     if (!shopUIOpen) return;
@@ -12187,6 +12813,12 @@ static string ResolveCookedIcon(string item, out Color tint)
 }
 static void DrawInventoryIcon(string item, int x, int y, int size)
 {
+    if (item == "Colossus Egg" || item == "Titan Egg")
+    {
+        DrawEggIcon(item, x + size / 2, y + size / 2, size);
+        return;
+    }
+
     float s = size / 80f;              // scale factor (icons designed for 80px)
     int cx = x + size / 2;
     int cy = y + size / 2 - (int)(10 * s);
@@ -12582,6 +13214,92 @@ static void UpdateDroppedItems(float dt)
     }
 }
 
+static void SpawnSplat(Vector2 center, Color baseColor, int count = 8)
+{
+    for (int i = 0; i < count; i++)
+    {
+        float ang = Raylib.GetRandomValue(0, 360) * (MathF.PI / 180f);
+        float spd = Raylib.GetRandomValue(40, 160);
+        splats.Add(new Splat {
+            Position  = center,
+            Velocity  = new Vector2(MathF.Cos(ang), MathF.Sin(ang)) * spd,
+            Timer     = 0.45f,
+            MaxTimer  = 0.45f,
+            Radius    = Raylib.GetRandomValue(2, 5),
+            SplatColor = baseColor
+        });
+    }
+}
+
+static void UpdateSplats(float dt)
+{
+    for (int i = splats.Count - 1; i >= 0; i--)
+    {
+        var s = splats[i];
+        s.Timer -= dt;
+        if (s.Timer <= 0f) { splats.RemoveAt(i); continue; }
+        s.Position += s.Velocity * dt;
+        s.Velocity *= 0.88f;            // drag, so they fan out then settle
+        splats[i] = s;
+    }
+}
+
+static void DrawSplats()
+{
+    foreach (var s in splats)
+    {
+        float a = s.Timer / s.MaxTimer;          // 1 → 0
+        Raylib.DrawCircleV(s.Position, s.Radius * a,
+            new Color(s.SplatColor.R, s.SplatColor.G, s.SplatColor.B, (byte)(220 * a)));
+    }
+}
+
+static void SpawnDeathFx(Vector2 center, Color tint, string type)
+{
+    deathFx.Add(new DeathFx {
+        Position = center, Type = type,
+        Timer = 0.6f, MaxTimer = 0.6f, TintColor = tint
+    });
+    // burst of corpse particles, reusing the splat system
+    SpawnSplat(center, tint, 18);
+
+    // fire/magma types throw extra orange embers
+    if (type == "Fire Lizard" || type == "Magma Beetle")
+        SpawnSplat(center, new Color((byte)240,(byte)120,(byte)20,(byte)255), 12);
+
+    
+}
+
+static void UpdateDeathFx(float dt)
+{
+    for (int i = deathFx.Count - 1; i >= 0; i--)
+    {
+        var d = deathFx[i];
+        d.Timer -= dt;
+        if (d.Timer <= 0f) { deathFx.RemoveAt(i); continue; }
+        deathFx[i] = d;
+    }
+}
+
+static void DrawDeathFx()
+{
+    foreach (var d in deathFx)
+    {
+        float p = 1f - (d.Timer / d.MaxTimer);   // 0 → 1 progress
+        float a = d.Timer / d.MaxTimer;           // 1 → 0 fade
+
+        // expanding shockwave ring
+        float ringR = 6f + p * 38f;
+        Raylib.DrawCircleLines((int)d.Position.X, (int)d.Position.Y, ringR,
+            new Color(d.TintColor.R, d.TintColor.G, d.TintColor.B, (byte)(200 * a)));
+
+        // fading, rising silhouette
+        int sy = (int)(d.Position.Y - p * 18f);
+        Raylib.DrawCircle((int)d.Position.X, sy, (int)(14 * a),
+            new Color(d.TintColor.R, d.TintColor.G, d.TintColor.B, (byte)(140 * a)));
+    }
+}
+
 static void GiveItemBack(string item, int count)
 {
     switch (item)
@@ -12843,6 +13561,8 @@ static void DrawDropConfirm()
         hoverCooking = Raylib.CheckCollisionPointRec(mouse, cookingBtn);
         hoverElemental = Raylib.CheckCollisionPointRec(mouse, elementalBtn);
         hoverCards = Raylib.CheckCollisionPointRec(mouse, new Rectangle(ScreenWidth - 320, ScreenHeight - 380, 140, 40));
+        hoverOneHand = Raylib.CheckCollisionPointRec(mouse, new Rectangle(ScreenWidth - 320, ScreenHeight - 430, 140, 40));
+        hoverTwoHand = Raylib.CheckCollisionPointRec(mouse, new Rectangle(ScreenWidth - 320, ScreenHeight - 480, 140, 40));
 
     }
     else
@@ -12865,6 +13585,8 @@ static void DrawDropConfirm()
         hoverCooking = false;
         hoverElemental = false;
         hoverCards = false;
+        hoverOneHand = false;
+        hoverTwoHand = false;
             }
 }
     static void DrawSkillsUI()
@@ -13106,6 +13828,34 @@ float cardsProg = (float)player.PlayingCardsXP / cardsReq;
 Raylib.DrawRectangle(ScreenWidth - 320, ScreenHeight - 343, 140, 8, new Color((byte)40,(byte)40,(byte)40,(byte)255));
 Raylib.DrawRectangle(ScreenWidth - 320, ScreenHeight - 343, (int)(140 * cardsProg), 8, Color.Gold);
 
+// 1H Melee
+Rectangle oneHandBtn = new Rectangle(ScreenWidth - 320, ScreenHeight - 430, 140, 40);
+Color oneHandColor = hoverOneHand ? Color.Gold : Color.White;
+Raylib.DrawRectangleRec(oneHandBtn, new Color((byte)0,(byte)0,(byte)0,(byte)200));
+Raylib.DrawRectangleLinesEx(oneHandBtn, 2, oneHandColor);
+Raylib.DrawText($"1H Melee Lv {player.OneHandMeleeLevel}", ScreenWidth - 315, ScreenHeight - 418, 18, oneHandColor);
+if (!hoverOneHand)
+{
+    int req = player.OneHandMeleeLevel * player.OneHandMeleeLevel * 50;
+    float prog = (float)player.OneHandMeleeXP / req;
+    Raylib.DrawRectangle(ScreenWidth - 320, ScreenHeight - 393, 140, 8, new Color((byte)40,(byte)40,(byte)40,(byte)255));
+    Raylib.DrawRectangle(ScreenWidth - 320, ScreenHeight - 393, (int)(140 * prog), 8, new Color((byte)230,(byte)160,(byte)60,(byte)255));
+}
+
+// 2H Melee
+Rectangle twoHandBtn = new Rectangle(ScreenWidth - 320, ScreenHeight - 480, 140, 40);
+Color twoHandColor = hoverTwoHand ? Color.Gold : Color.White;
+Raylib.DrawRectangleRec(twoHandBtn, new Color((byte)0,(byte)0,(byte)0,(byte)200));
+Raylib.DrawRectangleLinesEx(twoHandBtn, 2, twoHandColor);
+Raylib.DrawText($"2H Melee Lv {player.TwoHandMeleeLevel}", ScreenWidth - 315, ScreenHeight - 468, 18, twoHandColor);
+if (!hoverTwoHand)
+{
+    int req = player.TwoHandMeleeLevel * player.TwoHandMeleeLevel * 50;
+    float prog = (float)player.TwoHandMeleeXP / req;
+    Raylib.DrawRectangle(ScreenWidth - 320, ScreenHeight - 443, 140, 8, new Color((byte)40,(byte)40,(byte)40,(byte)255));
+    Raylib.DrawRectangle(ScreenWidth - 320, ScreenHeight - 443, (int)(140 * prog), 8, new Color((byte)200,(byte)80,(byte)40,(byte)255));
+}
+
 
     // XP tooltips
     if (hoverWoodcutting)
@@ -13209,6 +13959,18 @@ Raylib.DrawRectangle(ScreenWidth - 320, ScreenHeight - 343, (int)(140 * cardsPro
     int req = player.PlayingCardsLevel * player.PlayingCardsLevel * 40;
     Raylib.DrawRectangle(ScreenWidth - 480, ScreenHeight - 380, 150, 40, new Color((byte)0,(byte)0,(byte)0,(byte)210));
     Raylib.DrawText($"XP: {player.PlayingCardsXP}/{req}", ScreenWidth - 475, ScreenHeight - 368, 18, Color.LightGray);
+    }
+    if (hoverOneHand)
+    {
+        int req = player.OneHandMeleeLevel * player.OneHandMeleeLevel * 50;
+        Raylib.DrawRectangle(ScreenWidth - 480, ScreenHeight - 430, 150, 40, new Color((byte)0,(byte)0,(byte)0,(byte)210));
+        Raylib.DrawText($"XP: {player.OneHandMeleeXP}/{req}", ScreenWidth - 475, ScreenHeight - 418, 18, Color.LightGray);
+    }
+    if (hoverTwoHand)
+    {
+        int req = player.TwoHandMeleeLevel * player.TwoHandMeleeLevel * 50;
+        Raylib.DrawRectangle(ScreenWidth - 480, ScreenHeight - 480, 150, 40, new Color((byte)0,(byte)0,(byte)0,(byte)210));
+        Raylib.DrawText($"XP: {player.TwoHandMeleeXP}/{req}", ScreenWidth - 475, ScreenHeight - 468, 18, Color.LightGray);
     }
     DrawSkillDetailMenu();
     }
@@ -13616,14 +14378,18 @@ Raylib.DrawRectangle(ScreenWidth - 320, ScreenHeight - 343, (int)(140 * cardsPro
         {
             musicMainMenu = Raylib.LoadMusicStream("resources/music/Meadow Thoughts.ogg");
             musicDbar   = Raylib.LoadMusicStream("resources/music/dbarMusic.mp3");
-            musicFarm  = Raylib.LoadMusicStream("resources/music/Salt Marsh Birds.mp3");
+            musicFarm  = Raylib.LoadMusicStream("resources/music/farmMusic.mp3");
+            musicCity  = Raylib.LoadMusicStream("resources/music/Pleasant Creek.mp3");
             musicHouse = Raylib.LoadMusicStream("resources/music/Meadow Thoughts.ogg");
             musicRain = Raylib.LoadMusicStream("resources/music/rainMusic.ogg");
+            musicMeadowlands = Raylib.LoadMusicStream("resources/music/meadowlandsMusic.mp3");
             musicForest = Raylib.LoadMusicStream("resources/music/forestMusic.mp3");
-            musicBeach = Raylib.LoadMusicStream("resources/music/forestMusic.mp3");
-            musicDesert = Raylib.LoadMusicStream("resources/music/forestMusic.mp3");
-            musicSnow = Raylib.LoadMusicStream("resources/music/forestMusic.mp3");
+            musicBeach = Raylib.LoadMusicStream("resources/music/beachMusic.mp3");
+            musicDesert = Raylib.LoadMusicStream("resources/music/desertTownMusic.mp3");
+            musicSnow = Raylib.LoadMusicStream("resources/music/snowMusic.mp3");
             musicTakeaways = Raylib.LoadMusicStream("resources/music/takeawayMusic.ogg");
+            musicOcean  = Raylib.LoadMusicStream("resources/music/farmMusic.mp3");
+            musicVolcano  = Raylib.LoadMusicStream("resources/music/wastelands.ogg");
 
             // Load these once at startup/asset loading section
             soundPauseOpen  = Raylib.LoadSound("resources/sound/pauseOpen.wav");
@@ -13650,6 +14416,14 @@ Raylib.DrawRectangle(ScreenWidth - 320, ScreenHeight - 343, (int)(140 * cardsPro
             Raylib.SetMusicVolume(musicDesert, musicVolume);
             Raylib.SetMusicVolume(musicSnow, musicVolume);
             Raylib.SetMusicVolume(musicTakeaways, musicVolume);
+            Raylib.SetMusicVolume(musicMeadowlands, musicVolume);
+            Raylib.SetMusicVolume(musicCity, musicVolume);
+            Raylib.SetMusicVolume(musicOcean, musicVolume);
+            Raylib.SetMusicVolume(musicVolcano, musicVolume);
+           
+           
+           
+           
 
             Raylib.SetSoundVolume(soundPauseOpen, soundVolume);
             Raylib.SetSoundVolume(soundPauseClose, soundVolume);
@@ -13979,14 +14753,24 @@ if (!torchPickedUp && Vector2.Distance(player.Center, torchPosition) < 60)
     }
 }
 
+// Weapon pickups and routing to there weapon holders
 // Stick pickup
 if (!stickPickedUp && Vector2.Distance(player.Center, stickPosition) < 60)
 {
     if (Raylib.IsKeyPressed(KeyboardKey.E) && !chatInputOpen)
     {
-        stickPickedUp = true;
-        AddToToolbar("Stick");
-        ShowNotification("Stick added to toolbar! Equip it to fight.");
+        stickPickedUp = true;   // now owned → appears in inventory
+        if (equipped1H == null)
+        {
+            equipped1H  = "Stick";
+            equipped2H  = null;
+            armorWeapon = "Stick";
+            ShowNotification("Stick equipped in 1H weapon slot! Press T to draw it.");
+        }
+        else
+        {
+            ShowNotification("Stick added to inventory (1H slot full).");
+        }
     }
 }
 
@@ -13995,9 +14779,18 @@ if (!swordPickedUp && Vector2.Distance(player.Center, swordPosition) < 60)
 {
     if (Raylib.IsKeyPressed(KeyboardKey.E) && !chatInputOpen)
     {
-        swordPickedUp = true;
-        AddToToolbar("Sword");
-        ShowNotification("Sword added to toolbar! Much better than a stick.");
+        swordPickedUp = true;   // now owned → appears in inventory
+        if (equipped1H == null)
+        {
+            equipped1H  = "Sword";
+            equipped2H  = null;
+            armorWeapon = "Sword";
+            ShowNotification("Sword equipped in 1H weapon slot! Press T to draw it.");
+        }
+        else
+        {
+            ShowNotification("Sword added to inventory (1H slot full).");
+        }
     }
 }
 
@@ -14005,17 +14798,40 @@ if (!swordPickedUp && Vector2.Distance(player.Center, swordPosition) < 60)
 if (!bowPickedUp && Vector2.Distance(player.Center, bowSpawnPos) < 50 && Raylib.IsKeyPressed(KeyboardKey.E) && !chatInputOpen)
 {
     bowPickedUp = true;
-    player.HasBow = true;
-    AcquireGear("Bow");
+    player.HasBow = true;   // now owned → appears in inventory
+    if (equipped2H == null)
+    {
+        equipped2H  = "Bow";
+        equipped1H  = null;
+        armorShield = null;
+        armorWeapon = "Bow";
+        ShowNotification("Bow equipped in 2H weapon slot! Press T to draw it.");
+    }
+    else
+    {
+        ShowNotification("Bow added to inventory (2H slot full).");
+    }
 }
 
 // Crossbow pickup
 if (!crossbowPickedUp && Vector2.Distance(player.Center, crossbowSpawnPos) < 50 && Raylib.IsKeyPressed(KeyboardKey.E) && !chatInputOpen)
 {
     crossbowPickedUp = true;
-    player.HasCrossbow = true;
-    AcquireGear("Crossbow");
+    player.HasCrossbow = true;   // now owned → appears in inventory
+    if (equipped2H == null)
+    {
+        equipped2H  = "Crossbow";
+        equipped1H  = null;
+        armorShield = null;
+        armorWeapon = "Crossbow";
+        ShowNotification("Crossbow equipped in 2H weapon slot! Press T to draw it.");
+    }
+    else
+    {
+        ShowNotification("Crossbow added to inventory (2H slot full).");
+    }
 }
+
 if (Raylib.IsKeyPressed(KeyboardKey.T) && !chatInputOpen)
 {
     currentPhase = currentPhase == HandPhase.Tools ? HandPhase.Combat : HandPhase.Tools;
@@ -14025,6 +14841,9 @@ if (Raylib.IsKeyPressed(KeyboardKey.T) && !chatInputOpen)
 if (Raylib.IsKeyPressed(KeyboardKey.G) && !chatInputOpen)
     if (!pauseMenuOpen && !player.InventoryOpen && !skillsOpen && !questsOpen)
         armorMenuOpen = !armorMenuOpen;
+
+if (Raylib.IsKeyPressed(KeyboardKey.J) && !chatInputOpen)
+            playerMenuOpen = !playerMenuOpen;
 
 // Rocket — press E nearby to launch into space
                     if (Vector2.Distance(player.Center, rocketPosition) < 100
@@ -14108,6 +14927,11 @@ if (Raylib.IsKeyPressed(KeyboardKey.F8))
                             houseBuildingTimer  = 0f;
                             houseBuildingAlpha  = 0f;
                             houseBuildingFadeIn = true;
+                            if (activeHousePlotIndex >= 0 && activeHousePlotIndex < ownedHousePlots.Count)
+                            {
+                                var newPlot = ownedHousePlots[activeHousePlotIndex];
+                                player.Position = new Vector2(newPlot.x + 120, newPlot.y + 150);
+                            }
                         }
                     }
                     timeOfDay += daySpeed * dt;
@@ -14170,6 +14994,17 @@ if (Raylib.IsKeyPressed(KeyboardKey.F8))
                         ft.Position.Y -= 40f * dt;
                         floatingTexts[i] = ft;
                         if (ft.Timer <= 0) floatingTexts.RemoveAt(i);
+                    }
+                    UpdateSplats(dt);
+                    UpdateDeathFx(dt);
+                    UpdateIncubation(dt);
+                    UpdatePendingPet();
+                    if (activePet != null) activePet.Update(dt, player.Center);
+
+                     if (comboTimer > 0f)
+                    {
+                        comboTimer -= dt;
+                        if (comboTimer <= 0f) comboCount = 0;
                     }
 
                     for (int i = lootDrops.Count - 1; i >= 0; i--)
@@ -14299,8 +15134,17 @@ if (Raylib.IsKeyPressed(KeyboardKey.Space) && !chatInputOpen)
     {
         int weaponBonus = GetWeaponDamage(equipped);
         int slotBonus   = GetWeaponDamage(armorWeapon);
-        int attackDamage = 1 + (player.CombatLevel / 10) + weaponBonus;
+        int attackDamage = 1 + (player.CombatLevel / 10) + weaponBonus + ComboDamageBonus();
+
+        // crit roll
+        bool isCrit = Raylib.GetRandomValue(1, 100) <= (int)(critChance * 100);
+        if (isCrit) attackDamage = (int)(attackDamage * critMultiplier);
+
         enemy.Health -= attackDamage;
+        AwardMeleeXP(equipped, Math.Max(1, Math.Min(attackDamage, enemy.Health + attackDamage)));
+        enemy.TriggerFlash();
+        SpawnSplat(enemy.Center, new Color((byte)170, (byte)20, (byte)20, (byte)255), isCrit ? 16 : 8);
+        RegisterComboHit();
 
         // dog hit sound
         if (enemy.Type == "Wild Dog")
@@ -14308,16 +15152,17 @@ if (Raylib.IsKeyPressed(KeyboardKey.Space) && !chatInputOpen)
 
         floatingTexts.Add(new FloatingText {
             Position = enemy.Position - new Vector2(0, 20),
-            Text = $"-{attackDamage}",
-            Timer = 1f,
-            TextColor = equipped == "Sword" ? Color.Orange : Color.Red
+            Text = isCrit ? $"CRIT -{attackDamage}!" : $"-{attackDamage}",
+            Timer = isCrit ? 1.3f : 1f,
+            TextColor = isCrit ? Color.Gold : (equipped == "Sword" ? Color.Orange : Color.Red)
         });
 
-        TriggerShake(0.1f);
+        TriggerShake(isCrit ? 0.22f : 0.1f);
 
         if (enemy.Health <= 0)
         {
             enemy.Dead = true;
+            SpawnDeathFx(enemy.Center, enemy.EnemyColor, enemy.Type);
 
                 if (enemy.Type == "Wild Dog") Raylib.PlaySound(soundDogDie);
 
@@ -14406,7 +15251,7 @@ else if (enemy.Type == "Mountain Goat") {
  // Space = fire in facing direction
     if (Raylib.IsKeyPressed(KeyboardKey.Space) && !chatInputOpen
         && currentPhase == HandPhase.Combat
-        && (equipped2H == "Bow" || equipped2H == "Crossbow"))
+        && IsRangedWeapon(equipped2H))
     {
         Vector2 facingDir = player.Facing switch
         {
@@ -14422,7 +15267,7 @@ else if (enemy.Type == "Mountain Goat") {
     // Left click = fire toward mouse world position
     if (Raylib.IsMouseButtonPressed(MouseButton.Left)
         && currentPhase == HandPhase.Combat
-        && (equipped2H == "Bow" || equipped2H == "Crossbow"))
+        && IsRangedWeapon(equipped2H))
     {
         Vector2 mouseWorld = Raylib.GetScreenToWorld2D(Raylib.GetMousePosition(), camera);
         Vector2 mouseDir = Vector2.Normalize(mouseWorld - player.Center);
@@ -14430,6 +15275,7 @@ else if (enemy.Type == "Mountain Goat") {
     }
 
     UpdateProjectiles(dt);
+    UpdateRemoteVisualProjectiles(dt);
     
 
     // Space = spell in facing direction
@@ -14565,6 +15411,7 @@ else if (enemy.Type == "Mountain Goat") {
         player.Hidden = false;
         // spawn player beside the vehicle
         player.Position = new Vector2(vehicle.Position.X + 110, vehicle.Position.Y + 10);
+        multiplayer.SendMount("", false);
     }
 }
 else
@@ -14605,6 +15452,7 @@ else
 {
     vehicle.Driving = true;
     player.Hidden = true;
+    multiplayer.SendMount(vehicle.Type.ToString(), true);
 }
         player.Hidden = false;
     }
@@ -14638,6 +15486,7 @@ else
             rideable.Riding = false;
             player.Hidden = false;
             player.Position = new Vector2(rideable.Position.X + 70, rideable.Position.Y);
+            multiplayer.SendMount("", false);
         }
     }
     else
@@ -14652,6 +15501,7 @@ else
 
                 rideable.Riding = true;
                 player.Hidden = true;
+                 multiplayer.SendMount(rideable.Type.ToString(), false);
             }
         }
     }
@@ -15068,7 +15918,9 @@ foreach (var entrance in dungeonEntrances)
         UpdateSpace(dt);
         break;
 
-        case SceneState.CardGame: 
+        case SceneState.CardGame:
+        string mpCardSceneTag = "CardGame";
+        multiplayer.Update(player, playerName, mpCardSceneTag); 
         UpdateCardGame(dt); 
         break;
 
@@ -16046,6 +16898,7 @@ if (currentBuilding.BuildingName == "TENNIS COURT")
     if (!tennisActive && Vector2.Distance(player.Center, netPos) < 150 && Raylib.IsKeyPressed(KeyboardKey.Space))
     {
         tennisActive = true;
+        sportPlayCounts["Tennis"] = sportPlayCounts.GetValueOrDefault("Tennis") + 1;
         tennisDifficultySelect = true;
         player.Hidden = true;
         tennisPlayerScore = 0;
@@ -16102,6 +16955,7 @@ if (currentBuilding.BuildingName == "BASKETBALL COURT")
         if (nearFreeThrow && Raylib.IsKeyPressed(KeyboardKey.Space))
         {
             basketballActive = true;
+            sportPlayCounts["Basketball"] = sportPlayCounts.GetValueOrDefault("Basketball") + 1;
             bbPower = 0f;
             bbPowerDir = 1f;
             bbAimX = 0f;
@@ -16605,11 +17459,14 @@ if (currentBuilding.BuildingName == "POLICE STATION")
 
 
     break;
-    case SceneState.Minigame:
+     case SceneState.Minigame:
+                    if (lastScene != SceneState.Minigame)
+                        minigamePlayCounts[activeMinigameType.ToString()] =
+                            minigamePlayCounts.GetValueOrDefault(activeMinigameType.ToString()) + 1;
                     UpdateMinigameScreen(dt);
                     break;
             }
-
+           lastScene = currentScene;
         }       
         
 
@@ -17458,6 +18315,7 @@ static void DrawCheatsMenu()
 
         if (hover && Raylib.IsMouseButtonPressed(MouseButton.Left))
         {
+            timesCheated++;
             switch (i)
             {
                 case 0:
@@ -17876,6 +18734,8 @@ for (int i = -53000; i < 53000; i += 200)
     Raylib.DrawRectangle(35080, i, 12, 100, Color.Yellow);
 }
             
+DrawSplats();
+DrawDeathFx();
 
             foreach (var ft in floatingTexts)
             {
@@ -19132,6 +19992,44 @@ foreach (var entrance in dungeonEntrances)
                 drop.Draw();
             }
 
+            // ── dropped boss eggs ──
+            for (int i = droppedEggs.Count - 1; i >= 0; i--)
+            {
+                var (epos, egg, age) = droppedEggs[i];
+                age += Raylib.GetFrameTime();
+                droppedEggs[i] = (epos, egg, age);
+
+                // spawn animation: pop up then settle with a damped bounce
+                float yOff = 0f, scale = 1f;
+                if (age < 0.6f)
+                {
+                    float t = age / 0.6f;                          // 0→1
+                    yOff  = -MathF.Abs(MathF.Sin(t * MathF.PI * 2f)) * 22f * (1f - t); // bounce
+                    scale = 0.4f + 0.6f * Math.Min(1f, t * 2f);    // grow in
+                }
+                int drawY = (int)(epos.Y + yOff);
+                int sz = (int)(28 * scale);
+
+                DrawEggIcon(egg, (int)epos.X, drawY, sz, true, age);
+
+                if (Vector2.Distance(player.Center, epos) < 60)
+                {
+                    Raylib.DrawText($"[E] Pick up {egg}", (int)epos.X - 70, (int)epos.Y - 34, 14, Color.White);
+                    if (Raylib.IsKeyPressed(KeyboardKey.E) && !chatInputOpen)
+                    {
+                        if (AddOneItemToToolbar(egg))
+                        {
+                            ShowNotification($"Picked up {egg}!");
+                            droppedEggs.RemoveAt(i);
+                        }
+                        else
+                        {
+                            ShowNotification("Toolbar full — make room for the egg.");
+                        }
+                    }
+                }
+            }
+
             foreach (var p in projectiles)
             {
                 Color c = p.AmmoType == "Bolts"
@@ -19177,12 +20075,52 @@ foreach (var entrance in dungeonEntrances)
             new Color((byte)40,(byte)0,(byte)60,(byte)60));
     }
 }
+
+// ── REMOTE PLAYER ARROWS & SPELLS (visual only, no damage) ────────────────
+foreach (var p in remoteVisualProjectiles)
+{
+    if (p.IsSpell)
+    {
+        Color col = GetSpellColor(p.Kind);
+        float lifeRatio = Math.Clamp(p.Life / 1.5f, 0f, 1f);
+        float pulse = 1f + MathF.Sin(p.Life * 20f) * 0.3f;
+        int radius = (int)(7 * pulse);
+
+        byte glowAlpha = (byte)(120 * lifeRatio);
+        Raylib.DrawCircle((int)p.Pos.X, (int)p.Pos.Y, radius + 4,
+            new Color(col.R, col.G, col.B, glowAlpha));
+        Raylib.DrawCircle((int)p.Pos.X, (int)p.Pos.Y, radius, col);
+        Raylib.DrawCircle((int)p.Pos.X, (int)p.Pos.Y, radius / 2,
+            new Color((byte)255,(byte)255,(byte)255,(byte)180));
+
+        if (p.Kind == "Fire")
+            Raylib.DrawCircle((int)p.Pos.X - (int)(p.Vel.X * 0.02f),
+                (int)p.Pos.Y - (int)(p.Vel.Y * 0.02f), radius - 2,
+                new Color((byte)255,(byte)140,(byte)0,(byte)80));
+        else if (p.Kind == "Lightning")
+            Raylib.DrawLineEx(p.Pos, p.Pos - Vector2.Normalize(p.Vel) * 12f, 2f,
+                new Color((byte)255,(byte)255,(byte)100,(byte)150));
+        else if (p.Kind == "Dark")
+            Raylib.DrawCircle((int)p.Pos.X, (int)p.Pos.Y, radius + 8,
+                new Color((byte)40,(byte)0,(byte)60,(byte)60));
+    }
+    else
+    {
+        Color c = p.Kind == "Bolts"
+            ? new Color((byte)180,(byte)160,(byte)80,(byte)255)
+            : new Color((byte)160,(byte)120,(byte)70,(byte)255);
+        Vector2 tail = p.Pos - Vector2.Normalize(p.Vel) * 14f;
+        Raylib.DrawLineEx(tail, p.Pos, 3f, c);
+        Raylib.DrawCircle((int)p.Pos.X, (int)p.Pos.Y, 3, c);
+    }
+}
+
 DrawRocket((int)rocketPosition.X, (int)rocketPosition.Y);
     // "press E" prompt when near
     if (Vector2.Distance(player.Center, rocketPosition) < 100)
         Raylib.DrawText("E = Launch into space", (int)rocketPosition.X - 40, (int)rocketPosition.Y - 120, 18, Color.White);
 
-            // Campfires
+// Campfires
 campfireAnimTimer += Raylib.GetFrameTime();
 foreach (var cf in campfirePositions)
 {
@@ -19233,6 +20171,39 @@ foreach (var cf in campfirePositions)
         }
     }
 }
+
+// Incubators
+            incubatorAnimTimer += Raylib.GetFrameTime();
+            nearIncubator = incubatorPositions.Any(p => Vector2.Distance(player.Center, p) < 120);
+
+            foreach (var inc in incubatorPositions)
+            {
+                int ix = (int)inc.X, iy = (int)inc.Y;
+                // base + glass cavity
+                Raylib.DrawRectangle(ix - 30, iy - 10, 60, 50, new Color((byte)70,(byte)70,(byte)90,(byte)255));
+                Raylib.DrawRectangle(ix - 26, iy - 6, 52, 30, new Color((byte)40,(byte)40,(byte)55,(byte)255));
+                Raylib.DrawRectangleLines(ix - 30, iy - 10, 60, 50, new Color((byte)20,(byte)20,(byte)30,(byte)255));
+
+                // egg + warmth glow when active
+                if (incubatingEgg != null)
+                {
+                    DrawEggIcon(incubatingEgg, ix, iy + 6, 30);
+                    float pulse = (MathF.Sin(incubatorAnimTimer * 4f) + 1f) * 0.5f;   // 0→1
+                    Raylib.DrawCircle(ix, iy + 6, 22,
+                        new Color((byte)255,(byte)160,(byte)40,(byte)(30 + (byte)(40 * pulse))));
+                }
+
+                // interaction prompt
+                // key handling when in range
+                if (Vector2.Distance(player.Center, inc) < 120)
+                {
+                    if (Raylib.IsKeyPressed(KeyboardKey.E) && !chatInputOpen)
+                        incubatorMenuOpen = !incubatorMenuOpen;
+
+                    if (Raylib.IsKeyPressed(KeyboardKey.P) && !chatInputOpen)
+                        petStorageMenuOpen = !petStorageMenuOpen;
+                }
+            }
 
             // Draw bus
 if (busOperating)
@@ -19407,6 +20378,19 @@ if (!swordPickedUp)
             DrawDroppedItems();
             worldBoss?.Draw();
             superBoss?.Draw();
+            if (activePet != null) activePet.Draw();
+            if (pendingPet != null)
+            {
+                pendingPet.Draw();
+                if (Vector2.Distance(player.Center, pendingPet.Position) < 150f)
+                {
+                    string msg = activePet != null
+                        ? "Store or release your current pet to claim this one!"
+                        : "Walk closer to collect your pet!";
+                    Raylib.DrawText(msg,
+                        (int)pendingPet.Position.X - 110, (int)pendingPet.Position.Y - 30, 14, Color.White);
+                }
+            }
 
             if (MathF.Abs(playerElevation) > 1f)
                 Raylib.DrawEllipse(
@@ -19436,6 +20420,19 @@ if (!swordPickedUp)
                 byte alpha = (byte)(255 * Math.Min(1f, buildingPromptTimer));
                 Raylib.DrawText(buildingPromptMessage, 480, 560, 30, Color.Yellow);
             }
+
+            // ── incubator hint banner ──
+    if (nearIncubator)
+    {
+        string hint = "Press E to incubate  |  Press P to store pet";
+        int fs = 20;
+        int tw = Raylib.MeasureText(hint, fs);
+        int bx = ScreenWidth / 2 - tw / 2 - 16;
+        int by = ScreenHeight - 90;
+        Raylib.DrawRectangle(bx, by, tw + 32, 40, new Color((byte)0,(byte)0,(byte)0,(byte)180));
+        Raylib.DrawRectangleLines(bx, by, tw + 32, 40, Color.Gold);
+        Raylib.DrawText(hint, bx + 16, by + 10, fs, Color.White);
+    }
             
             DrawWeather();
             DrawHUD();
@@ -24643,6 +25640,8 @@ if (currentBuilding.BuildingName == "McDONALD'S" &&
             DrawDropConfirm();
             DrawDropQuantity();
             DrawSkillCheatPanel();
+            DrawIncubatorMenu();
+            DrawPetStorageMenu();
             multiplayer.DrawStatusOverlay();
             multiplayer.DrawChat();
 
@@ -24651,6 +25650,27 @@ if (currentBuilding.BuildingName == "McDONALD'S" &&
             int coordWidth = Raylib.MeasureText(coordText, 18);
             Raylib.DrawRectangle(244, 6, coordWidth + 8, 26, new Color((byte)0, (byte)0, (byte)0, (byte)150));
             Raylib.DrawText(coordText, 250, 10, 18, Color.White);
+
+            // ── combo counter ──
+            if (comboCount > 1)
+            {
+                float t = comboTimer / comboWindow;                 // 1 → 0
+                int fontSize = 40 + Math.Min(comboCount, 20);       // grows with combo, capped
+                string comboStr = $"{comboCount}x COMBO";
+                int cw = Raylib.MeasureText(comboStr, fontSize);
+                int cx = ScreenWidth - cw - 40;
+                int cy = 90;
+                // color shifts white → orange → red as combo climbs
+                Color comboCol = comboCount >= 15 ? Color.Red
+                               : comboCount >= 8  ? Color.Orange
+                               : Color.White;
+                byte alpha = (byte)(180 + 75 * t);
+                Raylib.DrawText(comboStr, cx + 2, cy + 2, fontSize, new Color((byte)0,(byte)0,(byte)0,(byte)alpha)); // shadow
+                Raylib.DrawText(comboStr, cx, cy, fontSize,
+                    new Color(comboCol.R, comboCol.G, comboCol.B, alpha));
+                // draining timer bar under it
+                Raylib.DrawRectangle(cx, cy + fontSize + 4, (int)(cw * t), 5, comboCol);
+            }
 
             foreach (Vehicle vehicle in vehicles)
             {
@@ -24815,6 +25835,7 @@ if (player.DrunkLevel > 0)
 
 
             DrawMinimap();
+            DrawPlayerMenu();
         }
 
         static void DrawCalendarHUD()
@@ -25210,6 +26231,10 @@ npcs.Add(new NPC(new Vector2(-15000, 4800), "Elder",  "This land has stories old
             campfirePositions.Add(new Vector2(6000,  800));
             campfirePositions.Add(new Vector2(-14000,5000));  // near country town
             campfirePositions.Add(new Vector2(15000, 6000));  // near city
+
+            // Incubators
+            incubatorPositions.Add(new Vector2(-1850, -9800));   // near spawn
+            
             
             //vehicles
             vehicles.Add(new Vehicle(new Vector2(100,  800), Color.Red,      650, Vehicle.VehicleType.Sedan));
@@ -25372,7 +26397,239 @@ npcs.Add(new NPC(new Vector2(-15000, 4800), "Elder",  "This land has stories old
             superBoss.ChaseSpeed = 120f;      // slightly slower (it's massive)
             superBoss.ShakesWhenNear = true;  // proximity rumble
 
-            // Dealer options: specific mapping (horses -> barn, BMX/Mountain -> bike, Sedan/Truck/SUV -> car)
+// ── MULTIPLAYER: wire up host-authoritative boss HP sync ──────────────
+            multiplayer.BossHitReceived = null;   // clear any previous subscription first
+            multiplayer.BossStateReceived = null;
+
+            multiplayer.BossHitReceived += (isSuper, dmg) =>
+            {
+                var boss = isSuper ? superBoss : worldBoss;
+                if (boss == null || boss.Dead) return;
+
+                boss.Health -= dmg;
+                if (boss.Health <= 0)
+                {
+                    boss.Health = 0;
+                    boss.Dead = true;
+                }
+
+                multiplayer.BroadcastBossState(isSuper, boss.Health, boss.MaxHealth, boss.Dead,
+                    boss.Position.X, boss.Position.Y);
+            };
+
+            multiplayer.BossStateReceived += (isSuper, health, maxHealth, dead, posX, posY) =>
+            {
+                var boss = isSuper ? superBoss : worldBoss;
+                if (boss == null) return;
+                boss.Health = health;
+                boss.MaxHealth = maxHealth;
+                boss.Dead = dead;
+                boss.Position = new Vector2(posX, posY); 
+            };
+
+multiplayer.CardStateReceived = null;
+multiplayer.CardActionReceived = null;
+multiplayer.CardAwardReceived = null;
+
+multiplayer.CardAwardReceived = (xp, won, gameType) =>
+{
+    AddPlayingCardsXP(xp);
+    RecordGameResult((CardGameType)gameType, won);
+};
+
+multiplayer.CardStateReceived += (state) =>
+{
+    if (state.StartsWith("HUBSTART|"))
+    {
+        string[] hs = state.Split('|');
+        hubGame = (CardGameType)int.Parse(hs[1]);
+        cardSeatOwner[0] = int.Parse(hs[2]);
+        cardSeatOwner[1] = int.Parse(hs[3]);
+        cardSeatOwner[2] = int.Parse(hs[4]);
+        cardSeatOwner[3] = int.Parse(hs[5]);
+        hubActive = true;
+        hubScreen = HubScreen.Playing;
+        LaunchGame(hubGame);      // client launches the SAME game the host chose
+        return;
+    }
+    if (state.StartsWith("SEQ|")) { ApplySeqState(state); return; }
+
+    string[] parts = state.Split('|');
+    if (parts.Length < 27) return;
+
+    cardGameType   = (CardGameType)int.Parse(parts[0]);
+    cardPhase      = (CardPhase)int.Parse(parts[1]);
+    currentPlayer  = int.Parse(parts[2]);
+    dealer         = int.Parse(parts[3]);
+    teamScore[0]   = int.Parse(parts[4]);
+    teamScore[1]   = int.Parse(parts[5]);
+    tricksWon[0]   = int.Parse(parts[6]);
+    tricksWon[1]   = int.Parse(parts[7]);
+    trumpSuit      = int.Parse(parts[8]);
+    cardSeatOwner[0] = int.Parse(parts[9]);
+    cardSeatOwner[1] = int.Parse(parts[10]);
+    cardSeatOwner[2] = int.Parse(parts[11]);
+    cardSeatOwner[3] = int.Parse(parts[12]);
+
+    string[] counts = parts[13].Split(',');
+    for (int seat = 0; seat < 4; seat++)
+    {
+        int count = int.Parse(counts[seat]);
+        if (!IsMyCardSeat(seat))
+        {
+            hands[seat] = new List<Card>();
+            for (int i = 0; i < count; i++) hands[seat].Add(new Card(-2, -2));
+        }
+    }
+
+    currentTrick.Clear();
+    if (!string.IsNullOrEmpty(parts[14]))
+    {
+        foreach (var entry in parts[14].Split(';'))
+        {
+            var bits = entry.Split(':');
+            Card c = new Card(int.Parse(bits[0]), int.Parse(bits[1]));
+            int who = int.Parse(bits[2]);
+            currentTrick.Add((c, who));
+        }
+    }
+
+    maker       = int.Parse(parts[15]);
+    makerTeam   = int.Parse(parts[16]);
+    goingAlone  = parts[17] == "1";
+    upCard      = DeserializeCard(parts[18]);
+    euchreBidRound = int.Parse(parts[19]);
+    fiveHundredBid = int.Parse(parts[20]);
+    fiveHundredBidSuit = int.Parse(parts[21]);
+    fiveHundredHighBidder = int.Parse(parts[22]);
+    fiveHundredBidValue = int.Parse(parts[23]);
+    if (parts.Length > 24) cardMessage = parts[24].Replace('/', '|');
+    if (parts.Length > 25) float.TryParse(parts[25], System.Globalization.CultureInfo.InvariantCulture, out cardMessageTimer);
+
+    bool gameStarted = parts.Length > 26 && parts[26] == "1";
+    cardGameStarted = gameStarted;
+
+    if (hubActive && hubScreen == HubScreen.SeatSelect && gameStarted)
+    {
+        hubScreen = HubScreen.Playing;
+    }
+};
+
+multiplayer.OwnHandReceived += (seat, serializedHand) =>
+{
+    if (seqActive) seqHands[seat] = DeserializeCardList(serializedHand);
+    else           hands[seat]    = DeserializeCardList(serializedHand);
+};
+
+multiplayer.CardActionReceived += (fromId, action) =>
+{
+    string[] parts = action.Split('|');
+    if (parts.Length < 1) return;
+
+    if (parts[0] == "SEAT" && parts.Length >= 2 && int.TryParse(parts[1], out int seat) && seat >= 0 && seat < 4)
+    {
+        if (cardSeatOwner[seat] <= 0)
+        {
+            for (int s = 0; s < 4; s++)
+                if (cardSeatOwner[s] == fromId) cardSeatOwner[s] = -1;
+
+            cardSeatOwner[seat] = fromId;
+            BroadcastCardTableState();
+        }
+    }
+    else if (parts[0] == "PLAY" && parts.Length >= 2)
+    {
+        int playerSeat = -1;
+        for (int s = 0; s < 4; s++)
+            if (cardSeatOwner[s] == fromId) { playerSeat = s; break; }
+
+        if (playerSeat >= 0 && currentPlayer == playerSeat && cardPhase == CardPhase.Playing)
+        {
+            Card requestedCard = DeserializeCard(parts[1]);
+            var legal = LegalMoves(playerSeat, trumpSuit);
+            bool isLegal = legal.Any(c => c.Suit == requestedCard.Suit && c.Rank == requestedCard.Rank && c.IsJoker == requestedCard.IsJoker);
+
+            if (isLegal)
+            {
+                PlayCard(playerSeat, requestedCard);
+                BroadcastCardTableState();
+            }
+        }
+    }
+    else if (parts[0] == "ORDERUP" && parts.Length >= 3)
+    {
+        int s = SeatOfSender(fromId);
+        if (s == currentPlayer && cardPhase == CardPhase.Bidding && euchreBidRound == 1)
+        {
+            EuchreOrderUp(s, parts[2] == "1");
+            BroadcastCardTableState();
+        }
+    }
+    else if (parts[0] == "NAMESUIT" && parts.Length >= 4)
+    {
+        int s = SeatOfSender(fromId);
+        if (s == currentPlayer && cardPhase == CardPhase.Bidding && euchreBidRound == 2)
+        {
+            EuchreNameSuit(s, int.Parse(parts[2]), parts[3] == "1");
+            BroadcastCardTableState();
+        }
+    }
+    else if (parts[0] == "PASS" && parts.Length >= 1)
+    {
+        int s = SeatOfSender(fromId);
+        if (s == currentPlayer && cardPhase == CardPhase.Bidding)
+        {
+            if (cardGameType == CardGameType.Euchre) EuchrePass(s);
+            else FiveHundredPass(s);
+            BroadcastCardTableState();
+        }
+    }
+    else if (parts[0] == "BID500" && parts.Length >= 4)
+    {
+        int s = SeatOfSender(fromId);
+        if (s == currentPlayer && cardPhase == CardPhase.Bidding)
+        {
+            FiveHundredMakeBid(s, int.Parse(parts[2]), int.Parse(parts[3]));
+            BroadcastCardTableState();
+        }
+    }
+    else if (parts[0] == "SEQPLAY" && parts.Length >= 4)
+    {
+        int cardIdx = int.Parse(parts[1]);
+        int row = int.Parse(parts[2]);
+        int col = int.Parse(parts[3]);
+
+        int playerSeat = -1;
+        for (int s = 0; s < 4; s++)
+            if (cardSeatOwner[s] == fromId) { playerSeat = s; break; }
+
+        if (playerSeat >= 0 && seqCurrentPlayer == playerSeat && !seqGameOver
+            && cardIdx >= 0 && cardIdx < seqHands[playerSeat].Count)
+        {
+            SeqApplyMove(playerSeat, cardIdx, row, col);
+            SeqBroadcastState();
+        }
+    }
+    else if (parts[0] == "SEQDISCARD" && parts.Length >= 2)
+    {
+        int cardIdx = int.Parse(parts[1]);
+        int playerSeat = -1;
+        for (int s = 0; s < 4; s++)
+            if (cardSeatOwner[s] == fromId) { playerSeat = s; break; }
+
+        if (playerSeat >= 0 && seqCurrentPlayer == playerSeat && !seqGameOver
+            && cardIdx >= 0 && cardIdx < seqHands[playerSeat].Count)
+        {
+            seqHands[playerSeat].RemoveAt(cardIdx);
+            if (seqDeckIdx < seqDeck.Count) seqHands[playerSeat].Add(SeqDrawCard());
+            seqCurrentPlayer = (playerSeat + 1) % 4;
+            seqAiTimer = 0.9f;
+            SeqBroadcastState();
+        }
+    }
+};
+
+// Dealer options: specific mapping (horses -> barn, BMX/Mountain -> bike, Sedan/Truck/SUV -> car)
 dealerBikeOptions.Clear();
 dealerBarnOptions.Clear();
 dealerVehicleOptions.Clear();
@@ -25429,6 +26686,24 @@ foreach (var v in vehicles.Take(4))
     public string Text;
     public float Timer;
     public Color TextColor;
+    }
+
+    struct Splat
+    {
+        public Vector2 Position;
+        public Vector2 Velocity;
+        public float Timer;
+        public float MaxTimer;
+        public float Radius;
+        public Color SplatColor;
+    }
+    struct DeathFx
+    {
+        public Vector2 Position;
+        public string Type;        // enemy type, for the silhouette
+        public float Timer;
+        public float MaxTimer;
+        public Color TintColor;
     }
 
     class LootDrop
@@ -25542,7 +26817,15 @@ foreach (var v in vehicles.Take(4))
     Vector2 wanderTarget;
     float wanderTimer = 0f;
     float speed = 40f;
+   
     public Vector2 SpawnPosition;
+
+    // ── HIT FLASH ──
+    public float FlashTimer = 0f;        // counts down while flashing white
+    const float FlashDuration = 0.12f;
+    public bool IsFlashing => FlashTimer > 0f;
+    public void TriggerFlash() => FlashTimer = FlashDuration;
+    // ... existing code ...
 
     public Rectangle Bounds =>
         new Rectangle(Position.X, Position.Y, 40, 40);
@@ -25562,6 +26845,7 @@ foreach (var v in vehicles.Take(4))
 
      public void Update(float dt, Vector2 playerPos)
     {
+        if (FlashTimer > 0f) FlashTimer -= dt;
         if (Dead)
         {
             respawnTimer += dt;
@@ -25634,6 +26918,12 @@ foreach (var v in vehicles.Take(4))
         case "Eagle":         DrawEagle(x, y);        break;
         case "Mountain Goat": DrawMountainGoat(x, y); break;
             }
+     if (IsFlashing)
+    {
+        float a = FlashTimer / FlashDuration;          // 1 → 0
+        Raylib.DrawRectangle(x, y, 40, 40,
+            new Color((byte)255, (byte)255, (byte)255, (byte)(170 * a)));
+    }
 
     // Health bar background
     Raylib.DrawRectangle(x, y - 10, 40, 6, Color.DarkGray);
@@ -26401,6 +27691,10 @@ private void DrawMountainGoat(int x, int y)
         public int MaxHealth = 100;
         public int CombatLevel = 1;
         public int CombatXP = 0;
+        public int OneHandMeleeLevel = 1;
+        public int OneHandMeleeXP = 0;
+        public int TwoHandMeleeLevel = 1;
+        public int TwoHandMeleeXP = 0;
         public int DrivingLevel = 1;
         public int DrivingXP = 0;
         public int AthleticsLevel = 1;
@@ -26857,6 +28151,32 @@ public void DriveAnimation(bool moving, float dt)
                 CombatXP = 0;
                 CombatLevel++;
                 Program.ShowLevelUp("Combat", CombatLevel);
+            }
+        }
+
+        public void AddOneHandMeleeXP(int xp)
+        {
+            if (OneHandMeleeLevel >= 100) return;
+            OneHandMeleeXP += xp;
+            int requiredXP = OneHandMeleeLevel * OneHandMeleeLevel * 50;
+            if (OneHandMeleeXP >= requiredXP)
+            {
+                OneHandMeleeXP = 0;
+                OneHandMeleeLevel++;
+                Program.ShowLevelUp("1H Melee", OneHandMeleeLevel);
+            }
+        }
+
+        public void AddTwoHandMeleeXP(int xp)
+        {
+            if (TwoHandMeleeLevel >= 100) return;
+            TwoHandMeleeXP += xp;
+            int requiredXP = TwoHandMeleeLevel * TwoHandMeleeLevel * 50;
+            if (TwoHandMeleeXP >= requiredXP)
+            {
+                TwoHandMeleeXP = 0;
+                TwoHandMeleeLevel++;
+                Program.ShowLevelUp("2H Melee", TwoHandMeleeLevel);
             }
         }
 
@@ -29127,6 +30447,13 @@ class Rideable
     public Vector2 SpawnPosition;
     public bool Riding = false;
     public Color RideableColor;
+    public Color? RiderSkinOverride  = null;
+    public Color? RiderShirtOverride = null;
+    public Color? RiderPantsOverride = null;
+
+    Color RiderSkin  => RiderSkinOverride  ?? Program.player.SkinColor;
+    Color RiderShirt => RiderShirtOverride ?? Program.player.ShirtColor;
+    Color RiderPants => RiderPantsOverride ?? Program.player.PantsColor;
     float speed;
     public Vector2 velocity = Vector2.Zero;
     public enum FacingDirection { Down, Up, Left, Right }
@@ -29307,6 +30634,15 @@ else
         }
     }
 
+ static bool RiderArmorColor(string piece, out Color col)
+    {
+        col = Color.White;
+        if (string.IsNullOrEmpty(piece)) return false;
+        foreach (var mat in Program.armorMaterials)
+            if (piece.StartsWith(mat)) { col = Program.MaterialColor(mat); return true; }
+        return false;
+    }
+
     // ─── SHARED RIDER DRAWING ───────────────────────────────────────────────
     void DrawRider(int rx, int ry, Color skinColor, Color shirtColor, Color pantsColor)
     {
@@ -29391,6 +30727,44 @@ else
                 }
                 break;
         }
+        // ── equipped armor overlay (drawn over the rider body) ──
+        bool hasBody = RiderArmorColor(Program.armorBody,   out Color bodyCol);
+        bool hasLegs = RiderArmorColor(Program.armorLegs,   out Color legCol);
+        bool hasHelm = RiderArmorColor(Program.armorHelmet, out Color helmCol);
+
+        switch (Facing)
+        {
+            case FacingDirection.Down:
+            case FacingDirection.Up:
+                if (hasBody) Raylib.DrawRectangle(rx + 10, ry + 20, 20, 20, bodyCol);
+                if (hasLegs) {
+                    Raylib.DrawRectangle(rx + 10, ry + 40, 8, 12, legCol);
+                    Raylib.DrawRectangle(rx + 22, ry + 40, 8, 12, legCol);
+                }
+                if (hasHelm) {
+                    Raylib.DrawCircle(rx + 20, ry + 10, 11, helmCol);
+                    Raylib.DrawRectangle(rx + 9, ry + 9, 22, 4, helmCol); // brow band
+                }
+                break;
+
+            case FacingDirection.Left:
+                if (hasBody) Raylib.DrawRectangle(rx + 8, ry + 20, 14, 20, bodyCol);
+                if (hasLegs) {
+                    Raylib.DrawRectangle(rx + 6,  ry + 40, 8, 12, legCol);
+                    Raylib.DrawRectangle(rx + 16, ry + 40, 8, 12, legCol);
+                }
+                if (hasHelm) Raylib.DrawCircle(rx + 16, ry + 10, 11, helmCol);
+                break;
+
+            case FacingDirection.Right:
+                if (hasBody) Raylib.DrawRectangle(rx + 18, ry + 20, 14, 20, bodyCol);
+                if (hasLegs) {
+                    Raylib.DrawRectangle(rx + 18, ry + 40, 8, 12, legCol);
+                    Raylib.DrawRectangle(rx + 28, ry + 40, 8, 12, legCol);
+                }
+                if (hasHelm) Raylib.DrawCircle(rx + 24, ry + 10, 11, helmCol);
+                break;
+        }
     }
 
     // ─── MOUNTAIN BIKE ──────────────────────────────────────────────────────
@@ -29435,7 +30809,7 @@ else
                 // suspension fork
                 Raylib.DrawLine(x + 46, y + 20, x + 50, y + 42, Color.LightGray);
 
-                if (Riding) DrawRider(x + 8, y - 16, Program.player.SkinColor, Program.player.ShirtColor, Program.player.PantsColor);
+                if (Riding) DrawRider(x + 8, y - 16, RiderSkin, RiderShirt, RiderPants);
                 break;
 
             case FacingDirection.Down:
@@ -29449,7 +30823,7 @@ else
                 // seat
                 Raylib.DrawRectangle(x + 22, y + 30, 15, 10, Color.Black);
 
-                if (Riding) DrawRider(x + 8, y - 18, Program.player.SkinColor, Program.player.ShirtColor, Program.player.PantsColor);
+                if (Riding) DrawRider(x + 8, y - 18, RiderSkin, RiderShirt, RiderPants);
                 break;
                     }
                 }
@@ -29494,7 +30868,7 @@ else
                     Raylib.DrawRectangle(x + 6,  y + 12, 4, 12, Color.DarkGray);
                 }
 
-                if (Riding) DrawRider(x + 8, y - 16, Program.player.SkinColor, Program.player.ShirtColor, Program.player.PantsColor);
+                if (Riding) DrawRider(x + 8, y - 16, RiderSkin, RiderShirt, RiderPants);
                 break;
 
            case FacingDirection.Down:
@@ -29512,7 +30886,7 @@ else
                 Raylib.DrawRectangle(x + 16, y + 40, 6, 4, new Color((byte)192,(byte)192,(byte)192,(byte)255));
                 Raylib.DrawRectangle(x + 38, y + 40, 6, 4, new Color((byte)192,(byte)192,(byte)192,(byte)255));
 
-                if (Riding) DrawRider(x + 8, y - 16, Program.player.SkinColor, Program.player.ShirtColor, Program.player.PantsColor);
+                if (Riding) DrawRider(x + 8, y - 16, RiderSkin, RiderShirt, RiderPants);
                 break;
         }
     }
@@ -29549,7 +30923,7 @@ else
                 // saddle
                 Raylib.DrawRectangle(x + 20, y + 17, 22, 8, new Color((byte)100,(byte)60,(byte)20,(byte)255));
                 Raylib.DrawRectangle(x + 22, y + 15, 18, 4, new Color((byte)130,(byte)80,(byte)30,(byte)255));
-                if (Riding) DrawRider(x + 12, y - 20, Program.player.SkinColor, Program.player.ShirtColor, Program.player.PantsColor);
+                if (Riding) DrawRider(x + 12, y - 20, RiderSkin, RiderShirt, RiderPants);
                 break;
 
             case FacingDirection.Left:
@@ -29573,7 +30947,7 @@ else
                 Raylib.DrawRectangle(x + 43, y + 56 - leg, 10, 5, Color.Black);
                 Raylib.DrawRectangle(x + 18, y + 17, 22, 8, new Color((byte)100,(byte)60,(byte)20,(byte)255));
                 Raylib.DrawRectangle(x + 20, y + 15, 18, 4, new Color((byte)130,(byte)80,(byte)30,(byte)255));
-                if (Riding) DrawRider(x + 12, y - 20, Program.player.SkinColor, Program.player.ShirtColor, Program.player.PantsColor);
+                if (Riding) DrawRider(x + 12, y - 20, RiderSkin, RiderShirt, RiderPants);
                 break;
 
             case FacingDirection.Down:
@@ -29595,7 +30969,7 @@ else
                 Raylib.DrawRectangle(x + 35, y + 56 - leg, 12, 5, Color.Black);
                 // saddle
                 Raylib.DrawRectangle(x + 14, y + 15, 32, 8, new Color((byte)100,(byte)60,(byte)20,(byte)255));
-                if (Riding) DrawRider(x + 8, y - 20, Program.player.SkinColor, Program.player.ShirtColor, Program.player.PantsColor);
+                if (Riding) DrawRider(x + 8, y - 20, RiderSkin, RiderShirt, RiderPants);
                 break;
 
             case FacingDirection.Up:
@@ -29614,7 +30988,7 @@ else
                 Raylib.DrawRectangle(x + 35, y + 56 - leg, 12, 5, Color.Black);
                 // saddle
                 Raylib.DrawRectangle(x + 14, y + 15, 32, 8, new Color((byte)100,(byte)60,(byte)20,(byte)255));
-                if (Riding) DrawRider(x + 8, y - 20, Program.player.SkinColor, Program.player.ShirtColor, Program.player.PantsColor);
+                if (Riding) DrawRider(x + 8, y - 20, RiderSkin, RiderShirt, RiderPants);
                 break;
         }
     }
@@ -29643,7 +31017,7 @@ else
             Raylib.DrawRectangle(x + 24, y + 40, 7, 20 - leg, sand);
             Raylib.DrawRectangle(x + 36, y + 40, 7, 20 + leg, sand);
             Raylib.DrawRectangle(x + 44, y + 40, 7, 20 - leg, sand);
-            if (Riding) DrawRider(x + 12, y - 22, Program.player.SkinColor, Program.player.ShirtColor, Program.player.PantsColor);
+            if (Riding) DrawRider(x + 12, y - 22, RiderSkin, RiderShirt, RiderPants);
         }
         else
         {
@@ -29658,7 +31032,7 @@ else
             }
             Raylib.DrawRectangle(x + 16, y + 40, 9, 20 + leg, sand);
             Raylib.DrawRectangle(x + 36, y + 40, 9, 20 - leg, sand);
-            if (Riding) DrawRider(x + 10, y - 22, Program.player.SkinColor, Program.player.ShirtColor, Program.player.PantsColor);
+            if (Riding) DrawRider(x + 10, y - 22, RiderSkin, RiderShirt, RiderPants);
         }
     }
 
@@ -29689,7 +31063,7 @@ else
             Raylib.DrawRectangle(x + 24, y + 44, 11, 18 - leg, grey);
             Raylib.DrawRectangle(x + 38, y + 44, 11, 18 + leg, grey);
             Raylib.DrawRectangle(x + 48, y + 44, 11, 18 - leg, grey);
-            if (Riding) DrawRider(x + 16, y - 26, Program.player.SkinColor, Program.player.ShirtColor, Program.player.PantsColor);
+            if (Riding) DrawRider(x + 16, y - 26, RiderSkin, RiderShirt, RiderPants);
         }
         else
         {
@@ -29704,7 +31078,7 @@ else
             }
             Raylib.DrawRectangle(x + 12, y + 44, 12, 18 + leg, grey);
             Raylib.DrawRectangle(x + 38, y + 44, 12, 18 - leg, grey);
-            if (Riding) DrawRider(x + 12, y - 26, Program.player.SkinColor, Program.player.ShirtColor, Program.player.PantsColor);
+            if (Riding) DrawRider(x + 12, y - 26, RiderSkin, RiderShirt, RiderPants);
         }
     }
 
@@ -29741,7 +31115,7 @@ else
                 new Vector2(tx + (left ? 10 : -10), cy - 8),
                 new Vector2(tx + (left ? 10 : -10), cy + 8), blue);
             Raylib.DrawCircle(sx + (left ? 6 : -6), cy - 2, 2, Color.Black);
-            if (Riding) DrawRider(x + 12, y - 14 + (int)bob, Program.player.SkinColor, Program.player.ShirtColor, Program.player.PantsColor);
+            if (Riding) DrawRider(x + 12, y - 14 + (int)bob, RiderSkin, RiderShirt, RiderPants);
         }
         else
         {
@@ -29753,7 +31127,7 @@ else
                 new Vector2(cx + 5, cy - 14), blue);
             Raylib.DrawCircle(cx - 4, cy - 16, 2, Color.Black);
             Raylib.DrawCircle(cx + 4, cy - 16, 2, Color.Black);
-            if (Riding) DrawRider(x + 12, y - 14 + (int)bob, Program.player.SkinColor, Program.player.ShirtColor, Program.player.PantsColor);
+            if (Riding) DrawRider(x + 12, y - 14 + (int)bob, RiderSkin, RiderShirt, RiderPants);
         }
     }
     // ─── REINDEER ───────────────────────────────────────────────────────────
@@ -29787,7 +31161,7 @@ else
             Raylib.DrawRectangle(x + 24, y + 40, 7, 20 - leg, fur);
             Raylib.DrawRectangle(x + 36, y + 40, 7, 20 + leg, fur);
             Raylib.DrawRectangle(x + 44, y + 40, 7, 20 - leg, fur);
-            if (Riding) DrawRider(x + 12, y - 22, Program.player.SkinColor, Program.player.ShirtColor, Program.player.PantsColor);
+            if (Riding) DrawRider(x + 12, y - 22, RiderSkin, RiderShirt, RiderPants);
         }
         else
         {
@@ -29805,7 +31179,7 @@ else
             }
             Raylib.DrawRectangle(x + 14, y + 40, 9, 20 + leg, fur);
             Raylib.DrawRectangle(x + 36, y + 40, 9, 20 - leg, fur);
-            if (Riding) DrawRider(x + 10, y - 22, Program.player.SkinColor, Program.player.ShirtColor, Program.player.PantsColor);
+            if (Riding) DrawRider(x + 10, y - 22, RiderSkin, RiderShirt, RiderPants);
         }
     }
 
@@ -29840,7 +31214,7 @@ else
             Raylib.DrawRectangle(x + 22, y + 40, 7, 18 - leg, body);
             Raylib.DrawRectangle(x + 34, y + 40, 7, 18 + leg, body);
             Raylib.DrawRectangle(x + 44, y + 40, 7, 18 - leg, body);
-            if (Riding) DrawRider(x + 12, y - 20, Program.player.SkinColor, Program.player.ShirtColor, Program.player.PantsColor);
+            if (Riding) DrawRider(x + 12, y - 20, RiderSkin, RiderShirt, RiderPants);
         }
         else
         {
@@ -29860,7 +31234,7 @@ else
             }
             Raylib.DrawRectangle(x + 14, y + 40, 9, 18 + leg, body);
             Raylib.DrawRectangle(x + 36, y + 40, 9, 18 - leg, body);
-            if (Riding) DrawRider(x + 10, y - 20, Program.player.SkinColor, Program.player.ShirtColor, Program.player.PantsColor);
+            if (Riding) DrawRider(x + 10, y - 20, RiderSkin, RiderShirt, RiderPants);
         }
     }
 }
@@ -34457,6 +35831,56 @@ class Dungeon
     }
 }
 
+class Pet
+{
+    public Vector2 Position;
+    public string Type;          // e.g. "Dragon" (the boss it came from)
+    public Color BodyColor;
+    float bobTimer = 0f;
+    Vector2 velocity = Vector2.Zero;
+
+    public Pet(Vector2 pos, string type, Color color)
+    {
+        Position = pos; Type = type; BodyColor = color;
+    }
+
+    // follows the player, keeping a small trailing distance
+    public void Update(float dt, Vector2 playerPos)
+    {
+        if (Vector2.Distance(Position, playerPos) > 700f)
+        {
+            // drop in just behind the player rather than exactly on them
+            Position = playerPos - new Vector2(40f, 0f);
+            return;
+        }
+        bobTimer += dt * 4f;
+        Vector2 toPlayer = playerPos - Position;
+        float dist = toPlayer.Length();
+        if (dist > 70f)
+            Position += Vector2.Normalize(toPlayer) * 160f * dt;   // catch up
+        else if (dist > 50f)
+            Position += Vector2.Normalize(toPlayer) * 60f * dt;    // amble
+    }
+
+    public void Draw()
+    {
+        int x = (int)Position.X;
+        int y = (int)Position.Y + (int)(MathF.Sin(bobTimer) * 3f);   // gentle hover bob
+        // body
+        Raylib.DrawCircle(x, y, 12, BodyColor);
+        Raylib.DrawCircle(x, y, 12, new Color((byte)0,(byte)0,(byte)0,(byte)60)); // soft outline
+        Raylib.DrawCircle(x, y, 9, new Color(
+            (byte)Math.Min(255, BodyColor.R + 40),
+            (byte)Math.Min(255, BodyColor.G + 40),
+            (byte)Math.Min(255, BodyColor.B + 40), (byte)255));
+        // eyes
+        Raylib.DrawCircle(x - 4, y - 3, 2, Color.White);
+        Raylib.DrawCircle(x + 4, y - 3, 2, Color.White);
+        Raylib.DrawCircle(x - 4, y - 3, 1, Color.Black);
+        Raylib.DrawCircle(x + 4, y - 3, 1, Color.Black);
+    }
+}
+
 class WorldBoss
 {
     public Vector2 Position;
@@ -34506,7 +35930,7 @@ class WorldBoss
         if (Dead)
         {
             respawnTimer += dt;
-            if (respawnTimer >= 60f)   // boss respawns after 1 minute
+            if (respawnTimer >= 10f)   // boss respawns after 1 minute
             {
                 Dead = false;
                 Health = MaxHealth;

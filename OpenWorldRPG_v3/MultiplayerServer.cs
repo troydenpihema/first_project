@@ -95,6 +95,11 @@ namespace OpenWorldRPG
         public bool  IsTyping   = false;
         public float TypingTimer = 0f;
         public bool PendingSwing = false;
+        public string MountType = "";   // "" = not riding/driving anything
+        public bool   IsVehicle  = false; // true = vehicle, false = rideable
+
+        private Rideable _ghostRideable;
+        private Vehicle  _ghostVehicle;
         public Color  SkinColor       = Color.Beige;
         public Color  HairColor       = new Color((byte)80,(byte)50,(byte)20,(byte)255);
         public Color  FacialHairColor = new Color((byte)80,(byte)50,(byte)20,(byte)255);
@@ -129,6 +134,50 @@ namespace OpenWorldRPG
         {
             if (!Active || Scene != requiredSceneTag) return;
 
+            // ── GHOST MOUNT (no collision, visual only) ───────────────────────────
+            if (!string.IsNullOrEmpty(MountType))
+            {
+                if (IsVehicle)
+                {
+                    if (System.Enum.TryParse<Vehicle.VehicleType>(MountType, out var vType))
+                        {
+                            if (_ghostVehicle == null) _ghostVehicle = new Vehicle(new Vector2(X, Y), Color.Gray, 0f, vType);
+                            _ghostVehicle.Position = new Vector2(X, Y);
+                            _ghostVehicle.Type = vType;
+                            _ghostVehicle.Facing = Facing switch
+                            {
+                                "Up"    => Vehicle.FacingDirection.Up,
+                                "Left"  => Vehicle.FacingDirection.Left,
+                                "Right" => Vehicle.FacingDirection.Right,
+                                _       => Vehicle.FacingDirection.Down
+                            };
+                            _ghostVehicle.Driving = true; // some vehicle draw art may gate exhaust/animation on this
+                            _ghostVehicle.Draw();
+                        }
+                }
+                else
+                {
+                    if (System.Enum.TryParse<Rideable.RideableType>(MountType, out var rType))
+                    {
+                        if (_ghostRideable == null) _ghostRideable = new Rideable(new Vector2(X, Y), rType, Color.White);
+                        _ghostRideable.Position = new Vector2(X, Y);
+                        _ghostRideable.Type     = rType;
+                        _ghostRideable.Riding   = true; // forces the rider silhouette to draw
+                        _ghostRideable.RiderSkinOverride  = SkinColor;
+                        _ghostRideable.RiderShirtOverride = ShirtColor;
+                        _ghostRideable.RiderPantsOverride = PantsColor;
+                        _ghostRideable.Facing = Facing switch
+                        {
+                            "Up"    => Rideable.FacingDirection.Up,
+                            "Left"  => Rideable.FacingDirection.Left,
+                            "Right" => Rideable.FacingDirection.Right,
+                            _       => Rideable.FacingDirection.Down
+                        };
+                        _ghostRideable.Draw();
+                    }
+                }
+            }
+
             // lazily create a throwaway Player instance to reuse all existing armor/draw code
             if (_drawPlayer == null) _drawPlayer = new Player(new Vector2(X, Y));
 
@@ -151,7 +200,7 @@ namespace OpenWorldRPG
                 _       => Player.FacingDirection.Down
             };
             
-            _drawPlayer.Hidden   = false;
+            _drawPlayer.Hidden   = !string.IsNullOrEmpty(MountType);
 
             // derive movement from position delta since last draw call (proxy for isMoving)
             bool moving = false;
@@ -289,6 +338,7 @@ namespace OpenWorldRPG
         public bool   IsHost    { get; private set; }
         public bool   IsClient  { get; private set; }
         public bool   Connected => IsHost || (IsClient && _clientConnected);
+        public int    MyId      => IsHost ? 0 : _myId;
         public string StatusText { get; private set; } = "";
         public List<RemotePlayer> RemotePlayers { get; } = new List<RemotePlayer>();
         public List<ChatMessage>  ChatLog       { get; } = new List<ChatMessage>();
@@ -318,12 +368,86 @@ namespace OpenWorldRPG
         private float                               _sendTimer        = 0f;
         private bool                                _running          = false;
         private string _lastPlayerName = "Host";
+        public Action<string> CardStateReceived;
+
+        public void BroadcastCardTableState(string serializedState)
+        {
+            if (!IsHost) return;
+            string msg = $"CARDSTATE|{serializedState}";
+            lock (_clientLock)
+                foreach (var cc in _clients)
+                    TrySendToClient(cc, msg);
+        }
+
+        public void SendOwnHandTo(int targetId, int seat, string serializedHand)
+        {
+            if (!IsHost) return;
+            TrySendToId(targetId, $"YOURHAND|{seat}|{serializedHand}");
+        }
+        public void SendCardAward(int targetId, int xp, bool won, int gameType)
+                {
+                    TrySendToId(targetId, $"CARDAWARD|{xp}|{(won ? 1 : 0)}|{gameType}");
+                }
+
+        public Action<int, bool, int> CardAwardReceived; // (xp, won, gameType)
+        public Action<int, string> OwnHandReceived; // (seat, serializedHand)
+
+        /// <summary>Client sends a requested action (bid, play card, etc) for their own seat.</summary>
+        public Action<int, string> CardActionReceived; // (fromId, action)
+
+        public void SendCardAction(string action)
+        {
+            if (!Connected || IsHost) return; // host applies its own actions directly, no need to "send" to itself
+            TrySendToServer($"CARDACTION|{action}");
+        }
 
         // ─────────────────────────────────────────────────────────────────────
         //  PUBLIC API
         // ─────────────────────────────────────────────────────────────────────
 
         /// <summary>Host a game on the local network. Call from your Host button.</summary>
+        /// 
+        /// <summary>
+        /// Called by ANY client (or the host itself, for consistency) when their local
+        /// hit-detection lands a blow on a world boss. The host applies real damage;
+        /// non-host clients send this purely as a request and never apply damage locally.
+        /// </summary>
+        public void SendBossHit(bool isSuperBoss, int damage)
+        {
+            if (!Connected) return;
+            string payload = $"BOSSHIT|{(isSuperBoss ? "1" : "0")}|{damage}";
+
+            if (IsHost)
+            {
+                // host is authoritative — apply immediately via the callback
+                BossHitReceived?.Invoke(isSuperBoss, damage);
+            }
+            else
+            {
+                TrySendToServer(payload);
+            }
+        }
+
+        /// <summary>Host subscribes to this to apply real damage when any client (including itself) reports a hit.</summary>
+        public Action<bool, int> BossHitReceived;
+
+        /// <summary>Host calls this after applying damage, to broadcast the new authoritative state to all clients.</summary>
+        public void BroadcastBossState(bool isSuperBoss, float health, float maxHealth, bool dead, float posX, float posY)
+        {
+            if (!IsHost) return;
+            string msg = $"BOSSSTATE|{(isSuperBoss ? "1" : "0")}" +
+                        $"|{health.ToString(System.Globalization.CultureInfo.InvariantCulture)}" +
+                        $"|{maxHealth.ToString(System.Globalization.CultureInfo.InvariantCulture)}" +
+                        $"|{(dead ? "1" : "0")}" +
+                        $"|{posX.ToString(System.Globalization.CultureInfo.InvariantCulture)}" +
+                        $"|{posY.ToString(System.Globalization.CultureInfo.InvariantCulture)}";
+            lock (_clientLock)
+                foreach (var cc in _clients)
+                    TrySendToClient(cc, msg);
+        }
+
+        /// <summary>Client subscribes to this to update its local display-only boss copy.</summary>
+        public Action<bool, float, float, bool, float, float> BossStateReceived;
         public void StartHost()
         {
             if (_running) Stop();
@@ -461,6 +585,23 @@ namespace OpenWorldRPG
             }
         }
 
+public void SendMount(string mountType, bool isVehicle)
+{
+    if (!Connected) return;
+    string payload = $"MOUNT|{mountType}|{(isVehicle ? "1" : "0")}";
+
+    if (IsHost)
+    {
+        lock (_clientLock)
+            foreach (var cc in _clients)
+                TrySendToClient(cc, $"MOUNT|0|{mountType}|{(isVehicle ? "1" : "0")}");
+    }
+    else
+    {
+        TrySendToServer(payload);
+    }
+}
+
  public void SendSwing()
         {
             if (!Connected) return;
@@ -475,7 +616,30 @@ namespace OpenWorldRPG
             {
                 TrySendToServer("SWING");
             }
-        }       
+        }  
+
+public void SendProjectile(float startX, float startY, float velX, float velY, float life, string kind, bool isSpell)
+{
+    if (!Connected) return;
+    string spellFlag = isSpell ? "1" : "0";
+    string payload = $"PROJ|{startX.ToString(System.Globalization.CultureInfo.InvariantCulture)}" +
+                      $"|{startY.ToString(System.Globalization.CultureInfo.InvariantCulture)}" +
+                      $"|{velX.ToString(System.Globalization.CultureInfo.InvariantCulture)}" +
+                      $"|{velY.ToString(System.Globalization.CultureInfo.InvariantCulture)}" +
+                      $"|{life.ToString(System.Globalization.CultureInfo.InvariantCulture)}" +
+                      $"|{kind}|{spellFlag}";
+
+    if (IsHost)
+    {
+        lock (_clientLock)
+            foreach (var cc in _clients)
+                TrySendToClient(cc, payload);
+    }
+    else
+    {
+        TrySendToServer(payload);
+    }
+}     
 
         /// <summary>Send a chat message.</summary>
         public void SendChat(string text)
@@ -743,6 +907,23 @@ namespace OpenWorldRPG
                         }
                         break;
 
+                    case "PROJ":
+                        {
+                            string rest = string.Join("|", parts, 1, parts.Length - 1);
+                            BroadcastExcept(fromId, $"PROJ|{rest}");
+                        }
+                        break;
+
+                    case "MOUNT":
+                        {
+                            string rest = string.Join("|", parts, 1, parts.Length - 1);
+                            BroadcastExcept(fromId, $"MOUNT|{fromId}|{rest}");
+                            var rpMount = GetOrCreateRemote(fromId);
+                            rpMount.MountType = parts.Length > 1 ? parts[1] : "";
+                            rpMount.IsVehicle  = parts.Length > 2 && parts[2] == "1";
+                        }
+                        break;
+
                     case "APPEAR":
                         {
                             string rest = string.Join("|", parts, 1, parts.Length - 1);
@@ -775,6 +956,22 @@ namespace OpenWorldRPG
                         {
                             var cc = _clients.Find(c => c.Id == fromId);
                             if (cc != null) RemoveClient(cc);
+                        }
+                        break;
+
+                    case "BOSSHIT":
+                        if (parts.Length >= 3 &&
+                            int.TryParse(parts[2], out int hitDmg))
+                        {
+                            bool isSuper = parts[1] == "1";
+                            BossHitReceived?.Invoke(isSuper, hitDmg);
+                        }
+                        break;
+
+                    case "CARDACTION":
+                        {
+                            string action = string.Join("|", parts, 1, parts.Length - 1);
+                            CardActionReceived?.Invoke(fromId, action);
                         }
                         break;
                 }
@@ -838,6 +1035,27 @@ namespace OpenWorldRPG
                     }
                     break;
 
+                case "PROJ":
+                    if (p.Length >= 8 &&
+                        float.TryParse(p[1], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out float px2) &&
+                        float.TryParse(p[2], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out float py2) &&
+                        float.TryParse(p[3], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out float pvx) &&
+                        float.TryParse(p[4], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out float pvy) &&
+                        float.TryParse(p[5], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out float plife))
+                    {
+                        Program.SpawnRemoteVisualProjectile(px2, py2, pvx, pvy, plife, p[6], p[7] == "1");
+                    }
+                    break;
+
+                case "MOUNT":
+                    if (p.Length >= 4 && int.TryParse(p[1], out int mountId))
+                    {
+                        var rp = GetOrCreateRemote(mountId);
+                        rp.MountType = p[2];
+                        rp.IsVehicle  = p[3] == "1";
+                    }
+                    break;
+
                 case "APPEAR":
                     if (p.Length >= 17 && int.TryParse(p[1], out int appearId))
                     {
@@ -855,6 +1073,43 @@ namespace OpenWorldRPG
                     StatusText       = "Server shut down.";
                     IsClient         = _running = _clientConnected = false;
                     RemotePlayers.Clear();
+                    break;
+
+                case "BOSSSTATE":
+                    if (p.Length >= 7 &&
+                        float.TryParse(p[2], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out float bHealth) &&
+                        float.TryParse(p[3], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out float bMaxHealth) &&
+                        float.TryParse(p[5], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out float bPosX) &&
+                        float.TryParse(p[6], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out float bPosY))
+                    {
+                        bool isSuper = p[1] == "1";
+                        bool isDead  = p[4] == "1";
+                        BossStateReceived?.Invoke(isSuper, bHealth, bMaxHealth, isDead, bPosX, bPosY);
+                    }
+                    break;
+
+                case "CARDSTATE":
+                    {
+                        string state = string.Join("|", p, 1, p.Length - 1);
+                        CardStateReceived?.Invoke(state);
+                    }
+                    break;
+                
+                case "YOURHAND":
+                    if (p.Length >= 3 && int.TryParse(p[1], out int handSeat))
+                    {
+                        string handData = p[2];
+                        OwnHandReceived?.Invoke(handSeat, handData);
+                    }
+                    break;
+                
+                case "CARDAWARD":
+                    if (p.Length >= 4 && int.TryParse(p[1], out int awXp)
+                        && int.TryParse(p[3], out int awGame))
+                    {
+                        bool awWon = p[2] == "1";
+                        CardAwardReceived?.Invoke(awXp, awWon, awGame);
+                    }
                     break;
             }
         }
