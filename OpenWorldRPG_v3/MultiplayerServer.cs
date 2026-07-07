@@ -412,15 +412,15 @@ namespace OpenWorldRPG
         /// hit-detection lands a blow on a world boss. The host applies real damage;
         /// non-host clients send this purely as a request and never apply damage locally.
         /// </summary>
-        public void SendBossHit(bool isSuperBoss, int damage)
+        public void SendBossHit(bool isSuperBoss, int damage, int killerId)
         {
             if (!Connected) return;
-            string payload = $"BOSSHIT|{(isSuperBoss ? "1" : "0")}|{damage}";
+            string payload = $"BOSSHIT|{(isSuperBoss ? "1" : "0")}|{damage}|{killerId}";
 
             if (IsHost)
             {
                 // host is authoritative — apply immediately via the callback
-                BossHitReceived?.Invoke(isSuperBoss, damage);
+                BossHitReceived?.Invoke(isSuperBoss, damage, killerId);
             }
             else
             {
@@ -429,7 +429,7 @@ namespace OpenWorldRPG
         }
 
         /// <summary>Host subscribes to this to apply real damage when any client (including itself) reports a hit.</summary>
-        public Action<bool, int> BossHitReceived;
+        public Action<bool, int, int> BossHitReceived;
 
         /// <summary>Host calls this after applying damage, to broadcast the new authoritative state to all clients.</summary>
         public void BroadcastBossState(bool isSuperBoss, float health, float maxHealth, bool dead, float posX, float posY)
@@ -445,8 +445,61 @@ namespace OpenWorldRPG
                 foreach (var cc in _clients)
                     TrySendToClient(cc, msg);
         }
+        public void SendEnemyProjectile(float startX, float startY, float velX, float velY, float life, string kind, int damage)
+        {
+            if (!Connected || !IsHost) return;   // only the host fires enemy projectiles
+            var ci = System.Globalization.CultureInfo.InvariantCulture;
+            string payload = $"EPROJ|{startX.ToString(ci)}|{startY.ToString(ci)}" +
+                             $"|{velX.ToString(ci)}|{velY.ToString(ci)}" +
+                             $"|{life.ToString(ci)}|{kind}|{damage.ToString(ci)}";
+            lock (_clientLock)
+                foreach (var cc in _clients)
+                    TrySendToClient(cc, payload);
+        }
+        public void BroadcastWorldClock(float timeOfDay, int dayOfWeek, int dayOfMonth, int month, bool raining)
+        {
+            if (!IsHost) return;
+            var ci = System.Globalization.CultureInfo.InvariantCulture;
+            string msg = $"CLOCK|{timeOfDay.ToString(ci)}|{dayOfWeek}|{dayOfMonth}|{month}|{(raining ? "1" : "0")}";
+            lock (_clientLock)
+                foreach (var cc in _clients)
+                    TrySendToClient(cc, msg);
+        }
+        public Action<float, int, int, int, bool> WorldClockReceived;
 
-        /// <summary>Client subscribes to this to update its local display-only boss copy.</summary>
+        public void BroadcastEnemyState(int id, float posX, float posY, int health, bool dead, bool aggro)
+        {
+            if (!IsHost) return;
+            var ci = System.Globalization.CultureInfo.InvariantCulture;
+            string msg = $"ENEMYSTATE|{id}|{posX.ToString(ci)}|{posY.ToString(ci)}" +
+                        $"|{health}|{(dead ? "1" : "0")}|{(aggro ? "1" : "0")}";
+            lock (_clientLock)
+                foreach (var cc in _clients)
+                    TrySendToClient(cc, msg);
+        }
+        public Action<int, float, float, int, bool, bool> EnemyStateReceived;
+
+        // NEW: a client tells the host it hit an enemy (host applies the damage).
+        public void SendEnemyHit(int id, int damage, int killerId)
+        {
+            if (!Connected || IsHost) return;   // host applies its own hits directly
+            TrySendToServer($"ENEMYHIT|{id}|{damage}|{killerId}");
+        }
+        public Action<int, int, int> EnemyHitReceived;
+        public void SendEnemyKill(int targetId, string enemyType)
+        {
+            if (!IsHost) return;
+            TrySendToId(targetId, $"ENEMYKILL|{enemyType}");
+        }
+        public Action<string> EnemyKillReceived;
+        public void SendBossKillReward(int targetId, bool isSuper)
+        {
+            if (!IsHost) return;
+            TrySendToId(targetId, $"BOSSKILL|{(isSuper ? "1" : "0")}");
+        }
+        public Action<bool> BossKillRewardReceived;
+
+        
         public Action<bool, float, float, bool, float, float> BossStateReceived;
         public void StartHost()
         {
@@ -616,7 +669,27 @@ public void SendMount(string mountType, bool isVehicle)
             {
                 TrySendToServer("SWING");
             }
-        }  
+        } 
+
+public void SendLootDrop(float x, float y, string itemType, int ownerId)
+{
+    if (!IsHost) return;
+    var ci = System.Globalization.CultureInfo.InvariantCulture;
+    string msg = $"LOOTDROP|{x.ToString(ci)}|{y.ToString(ci)}|{itemType}|{ownerId}";
+    lock (_clientLock)
+        foreach (var cc in _clients)
+            TrySendToClient(cc, msg);
+}
+public Action<float, float, string, int> LootDropReceived;
+
+// NEW: a client tells the host it picked up a drop so the host removes it for everyone
+public void SendLootPickup(float x, float y, string itemType)
+{
+    if (!Connected || IsHost) return;
+    var ci = System.Globalization.CultureInfo.InvariantCulture;
+    TrySendToServer($"LOOTPICK|{x.ToString(ci)}|{y.ToString(ci)}|{itemType}");
+}
+public Action<float, float, string> LootPickupReceived; 
 
 public void SendProjectile(float startX, float startY, float velX, float velY, float life, string kind, bool isSpell)
 {
@@ -914,6 +987,25 @@ public void SendProjectile(float startX, float startY, float velX, float velY, f
                         }
                         break;
 
+                    case "ENEMYHIT":
+                        if (parts.Length >= 4 &&
+                            int.TryParse(parts[1], out int ehId) &&
+                            int.TryParse(parts[2], out int ehDmg) &&
+                            int.TryParse(parts[3], out int ehKiller))
+                        {
+                            EnemyHitReceived?.Invoke(ehId, ehDmg, ehKiller);
+                        }
+                        break;
+
+                    case "LOOTPICK":
+                        if (parts.Length >= 4 &&
+                            float.TryParse(parts[1], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out float lpX) &&
+                            float.TryParse(parts[2], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out float lpY))
+                        {
+                            LootPickupReceived?.Invoke(lpX, lpY, parts[3]);
+                        }
+                        break;
+
                     case "MOUNT":
                         {
                             string rest = string.Join("|", parts, 1, parts.Length - 1);
@@ -960,11 +1052,12 @@ public void SendProjectile(float startX, float startY, float velX, float velY, f
                         break;
 
                     case "BOSSHIT":
-                        if (parts.Length >= 3 &&
-                            int.TryParse(parts[2], out int hitDmg))
+                        if (parts.Length >= 4 &&                          
+                            int.TryParse(parts[2], out int hitDmg) &&
+                            int.TryParse(parts[3], out int hitKiller))    
                         {
                             bool isSuper = parts[1] == "1";
-                            BossHitReceived?.Invoke(isSuper, hitDmg);
+                            BossHitReceived?.Invoke(isSuper, hitDmg, hitKiller);   
                         }
                         break;
 
@@ -1085,6 +1178,59 @@ public void SendProjectile(float startX, float startY, float velX, float velY, f
                         bool isSuper = p[1] == "1";
                         bool isDead  = p[4] == "1";
                         BossStateReceived?.Invoke(isSuper, bHealth, bMaxHealth, isDead, bPosX, bPosY);
+                    }
+                    break;
+
+                case "ENEMYSTATE":
+                    if (p.Length >= 7 &&
+                        int.TryParse(p[1], out int esId) &&
+                        float.TryParse(p[2], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out float esX) &&
+                        float.TryParse(p[3], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out float esY) &&
+                        int.TryParse(p[4], out int esHp))
+                    {
+                        EnemyStateReceived?.Invoke(esId, esX, esY, esHp, p[5] == "1", p[6] == "1");
+                    }
+                    break;
+
+                case "CLOCK":
+                    if (p.Length >= 6 &&
+                        float.TryParse(p[1], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out float ctod) &&
+                        int.TryParse(p[2], out int cdow) && int.TryParse(p[3], out int cdom) && int.TryParse(p[4], out int cmon))
+                    {
+                        WorldClockReceived?.Invoke(ctod, cdow, cdom, cmon, p[5] == "1");
+                    }
+                    break;
+
+                case "EPROJ":
+                    if (p.Length >= 8 &&
+                        float.TryParse(p[1], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out float epx) &&
+                        float.TryParse(p[2], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out float epy) &&
+                        float.TryParse(p[3], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out float epvx) &&
+                        float.TryParse(p[4], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out float epvy) &&
+                        float.TryParse(p[5], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out float eplife) &&
+                        int.TryParse(p[7], out int epdmg))
+                    {
+                        Program.SpawnNetworkEnemyProjectile(epx, epy, epvx, epvy, eplife, p[6], epdmg);
+                    }
+                    break;
+
+            case "ENEMYKILL":
+                    if (p.Length >= 2)
+                        EnemyKillReceived?.Invoke(p[1]);
+                    break;
+
+            case "BOSSKILL":
+                    if (p.Length >= 2)
+                        BossKillRewardReceived?.Invoke(p[1] == "1");
+                    break;
+
+            case "LOOTDROP":
+                    if (p.Length >= 5 &&
+                        float.TryParse(p[1], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out float ldX) &&
+                        float.TryParse(p[2], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out float ldY) &&
+                        int.TryParse(p[4], out int ldOwner))
+                    {
+                        LootDropReceived?.Invoke(ldX, ldY, p[3], ldOwner);
                     }
                     break;
 

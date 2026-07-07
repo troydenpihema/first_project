@@ -5,6 +5,7 @@ using System.Numerics;
 using System.Collections.Generic;
 using System.Linq;
 using System.Net.NetworkInformation;
+using System.Security.Cryptography.X509Certificates;
 
 namespace OpenWorldRPG
 {
@@ -20,7 +21,9 @@ namespace OpenWorldRPG
         Space,
         Underwater,
         CardGame,
-        Sleeping
+        Sleeping,
+        BossArena,
+        ClassTest,
     }
 
               public enum SlotSymbol
@@ -117,7 +120,7 @@ public static readonly Dictionary<SlotSymbol, float> TwoMatchMultiplier = new()
         static float sceneFadeSpeed = 500f;
         static Camera2D camera = new Camera2D();
         public static Player player = new Player(new Vector2(-1917, -9720));
-        static float GetCurrentHour() => timeOfDay * 24f;
+        public static float GetCurrentHour() => timeOfDay * 24f;
         static void ChangeScene(SceneState newScene, Action onSwap = null)
 {
     if (newScene == currentScene && sceneFadeState == FadeState.None) return;
@@ -146,9 +149,185 @@ static void UpdateSceneFade(float dt)
             }
         }
 
+        // Magic
+        static Vector2 holyShrinePos = new Vector2(8000, -2000);
+        static Vector2 darkShrinePos = new Vector2(-8000, 9000);
+        static void UpdateShrines()
+        {
+            void Shrine(Vector2 pos, bool holy)
+            {
+                if (Vector2.Distance(player.Center, pos) > 90) return;
+                if (Raylib.IsKeyPressed(KeyboardKey.E) && GetItemCount("Spirit Essence") > 0)
+                {
+                    RemoveOneItem("Spirit Essence");
+                    if (holy) player.AddMysticalXP(10); else player.AddDarkArtsXP(10);
+                }
+            }
+            Shrine(holyShrinePos, true);
+            Shrine(darkShrinePos, false);
+        }
+        static void DrawShrines()
+        {
+            void ShrineVis(Vector2 pos, bool holy)
+            {
+                Vector2 sp = Raylib.GetWorldToScreen2D(pos, camera); 
+                Raylib.DrawRectangle((int)sp.X - 20, (int)sp.Y - 40, 40, 60, holy ? new Color((byte)220,(byte)210,(byte)170,(byte)255) : new Color((byte)40,(byte)30,(byte)50,(byte)255));
+                if (Vector2.Distance(player.Center, pos) <= 90)
+                    Program.DrawTextUI($"E = Sacrifice Spirit Essence ({(holy ? "Mystical" : "Dark Arts")} +10xp)", (int)sp.X - 140, (int)sp.Y - 70, 16, Color.White);
+            }
+            ShrineVis(holyShrinePos, true);
+            ShrineVis(darkShrinePos, false);
+        }
+
         // COMBAT
         enum HandPhase { Tools, Combat }
         static HandPhase currentPhase = HandPhase.Tools;
+        static void DropSpiritEssence(Vector2 pos, int amount)
+        {
+            droppedItems.Add(new DroppedItem("Spirit Essence", amount, pos));
+            if (multiplayer.Connected && multiplayer.IsHost)                     // NEW
+                multiplayer.SendLootDrop(pos.X, pos.Y, "Spirit Essence", -1);    // -1 = public
+        }
+
+        static void AddLootDrop(Vector2 pos, string item, int ownerId = -1)
+        {
+            lootDrops.Add(new LootDrop(pos, item, ownerId));
+            if (multiplayer.Connected && multiplayer.IsHost)
+                multiplayer.SendLootDrop(pos.X, pos.Y, item, ownerId);
+        }
+
+        static Vector2 NearestPlayerTo(Vector2 from)
+        {
+            Vector2 best = player.Center;
+            float bestD = Vector2.DistanceSquared(from, player.Center);
+            if (multiplayer.Connected)
+                lock (multiplayer.RemotePlayers)
+                    foreach (var rp in multiplayer.RemotePlayers)
+                    {
+                        if (!rp.Active || rp.Scene != "World") continue;
+                        var pos = new Vector2(rp.X, rp.Y);
+                        float d = Vector2.DistanceSquared(from, pos);
+                        if (d < bestD) { bestD = d; best = pos; }
+                    }
+            return best;
+        }
+
+        static int CombatXpFor(string type) => type switch
+        {
+            "Wild Dog" => 20, "Wolf" => 35, "Scorpion" => 30, "Bear" => 50,
+            "Crab" => 55, "Shark" => 70, "Snake" => 55, "Crocodile" => 75,
+            "Fire Lizard" => 65, "Magma Beetle" => 80, "Eagle" => 60, "Mountain Goat" => 70,
+            "Warrior" => 60, "Wizard" => 60, "Archer" => 55, "Goblin" => 30,
+            "Thug" => 40, "Robber" => 38, "Gangster" => 45, "Giant Bug" => 50,
+            _ => 20
+        };
+
+         static void HandleEnemyDeath(Enemy enemy)
+            {
+            enemy.Dead = true;
+            DropSpiritEssence(enemy.Position, 1);
+            SpawnDeathFx(enemy.Center, enemy.EnemyColor, enemy.Type);
+
+                if (enemy.Type == "Wild Dog") Raylib.PlaySound(soundDogDie);
+
+                int killerId = enemy.LastDamagerId >= 0 ? enemy.LastDamagerId : multiplayer.MyId;
+                if (killerId == multiplayer.MyId)
+                player.AddCombatXP(CombatXpFor(enemy.Type));           
+                else
+                multiplayer.SendEnemyKill(killerId, enemy.Type);
+
+        // Loot drops
+        int rareRoll = Raylib.GetRandomValue(1, 100);
+
+if (enemy.Type == "Wild Dog") {
+    AddLootDrop(enemy.Position, "Bone", killerId);
+    if (rareRoll <= 20) AddLootDrop(enemy.Position, "Fur", killerId);
+    if (rareRoll <= 5)  AddLootDrop(enemy.Position, "Dog Fang", killerId);
+}
+else if (enemy.Type == "Wolf")  {
+    wolvesKilled++;
+    AddLootDrop(enemy.Position, "Fur", killerId);
+    if (rareRoll <= 25) AddLootDrop(enemy.Position, "Bone", killerId);
+    if (rareRoll <= 8)  AddLootDrop(enemy.Position, "Wolf Claw", killerId);
+}
+else if (enemy.Type == "Scorpion") {
+    AddLootDrop(enemy.Position, "Stinger", killerId);
+    if (rareRoll <= 20) AddLootDrop(enemy.Position, "Stinger", killerId);
+    if (rareRoll <= 6)  AddLootDrop(enemy.Position, "Venom Sac", killerId);
+}
+else if (enemy.Type == "Bear") {
+    AddLootDrop(enemy.Position, "Bear Pelt", killerId);
+    if (rareRoll <= 30) AddLootDrop(enemy.Position, "Fur", killerId);          // 30% fur
+    if (rareRoll <= 7)  AddLootDrop(enemy.Position, "Bear Claw", killerId);    // 7% rare claw
+}
+else if (enemy.Type == "Crab") {
+    AddLootDrop(enemy.Position, "Crab Claw", killerId);
+    if (rareRoll <= 25) AddLootDrop(enemy.Position, "Crab Claw", killerId);    // 25% extra claw
+    if (rareRoll <= 8)  AddLootDrop(enemy.Position, "Crab Shell", killerId);   // 8% rare shell
+}
+else if (enemy.Type == "Shark") {
+    AddLootDrop(enemy.Position, "Shark Fin", killerId);
+    if (rareRoll <= 20) AddLootDrop(enemy.Position, "Shark Fin", killerId);    // 20% extra fin
+    if (rareRoll <= 5)  AddLootDrop(enemy.Position, "Shark Tooth", killerId);  // 5% rare tooth
+}
+else if (enemy.Type == "Snake") {
+    AddLootDrop(enemy.Position, "Snake Skin", killerId);
+    if (rareRoll <= 20) AddLootDrop(enemy.Position, "Stinger", killerId);      // 20% venom fang (reuse stinger)
+    if (rareRoll <= 6)  AddLootDrop(enemy.Position, "Snake Fang", killerId);   // 6% rare fang
+}
+else if (enemy.Type == "Crocodile") {
+    AddLootDrop(enemy.Position, "Croc Scale", killerId);
+    if (rareRoll <= 25) AddLootDrop(enemy.Position, "Croc Scale", killerId);   // 25% extra scale
+    if (rareRoll <= 7)  AddLootDrop(enemy.Position, "Croc Tooth", killerId);   // 7% rare tooth
+}
+else if (enemy.Type == "Fire Lizard") {
+    AddLootDrop(enemy.Position, "Lizard Scale", killerId);
+    if (rareRoll <= 20) AddLootDrop(enemy.Position, "Lizard Scale", killerId); // 20% extra scale
+    if (rareRoll <= 6)  AddLootDrop(enemy.Position, "Ember Stone", killerId);  // 6% rare ember
+}
+else if (enemy.Type == "Magma Beetle") {
+    AddLootDrop(enemy.Position, "Magma Shard", killerId);
+    if (rareRoll <= 25) AddLootDrop(enemy.Position, "Magma Shard", killerId);  // 25% extra shard
+    if (rareRoll <= 5)  AddLootDrop(enemy.Position, "Lava Core", killerId);    // 5% rare core
+}
+else if (enemy.Type == "Eagle") {
+    AddLootDrop(enemy.Position, "Feather", killerId);
+    if (rareRoll <= 30) AddLootDrop(enemy.Position, "Feather", killerId);      // 30% extra feather
+    if (rareRoll <= 7)  AddLootDrop(enemy.Position, "Eagle Talon", killerId);  // 7% rare talon
+}
+else if (enemy.Type == "Mountain Goat") {
+    AddLootDrop(enemy.Position, "Horn", killerId);
+    if (rareRoll <= 25) AddLootDrop(enemy.Position, "Fur", killerId);          // 25% fur
+    if (rareRoll <= 8)  AddLootDrop(enemy.Position, "Goat Hoof", killerId);    // 8% rare hoof
+}
+else if (enemy.Type == "Warrior") {
+    // Iron armour set — 1-in-5 chance per kill for a random piece
+    if (Raylib.GetRandomValue(1, 5) == 1)
+    {
+        string[] ironSet = { "Iron Helmet", "Iron Chestplate", "Iron Leggings", "Iron Boots", "Iron Gauntlets" };
+        string piece = ironSet[Raylib.GetRandomValue(0, ironSet.Length - 1)];
+        AddLootDrop(enemy.Position, piece, killerId);
+    }
+}
+else if (enemy.Type == "Wizard") {
+    // Apprentice robe (Apprentice Mage) set — 1-in-5 chance per kill
+    if (Raylib.GetRandomValue(1, 5) == 1)
+    {
+        string[] robeSet = { "Apprentice Mage Hat", "Apprentice Mage Top", "Apprentice Mage Bottoms", "Apprentice Mage Boots", "Apprentice Mage Gloves" };
+        string piece = robeSet[Raylib.GetRandomValue(0, robeSet.Length - 1)];
+        AddLootDrop(enemy.Position, piece, killerId);
+    }
+}
+else if (enemy.Type == "Archer") {
+    // Leather (Ranger) set — 1-in-5 chance per kill
+    if (Raylib.GetRandomValue(1, 5) == 1)
+    {
+        string[] leatherSet = { "Leather Cap", "Leather Vest", "Leather Pants", "Leather Boots", "Leather Gloves" };
+        string piece = leatherSet[Raylib.GetRandomValue(0, leatherSet.Length - 1)];
+        AddLootDrop(enemy.Position, piece, killerId);
+    }
+}
+}
         static (int melee, int ranged, int magic) GetArmorStyleBonus()
         {
             int m = 0, r = 0, g = 0, mageN = 0, rangN = 0, meleN = 0;
@@ -157,7 +336,7 @@ static void UpdateSceneFade(float dt)
                 if (piece == null) continue;
                 if (piece.Contains("Mage "))        { g += 3 + ClassTierIndex(piece) * 2; r += 1;         mageN++; }
                 else if (piece.Contains("Ranger ")) { r += 3 + ClassTierIndex(piece) * 2; m += 1; g += 1; rangN++; }
-                else                                { m += 3; r += 1;         meleN++; }                              { m += 3; r += 1;         meleN++; }
+                else                                { m += 3; r += 1;         meleN++; }                             
             }
             if (mageN == 5) g += 8;   // set: ARCHMAGE
             if (rangN == 5) r += 8;   // set: SHARPSHOOTER
@@ -237,8 +416,95 @@ static void UpdateSceneFade(float dt)
 
         // NPCS
         static float cRideAnimTimer = 0f;
-        static Vector2 cRidePos = new Vector2(640, 320);   // standing at the claw machines
+        static Vector2 cRidePos = new Vector2(640, 320);   
         static bool cRideMessageActive = false;
+        static void AddDaycareFamilies(Vector2 bestStartAnchor, Vector2 homeAnchor)
+        {
+            string[] parentNames = { "Mara", "Tomas", "Ien", "Sela", "Rui" };
+            string[] kidNames    = { "Pip", "Bo", "Juni", "Eden", "Ada" };
+
+            for (int i = 0; i < parentNames.Length; i++)
+            {
+                Vector2 home = homeAnchor + new Vector2(i * 90, (i % 2) * 70);
+
+                var parent = new NPC(home, parentNames[i], "Just dropping the little one at Best Start.");
+                parent.HasSchedule = true;
+                parent.HomeBuilding = "DAYCARE";
+                parent.IsParent = true;
+                parent.HomeAnchor = home;
+                parent.DayAnchor  = bestStartAnchor + new Vector2(i * 24, 0);
+                parent.DropoffHour = 8f; parent.ParentLeaveHour = 8.5f;
+                parent.PickupHour = 16.5f; parent.ExitHour = 16.833f; parent.GoHomeHour = 17f;
+                npcs.Add(parent);
+
+                var kid = new NPC(home + new Vector2(20, 20), kidNames[i], "We play all day at daycare!");
+                kid.HasSchedule = true;
+                kid.HomeBuilding = "DAYCARE";
+                kid.HomeAnchor = home + new Vector2(20, 20);
+                kid.DayAnchor  = bestStartAnchor + new Vector2(i * 24, 40);
+                kid.DropoffHour = 8f; kid.ParentLeaveHour = 8.5f;
+                kid.PickupHour = 16.5f; kid.ExitHour = 16.833f; kid.GoHomeHour = 17f;
+                kid.IndoorsDuringDay = true;
+                npcs.Add(kid);
+
+                var baby = new NPC(home + new Vector2(-16, 20), kidNames[i] + " Jr", "Goo goo!");
+                baby.HasSchedule = true;
+                baby.HomeBuilding = "DAYCARE";
+                baby.HomeAnchor = home + new Vector2(-16, 20);
+                baby.DayAnchor  = bestStartAnchor + new Vector2(i * 24, 64);
+                baby.DropoffHour = 8f; baby.ParentLeaveHour = 8.5f;
+                baby.PickupHour = 16.5f; baby.ExitHour = 16.833f; baby.GoHomeHour = 17f;
+                baby.IndoorsDuringDay = true;
+                npcs.Add(baby);
+            }
+        }
+        static void AddSchoolFamilies(Vector2 schoolAnchor, Vector2 homeAnchor)
+        {
+            string[] parentNames = { "Ova", "Dax", "Lena", "Kip", "Nara" };
+            string[] kidNames    = { "Theo", "Wren", "Cato", "Isa", "Rye" };
+
+            for (int i = 0; i < parentNames.Length; i++)
+            {
+                Vector2 home = homeAnchor + new Vector2(i * 90, (i % 2) * 70);
+
+                var parent = new NPC(home, parentNames[i], "Off to drop the kids at school.");
+                parent.HasSchedule = true;
+                parent.HomeBuilding = "SCHOOL";
+                parent.IsParent = true;
+                parent.HomeAnchor = home;
+                parent.DayAnchor  = schoolAnchor + new Vector2(i * 24, 0);
+                parent.DropoffHour = 8f; parent.ParentLeaveHour = 8.5f;
+                parent.PickupHour = 16.5f; parent.ExitHour = 16.833f; parent.GoHomeHour = 17f;
+                npcs.Add(parent);
+
+                var kid = new NPC(home + new Vector2(20, 20), kidNames[i], "School's the best!");
+                kid.HasSchedule = true;
+                kid.HomeBuilding = "SCHOOL";
+                kid.HomeAnchor = home + new Vector2(20, 20);
+                kid.DayAnchor  = schoolAnchor + new Vector2(i * 24, 40);
+                kid.DropoffHour = 8f; kid.ParentLeaveHour = 8.5f;
+                kid.PickupHour = 16.5f; kid.ExitHour = 16.833f; kid.GoHomeHour = 17f;
+                kid.IndoorsDuringDay = true;
+                npcs.Add(kid);
+
+                var baby = new NPC(home + new Vector2(-16, 20), kidNames[i] + " Jr", "Goo goo!");
+                baby.HasSchedule = true;
+                baby.HomeBuilding = "SCHOOL";
+                baby.HomeAnchor = home + new Vector2(-16, 20);
+                baby.DayAnchor  = schoolAnchor + new Vector2(i * 24, 64);
+                baby.DropoffHour = 8f; baby.ParentLeaveHour = 8.5f;
+                baby.PickupHour = 16.5f; baby.ExitHour = 16.833f; baby.GoHomeHour = 17f;
+                baby.IndoorsDuringDay = true;
+                npcs.Add(baby);
+            }
+        }
+        static int EnrolledToday()
+        {
+            int n = 0;
+            foreach (var npc in npcs)
+                if (npc.IndoorsDuringDay && npc.Hidden) n++;   
+            return n;
+        }
 
         // WORLD BOSS
         static WorldBoss worldBoss;
@@ -774,13 +1040,15 @@ static void LoadBoatStage(int stage)
         static string incubatingEgg = null;           // egg currently in the incubator (null = empty)
         static float incubationProgress = 0f;          // accumulates dt; hatches at one full day
         static float incubationNeeded = 0f;            // set when incubation starts = seconds in a day cycle
-        static Pet activePet = null;                    // the one pet currently following (null = none)
+        public static Pet activePet = null;                    // the one pet currently following (null = none)
         static int eggDropChance = 10;
         static Pet pendingPet = null;
         const float petCollectRange = 80f;
         static List<string> storedPets = new();    // pet types in storage (boxed)
         const float petTeleportRange = 700f;       // auto-teleport if pet falls this far behind
         static bool petStorageMenuOpen = false;
+
+        
 
         // ── INCUBATOR ──
         static List<Vector2> incubatorPositions = new();
@@ -913,6 +1181,8 @@ static bool CanDriveVehicleNow(Vehicle.VehicleType type)
     var reqClass = VehicleRequiredClass(type);
     if (!HasTheoryForClass(reqClass)) return false;
     if (HasFullLicenceForClass(reqClass)) return true;
+    for (int c = (int)reqClass + 1; c <= (int)LicenceClass.S; c++)
+        if (HasTheoryForClass((LicenceClass)c) || HasFullLicenceForClass((LicenceClass)c)) return true;
     float hour = GetCurrentHour();
     return hour >= 6f && hour < 22f;
 }
@@ -934,12 +1204,57 @@ static List<Job> jobBoard = new()
 static bool jobBoardOpen = false;
 static int lastJobResetDay = -1;
 
+// Tasks
+class SideTask
+{
+    public string Title;
+    public Func<int> Progress; public int Target, Baseline, Pay;
+    public string DeliverTo;   // "Building:NAME" or "NPC:Name"
+    public bool Accepted, ReadyToDeliver, DoneToday;
+    public string DeliverLabel => DeliverTo.StartsWith("NPC:")
+        ? "Deliver to " + DeliverTo[4..] : "Deliver to the " + DeliverTo[9..];
+}
+static List<SideTask> billboardTasks = new()
+{
+    new SideTask{ Title="Wolf Cull",    Progress=() => wolvesKilled,   Target=10, Pay=200, DeliverTo="Building:JOB CENTRE" },
+    new SideTask{ Title="Home Cooking", Progress=() => mealsCooked,    Target=5,  Pay=150, DeliverTo="NPC:Aroha" },
+    new SideTask{ Title="Harvest Help", Progress=() => cropsHarvested, Target=6,  Pay=170, DeliverTo="Building:FARMING SHOP" },
+    new SideTask{ Title="Timber Run",   Progress=() => player.Logs,    Target=12, Pay=160, DeliverTo="NPC:Tama" },
+};
+static SideTask activeSideTask = null;
+static bool billboardOpen = false;
+static Vector2 billboardPos = new Vector2(350, -600);   // town square — move to suit
+
+// Banking
+static bool bankSignedUp = false;
+static bool bankCardPending = false, bankCardMailWaiting = false, bankCardDelivered = false;
+static int  bankBalance = 0;
+static int  bankCardTier = 0;                                   // 0 = starter
+static readonly int[] cardDailyLimits = { 100, 500, 2000, 10000 };
+static readonly int[] cardUpgradeCosts = { 0, 1000, 10000, 50000 };
+static int  cardSpentToday = 0;
+static bool TrySpend(int amount)
+{
+    if (player.Money >= amount) { player.Money -= amount; return true; }
+    if (bankCardDelivered && bankBalance >= amount
+        && cardSpentToday + amount <= cardDailyLimits[bankCardTier])
+    {
+        bankBalance -= amount; cardSpentToday += amount;
+        ShowNotification($"Paid ${amount} by card. (${cardDailyLimits[bankCardTier] - cardSpentToday} left today)");
+        return true;
+    }
+    if (bankCardDelivered && cardSpentToday + amount > cardDailyLimits[bankCardTier])
+        ShowNotification("Card daily limit reached!");
+    return false;
+}   
+
 // Relationships and friends
 class FriendNPC
 {
     public NPC Npc;
     public string Name;
-    public int Friendship;                 // 0–100
+    public int Friendship; 
+    public string Shop;                 // 0–100
     public string FavoriteGift;            // "Fish", "Logs", "Bones", "Fur"
     public bool TalkedToday, GiftedToday, RewardGiven;
     public string Tier => Friendship >= 90 ? "Best Friend" : Friendship >= 60 ? "Close Friend"
@@ -949,13 +1264,21 @@ class FriendNPC
         : Friendship >= 30 ? "Oh hey, it's you again!"
         : "Oh... hello. Do I know you?";
 }
+static float FriendDiscount(string buildingName)
+{
+    var f = friendNPCs.FirstOrDefault(fr => fr.Shop == buildingName);
+    if (f == null) return 0f;
+    return f.Friendship >= 90 ? 0.15f : f.Friendship >= 60 ? 0.10f : f.Friendship >= 30 ? 0.05f : 0f;
+}
+static int DiscountedPrice(int basePrice) =>
+    (int)MathF.Ceiling(basePrice * (1f - FriendDiscount(currentBuilding?.BuildingName ?? "")));
 
 static List<FriendNPC> friendNPCs = new()
 {
-    new FriendNPC{ Name="Aroha",  FavoriteGift="Fish", Npc=new NPC(new Vector2(300, -500),  "Aroha",  "") },
-    new FriendNPC{ Name="Tama",   FavoriteGift="Logs", Npc=new NPC(new Vector2(-400, -750), "Tama",   "") },
-    new FriendNPC{ Name="Sione",  FavoriteGift="Bones",Npc=new NPC(new Vector2(700, -900),  "Sione",  "") },
-    new FriendNPC{ Name="Mereana",FavoriteGift="Fur",  Npc=new NPC(new Vector2(-150, -300), "Mereana","") },
+    new FriendNPC{ Name="Aroha",   FavoriteGift="Fish",  Shop="SUPERMARKET", Npc=new NPC(new Vector2(300, -500),  "Aroha",  "") },
+    new FriendNPC{ Name="Tama",    FavoriteGift="Logs",  Shop="FARMING SHOP", Npc=new NPC(new Vector2(-400, -750), "Tama",   "") },
+    new FriendNPC{ Name="Sione",   FavoriteGift="Bones", Shop="MAGIC SHOP", Npc=new NPC(new Vector2(700, -900),  "Sione",  "") },
+    new FriendNPC{ Name="Cride", FavoriteGift="Fur",   Shop="DBar",  Npc=new NPC(new Vector2(-150, -300), "Cride","") },
 };        
 
         // Grocery / shopping bag
@@ -1241,8 +1564,9 @@ static bool TryGiveItem(string item, int count = 1)
 
         // Player menu
          static bool playerMenuOpen = false;
-        enum PlayerMenuTab { Identity, Stats, Crafting, Achievements, Unlocks, Relationships, Collectables }
-        static PlayerMenuTab playerMenuTab = PlayerMenuTab.Identity;
+        enum PlayerMenuTab { Identity, Stats, Crafting, Achievements, Unlocks, Relationships, Collectables, Collection }
+        static PlayerMenuTab playerMenuTab = PlayerMenuTab.Identity; 
+        static float idColScrollY = 0f; 
 
         // MINI GAMES
         public static PokieMachine activePokieMachine = new PokieMachine();
@@ -1647,7 +1971,35 @@ static void RemoveOneItem(string item)
         static bool farmingShopOpen = false;
 
         // FARMING
+        class LivestockPen
+        {
+            public Vector2 Position;         // world position of the pen
+            public string Animal = "";       // "Chicken", "Cow", ...
+            public string Produce = "";      // "Eggs", "Milk", ...
+            public string Feed = "";         // required feed item
+            public float Cycle = 60f;        // seconds between yields when fed
+            public float Timer = 0f;
+            public bool Fed = false;         // must be fed to progress
+            public bool ReadyToHarvest = false;
+        }
         static List<FarmPlot> farmPlots = new();
+        // ── LIVESTOCK (barn animals) ──
+        static List<LivestockPen> livestockPens = new();
+        static bool barnShopOpen = false;
+        static bool zooPaid = false;
+        // name, price, produce item, seconds to produce, feed item
+        static (string animal, int price, string produce, float cycle, string feed)[] barnStock = {
+            ("Chicken", 120,  "Eggs",  45f, "Grain Feed"),
+            ("Cow",     650,  "Milk",  90f, "Hay Bale"),
+            ("Sheep",   400,  "Wool",  120f,"Hay Bale"),
+            ("Pig",     500,  "Bacon", 150f,"Grain Feed"),
+            ("Goat",    350,  "Goat Milk", 100f, "Hay Bale"),
+        };
+        static (string item, int price)[] barnSupplies = {
+            ("Grain Feed", 8),
+            ("Hay Bale", 12),
+            ("Animal Trough", 40),
+        };
         static Dictionary<string,string> seedToCrop = new() {
         { "Wheat Seeds",   "Wheat" },
         { "Carrot Seeds",  "Carrot" },
@@ -1736,6 +2088,220 @@ static void RemoveOneItem(string item)
             { "Goat Hoof",   "Goat Hoof" },
         };
 
+class LootEntry { public string Item; public int Min, Max; public int Weight; }
+static readonly Dictionary<string, List<LootEntry>> lootTables = new()
+{
+    ["emerald_armor"] = new() {
+        new LootEntry { Item = "Emerald Helmet",     Min = 1, Max = 1, Weight = 20 },
+        new LootEntry { Item = "Emerald Chestplate", Min = 1, Max = 1, Weight = 10 },
+        new LootEntry { Item = "Emerald Leggings",   Min = 1, Max = 1, Weight = 15 },
+        new LootEntry { Item = "Emerald Boots",      Min = 1, Max = 1, Weight = 25 },
+        new LootEntry { Item = "Emerald Gauntlets",  Min = 1, Max = 1, Weight = 25 },
+        new LootEntry { Item = "Emerald Shield",     Min = 1, Max = 1, Weight = 5 },
+    },
+    ["boss_general"] = new() {
+        new LootEntry { Item = "Cooked Fish", Min = 10, Max = 10, Weight = 20 },
+        new LootEntry { Item = "Raw Fish",    Min = 20, Max = 20, Weight = 20 },
+        new LootEntry { Item = "Iron Bar",    Min = 5,  Max = 5,  Weight = 15 },
+        new LootEntry { Item = "Steel Bar",   Min = 3,  Max = 3,  Weight = 10 },
+        new LootEntry { Item = "Logs",        Min = 30, Max = 50, Weight = 15 },
+        new LootEntry { Item = "Crystal",     Min = 2,  Max = 4,  Weight = 10 },
+        new LootEntry { Item = "Money",       Min = 200, Max = 500, Weight = 10 },
+    },
+};
+
+// Roll one entry from a named table → (item, count)
+static (string item, int count) RollLootTable(string tableName)
+{
+    var table = lootTables[tableName];
+    int total = table.Sum(e => e.Weight);
+    int roll = Raylib.GetRandomValue(1, total);
+    foreach (var e in table)
+    {
+        roll -= e.Weight;
+        if (roll <= 0) return (e.Item, Raylib.GetRandomValue(e.Min, e.Max));
+    }
+    var last = table[^1];
+    return (last.Item, last.Min);
+}  
+class ArenaOrb { public Vector2 Pos, Vel; public float Life = 6f; }
+class ArenaSpike { public Vector2 Pos; public float Telegraph = 1.2f; public float ActiveTime = 0.6f; public bool Fired = false; }
+class ArenaMinion { public Vector2 Pos; public float Health = 40; public float Speed = 110f; }
+
+static float arenaBossHealth, arenaBossMaxHealth = 3000f;
+static Vector2 arenaBossPos;
+static bool arenaBossDead = false;
+static float orbTimer, minionTimer, spikeTimer, bossContactCd;
+static List<ArenaOrb> arenaOrbs = new();
+static List<ArenaSpike> arenaSpikes = new();
+static List<ArenaMinion> arenaMinions = new();
+static Vector2 bossArenaEntrance = new Vector2(5000, -3000);   // world entrance — move to suit
+const int BossSize = 160;
+static Rectangle ArenaBossBounds => new Rectangle(arenaBossPos.X - BossSize/2, arenaBossPos.Y - BossSize/2, BossSize, BossSize);
+
+static void EnterBossArena()
+{
+    ChangeScene(SceneState.BossArena, () =>
+    {
+        player.Position = new Vector2(ScreenWidth / 2f, ScreenHeight - 120);
+        arenaBossPos = new Vector2(ScreenWidth / 2f, ScreenHeight / 2f);   // centred in the room
+        arenaBossHealth = arenaBossMaxHealth;
+        arenaBossDead = false;
+        arenaOrbs.Clear(); arenaSpikes.Clear(); arenaMinions.Clear();
+        orbTimer = 3f; minionTimer = 8f; spikeTimer = 5f;
+    });
+}
+static readonly List<Rectangle> arenaObjects = new();
+
+static void UpdateBossArena(float dt)
+{
+    // ESC / exit at the door
+    if (Raylib.IsKeyPressed(KeyboardKey.Q) && !chestOpen)
+        { ChangeScene(SceneState.World, () => player.Position = bossArenaEntrance + new Vector2(0, 80)); return; }
+
+    player.UpdateInterior(dt, arenaObjects, ScreenWidth, ScreenHeight);
+
+    if (Raylib.IsKeyPressed(KeyboardKey.Space))   
+    {
+        if (chestOpen) { chestOpen = false; openChestId = null; }
+        else
+        {
+            var near = placedChests.FirstOrDefault(c => c.BuildingContext == "BOSS ARENA"
+                        && Vector2.Distance(player.Center, c.Position) < 80);
+            if (near != null) { chestOpen = true; openChestId = near.Id; }
+        }
+    }
+
+    if (!arenaBossDead)
+    {
+        // slow chase
+        Vector2 toPlayer = player.Center - arenaBossPos;
+        if (toPlayer.Length() > 5) arenaBossPos += Vector2.Normalize(toPlayer) * 45f * dt;
+
+        // contact damage
+        bossContactCd -= dt;
+        if (bossContactCd <= 0 && Raylib.CheckCollisionRecs(player.Bounds, ArenaBossBounds))
+            { player.Health -= 25; bossContactCd = 1f; }
+
+        // MECHANIC 1 — orb ring every 4s, 12 orbs radially
+        orbTimer -= dt;
+        if (orbTimer <= 0)
+        {
+            orbTimer = 4f;
+            for (int i = 0; i < 12; i++)
+            {
+                float ang = MathF.Tau * i / 12f;
+                arenaOrbs.Add(new ArenaOrb { Pos = arenaBossPos,
+                    Vel = new Vector2(MathF.Cos(ang), MathF.Sin(ang)) * 220f });
+            }
+        }
+
+        // MECHANIC 2 — spawn 3 minions every 12s (cap 6)
+        minionTimer -= dt;
+        if (minionTimer <= 0 && arenaMinions.Count < 6)
+        {
+            minionTimer = 12f;
+            for (int i = 0; i < 3; i++)
+                arenaMinions.Add(new ArenaMinion { Pos = arenaBossPos + new Vector2(Raylib.GetRandomValue(-200, 200), Raylib.GetRandomValue(-200, 200)) });
+        }
+
+        // MECHANIC 3 — spikes telegraph under the player every 6s
+        spikeTimer -= dt;
+        if (spikeTimer <= 0)
+        {
+            spikeTimer = 6f;
+            for (int i = 0; i < 3; i++)
+                arenaSpikes.Add(new ArenaSpike { Pos = player.Center + new Vector2(Raylib.GetRandomValue(-80, 80), Raylib.GetRandomValue(-80, 80)) });
+        }
+    }
+
+    // orbs
+    for (int i = arenaOrbs.Count - 1; i >= 0; i--)
+    {
+        var o = arenaOrbs[i]; o.Pos += o.Vel * dt; o.Life -= dt;
+        if (Raylib.CheckCollisionCircleRec(o.Pos, 10, player.Bounds)) { player.Health -= 12; o.Life = 0; }
+        if (o.Life <= 0 || o.Pos.X < 0 || o.Pos.X > ScreenWidth || o.Pos.Y < 0 || o.Pos.Y > ScreenHeight) arenaOrbs.RemoveAt(i);
+    }
+    // spikes: telegraph → fire once
+    for (int i = arenaSpikes.Count - 1; i >= 0; i--)
+    {
+        var s = arenaSpikes[i]; s.Telegraph -= dt;
+        if (s.Telegraph <= 0 && !s.Fired)
+            { s.Fired = true; if (Vector2.Distance(player.Center, s.Pos) < 45) player.Health -= 30; }
+        if (s.Fired) { s.ActiveTime -= dt; if (s.ActiveTime <= 0) arenaSpikes.RemoveAt(i); }
+    }
+    // minions chase + contact
+    for (int i = arenaMinions.Count - 1; i >= 0; i--)
+    {
+        var m = arenaMinions[i];
+        m.Pos += Vector2.Normalize(player.Center - m.Pos) * m.Speed * dt;
+        if (Vector2.Distance(m.Pos, player.Center) < 30 && bossContactCd <= 0)
+            { player.Health -= 8; bossContactCd = 0.8f; }
+        if (m.Health <= 0) { DropSpiritEssence(m.Pos, 1); arenaMinions.RemoveAt(i); }
+    }
+}
+
+// Call when a player attack lands on the boss (see integration note below)
+static void DamageArenaBoss(float dmg)
+{
+    if (arenaBossDead) return;
+    arenaBossHealth -= dmg;
+    if (arenaBossHealth <= 0) { arenaBossDead = true; SpawnBossLootChest(); }
+}
+
+static void SpawnBossLootChest()
+{
+    var chest = new PlacedChest {
+        Id = "chest_" + Guid.NewGuid().ToString("N").Substring(0, 8),
+        Position = new Vector2(ScreenWidth / 2f, ScreenHeight / 2f),
+        BuildingContext = "BOSS ARENA", Tier = 3,
+    };
+    chest.TryAdd("Spirit Essence", 500);                       // guaranteed
+    if (Raylib.GetRandomValue(1, 5) == 1)                      // 1/5 emerald armor table
+        { var (item, n) = RollLootTable("emerald_armor"); chest.TryAdd(item, n); }
+    var (gItem, gN) = RollLootTable("boss_general");           // guaranteed general roll
+    chest.TryAdd(gItem, gN);
+    placedChests.Add(chest);
+    ShowNotification("The boss dropped a chest!");
+} 
+static void DrawBossArena()
+{
+    Raylib.DrawRectangle(0, 0, ScreenWidth, ScreenHeight, new Color((byte)24,(byte)18,(byte)28,(byte)255));
+    Raylib.DrawRectangleLinesEx(new Rectangle(30, 50, ScreenWidth - 60, ScreenHeight - 90), 6, new Color((byte)70,(byte)50,(byte)90,(byte)255));
+
+    foreach (var s in arenaSpikes)   // telegraph circle, then spike
+        if (!s.Fired) Raylib.DrawCircleLines((int)s.Pos.X, (int)s.Pos.Y, 45, new Color((byte)255,(byte)80,(byte)80,(byte)200));
+        else Raylib.DrawTriangle(new Vector2(s.Pos.X - 20, s.Pos.Y + 20), new Vector2(s.Pos.X + 20, s.Pos.Y + 20), new Vector2(s.Pos.X, s.Pos.Y - 35), Color.LightGray);
+
+    foreach (var m in arenaMinions)
+        Raylib.DrawRectangle((int)m.Pos.X - 14, (int)m.Pos.Y - 14, 28, 28, new Color((byte)120,(byte)40,(byte)140,(byte)255));
+
+    if (!arenaBossDead)
+    {
+        Raylib.DrawRectangleRec(ArenaBossBounds, new Color((byte)90,(byte)20,(byte)110,(byte)255));
+        // boss HP bar
+        Raylib.DrawRectangle(ScreenWidth/2 - 300, 14, 600, 22, new Color((byte)40,(byte)40,(byte)40,(byte)255));
+        Raylib.DrawRectangle(ScreenWidth/2 - 300, 14, (int)(600 * (arenaBossHealth / arenaBossMaxHealth)), 22, new Color((byte)200,(byte)40,(byte)60,(byte)255));
+        Raylib.DrawRectangleLines(ScreenWidth/2 - 300, 14, 600, 22, Color.White);
+    }
+
+    foreach (var o in arenaOrbs)
+        Raylib.DrawCircle((int)o.Pos.X, (int)o.Pos.Y, 10, new Color((byte)255,(byte)120,(byte)200,(byte)255));
+
+    foreach (var c in placedChests.Where(c => c.BuildingContext == "BOSS ARENA"))
+    {
+        int x = (int)c.Position.X, y = (int)c.Position.Y;
+        Raylib.DrawRectangle(x - 22, y - 14, 44, 28, new Color((byte)150,(byte)100,(byte)50,(byte)255));
+        Raylib.DrawRectangle(x - 22, y - 14, 44, 8,  new Color((byte)110,(byte)70,(byte)35,(byte)255));  // lid
+        Raylib.DrawRectangle(x - 3,  y - 4,  6, 8,   Color.Gold);                                        // latch
+        Raylib.DrawRectangleLines(x - 22, y - 14, 44, 28, Color.Black);
+        if (Vector2.Distance(player.Center, c.Position) < 80 && !chestOpen)
+            Program.DrawTextUI("Space = Open chest", x - 60, y - 40, 16, Color.LightGray);
+    }
+    player.Draw();                 // your existing player draw call
+    Program.DrawTextUI("Q = Leave arena", 40, ScreenHeight - 32, 16, Color.Gray);
+}
+
 
         //Tools in toolbelt
         static Vector2 axePosition = new Vector2(-2596, -9121);
@@ -1798,7 +2364,7 @@ static void RemoveOneItem(string item)
         static (float x, float y, int price, string label, string houseType)[] landPlots = {
             (3000,  1800,  8000,  "Safe Zone Plot A", "Standard"),
             (1900, -1200,  8000,  "Safe Zone Plot B", "Standard"),
-            (2600,  -100,  8000,  "Safe Zone Plot C", "Standard"),
+            (5000,  2000,  8000,  "Safe Zone Plot C", "Standard"),
             (-1700, 1700,  7500,  "Safe Zone Plot D", "Standard"),
             (-2650,  800,  7500,  "Safe Zone Plot E", "Standard"),
             (3600,  2400, 15000,  "Countryside Farm Plot",  "Farmhouse"),   // ADDED — tweak coords to fit your map
@@ -1854,6 +2420,11 @@ static void RemoveOneItem(string item)
             ("Gambling",    () => player.GamblingLevel,    v => player.GamblingLevel = v),
             ("Farming", () => player.FarmingLevel, v => player.FarmingLevel = v),
             ("Education", () => player.EducationLevel, v => player.EducationLevel = v),
+            ("Faith",     () => player.FaithLevel,    v => player.FaithLevel = v),
+            ("Mystical",  () => player.MysticalLevel, v => player.MysticalLevel = v),
+            ("Dark Arts", () => player.DarkArtsLevel, v => player.DarkArtsLevel = v),
+            ("Swimming", () => player.SwimmingLevel, v => player.SwimmingLevel = v),
+
         };
 
         static void DrawSkillCheatPanel()
@@ -2027,6 +2598,10 @@ static void RemoveOneItem(string item)
         static float bbGreenPos = 0f;
         static int bbConsecutiveHits = 0;
         static Vector2 barCounterPos = new Vector2(250, 170);
+
+        // Enemies
+        record struct EnemyProjectile(Vector2 Pos, Vector2 Vel, string Kind, float Life, int Damage);
+        static List<EnemyProjectile> enemyProjectiles = new();
 
         // RANGED
 
@@ -2584,6 +3159,9 @@ static string AnimalFeedFor(Rideable.RideableType t) => t switch
         static bool hoverRanged = false;
         static bool hoverCooking = false;
         static bool hoverStaminaSkill = false;
+        static bool hoverFaith = false;
+        static bool hoverMystical = false;
+        static bool hoverDarkArts = false;
 
         static bool hoverCraftSkill = false, hoverBlacksmith = false, hoverEnchanting = false;
         static bool hoverElemental = false;
@@ -2630,6 +3208,7 @@ static string AnimalFeedFor(Rideable.RideableType t) => t switch
               
         };
         static bool questsOpen = false;
+        static float questScrollY = 0f;
         static List<GasStation> gasStations = new();
         static List<Quest> quests = new();
         static string playerName = "";
@@ -2899,6 +3478,7 @@ static string AnimalFeedFor(Rideable.RideableType t) => t switch
         public static List<Lake> lakes = new();
         static List<River> rivers = new();
         static List<NPC> npcs = new();
+        static List<NPC> FamilyHubNPCs = new();
         static List<Vehicle> vehicles = new();
         static List<Building> buildings = new();
         static List<DecorativeBuilding> decorativeBuildings = new();
@@ -2970,6 +3550,19 @@ static string AnimalFeedFor(Rideable.RideableType t) => t switch
         static float divingEntry = 0f;
         static bool divingEntryUp = true;
 
+        // Cutscenes
+        static void DrawTestTransitionOverlay()
+    {
+        if (!testTransitionActive) return;
+        byte alpha = (byte)(255 * testTransitionAlpha);
+        Raylib.DrawRectangle(0, 0, ScreenWidth, ScreenHeight, new Color((byte)0,(byte)0,(byte)0,(byte)alpha));
+        if (testTransitionAlpha >= 1f)
+        {
+            int tw = Program.MeasureTextUI(testTransitionMessage, 28);
+            Program.DrawTextUI(testTransitionMessage, ScreenWidth/2 - tw/2, ScreenHeight/2 - 14, 28, Color.Gold);
+        }
+    }
+
         // Mailbox
         static List<(Vector2 pos, int houseIndex)> mailboxes = new();
 
@@ -2978,6 +3571,57 @@ static string AnimalFeedFor(Rideable.RideableType t) => t switch
             extraMailboxes.Add((new Vector2(x, y), houseIndex));
         }
         static List<(Vector2 pos, int houseIndex)> extraMailboxes = new();
+
+        // Plushies
+        public static readonly string[] plushCommon = {
+    "Teddy","Bunny","Robot","Star","Frog","Kitty","Panda","Dino","Puppy","Duck",
+    "Whale","Octopus","Penguin","Owl","Fox","Hedgehog","Turtle","Snail","Bee","Ladybug",
+    "Mouse","Sheep","Cow","Pig","Chick","Seal","Crab","Jellyfish","Mushroom","Cactus",
+    "Cloud","Raindrop","Sun","Moon","Kiwi Bird"
+};
+public static readonly string[] plushRare = {
+    "Golden Teddy","Ruby Dragon","Sapphire Unicorn","Emerald Serpent","Shadow Wolf",
+    "Crystal Deer","Phoenix Chick","Yeti","Kraken","Royal Corgi"
+};
+public static readonly string[] plushSuperRare = {
+    "Diamond Kiwi","Galaxy Whale","Ancient Golem","Rainbow Phoenix","C RIDE Plush"
+};
+
+public static string[] dailyPlushStock = new string[10];
+public static bool[] dailyPlushTaken = new bool[10];
+public static Dictionary<string, int> plushiesOwned = new();   // name -> count (dupes tracked)
+static bool plushLogOpen = false;
+
+public static bool IsRarePlush(string n) => Array.IndexOf(plushRare, n) >= 0;
+public static bool IsSuperRarePlush(string n) => Array.IndexOf(plushSuperRare, n) >= 0;
+public static Color PlushColor(string n)
+{
+    int h = n.GetHashCode();
+    return new Color((byte)(110 + (h & 0x7F)), (byte)(110 + ((h >> 7) & 0x7F)), (byte)(110 + ((h >> 14) & 0x7F)), (byte)255);
+}
+
+static void RollDailyPlushStock()
+{
+    for (int i = 0; i < 10; i++)
+    {
+        int roll = Raylib.GetRandomValue(1, 100);   // 5% super rare, 15% rare, 80% common — duplicates allowed
+        dailyPlushStock[i] = roll <= 5  ? plushSuperRare[Raylib.GetRandomValue(0, plushSuperRare.Length - 1)]
+                           : roll <= 20 ? plushRare[Raylib.GetRandomValue(0, plushRare.Length - 1)]
+                           : plushCommon[Raylib.GetRandomValue(0, plushCommon.Length - 1)];
+        dailyPlushTaken[i] = false;
+    }
+}
+
+public static string RegisterPlushWin(int slot, string name)
+{
+    dailyPlushTaken[slot] = true;
+    player.PlushPrizes++;
+    bool isNew = !plushiesOwned.ContainsKey(name);
+    plushiesOwned[name] = plushiesOwned.GetValueOrDefault(name) + 1;
+    string rarity = IsSuperRarePlush(name) ? "SUPER RARE " : IsRarePlush(name) ? "RARE " : "";
+    return isNew ? $"NEW {rarity}plushie: {name}!  Set: {plushiesOwned.Count}/50"
+                 : $"You won a {rarity}{name} (duplicate).  Set: {plushiesOwned.Count}/50";
+}
 
         // Collectables
         class Collectable
@@ -3056,6 +3700,7 @@ static string AnimalFeedFor(Rideable.RideableType t) => t switch
             public List<BinderSlot> Slots = new();
             public CardBinder MasterSet = new();
             public CardBinder Personal = new();
+            public int PacksOpened = 0; 
         }
         static List<CardSet> cardSets = new();
         static bool lastPackWasGod = false;
@@ -3351,6 +3996,97 @@ static List<TradingCard> OpenPack(CardSet set)
         static int wolvesKilled = 0;
         static int cropsHarvested = 0;
         static int mealsCooked = 0;
+class QuestStage
+{
+    public string Description;
+    public Func<int> Progress;   // cumulative counter; null = "return to giver/spot" stage
+    public int Target;
+    public int Baseline;         // captured when the stage begins
+}
+class StoryQuest
+{
+    public string Title;
+    public string GiverName;     // "" = no NPC giver
+    public Vector2 TriggerSpot;  // Vector2.Zero = no spot trigger
+    public List<QuestStage> Stages = new();
+    public int Stage = 0;
+    public bool Started, Completed;
+    public int Reward;
+    public QuestStage Current => Stage < Stages.Count ? Stages[Stage] : null;
+}
+
+static NPC rangerNpc = new NPC(new Vector2(-1800, -7000), "Ranger", "Those wolves are getting bold...");
+static List<StoryQuest> storyQuests = new()
+{
+    new StoryQuest { Title = "The Wolf Menace", GiverName = "Ranger", Reward = 500,
+        Stages = {
+            new QuestStage{ Description="Slay 5 wolves",            Progress=() => wolvesKilled, Target=5 },
+            new QuestStage{ Description="Collect 3 Fur",            Progress=() => player.Fur,   Target=3 },
+            new QuestStage{ Description="Return to the Ranger (E)", Progress=null },
+        }},
+    new StoryQuest { Title = "Secrets of the Deep", TriggerSpot = new Vector2(2200, 1500), GiverName = "", Reward = 650,   // put this spot near your dive point
+        Stages = {
+            new QuestStage{ Description="Find 2 underwater collectables", Progress=() => collectables.Count(c => c.Found && c.Scene=="Underwater"), Target=2 },
+            new QuestStage{ Description="Catch 5 fish",                   Progress=() => player.Fish, Target=5 },
+            new QuestStage{ Description="Return to the glowing marker",   Progress=null },
+        }},
+};
+static void UpdateStoryQuests()
+{
+    if (testTransitionActive) return;   
+
+    foreach (var q in storyQuests)
+    {
+        if (q.Completed) continue;
+
+        if (!q.Started)
+        {
+            bool nearGiver = q.GiverName == "Ranger" && Vector2.Distance(player.Center, rangerNpc.Position) < 70
+                             && Raylib.IsKeyPressed(KeyboardKey.E) && !chatInputOpen;
+            bool onSpot = q.TriggerSpot != Vector2.Zero && Vector2.Distance(player.Center, q.TriggerSpot) < 45;
+            if (nearGiver || onSpot)
+            {
+                var quest = q;
+                StartTestTransition(() => {
+                    quest.Started = true;
+                    if (quest.Current?.Progress != null) quest.Current.Baseline = quest.Current.Progress();
+                    ShowNotification($"Quest started: {quest.Title} — {quest.Current.Description}");
+                }, $"QUEST: {quest.Title}");
+            }
+            continue;
+        }
+
+        var st = q.Current;
+        if (st == null) continue;
+
+        if (st.Progress != null)   // counter stage
+        {
+            if (st.Progress() - st.Baseline >= st.Target) AdvanceStoryQuest(q);
+        }
+        else                       // return stage
+        {
+            bool atGiver = q.GiverName == "Ranger" && Vector2.Distance(player.Center, rangerNpc.Position) < 70
+                           && Raylib.IsKeyPressed(KeyboardKey.E) && !chatInputOpen;
+            bool atSpot = q.TriggerSpot != Vector2.Zero && Vector2.Distance(player.Center, q.TriggerSpot) < 45;
+            if (atGiver || atSpot) AdvanceStoryQuest(q);
+        }
+    }
+}
+static void AdvanceStoryQuest(StoryQuest q)
+{
+    q.Stage++;
+    if (q.Stage >= q.Stages.Count)
+    {
+        q.Completed = true;
+        player.Money += q.Reward;
+        ShowLevelUp($"Quest Complete: {q.Title}! +${q.Reward}", 0);
+    }
+    else
+    {
+        if (q.Current.Progress != null) q.Current.Baseline = q.Current.Progress();
+        ShowNotification($"{q.Title} — next: {q.Current.Description}");
+    }
+}
 
         // ── TENNIS ──
         // match state
@@ -3508,6 +4244,234 @@ static List<TradingCard> OpenPack(CardSet set)
         static float airportFlightTimer = 0f;
         static bool airportFlying = false;
 
+        // Mall
+        static string currentMiniShop = "";   // "" = mall concourse, else shop name
+        static (string name, Vector2 doorPos, Color col)[] mallShops = {
+            ("CLOTHING", new Vector2(360, 640),  new Color(210, 90, 140, 255)),
+            ("ELECTRONICS", new Vector2(760, 640),  new Color(70, 130, 210, 255)),
+            ("SPORTS",   new Vector2(1160, 640), new Color(80, 180, 90, 255)),
+            ("BOOKS",    new Vector2(360, 1360), new Color(200, 150, 60, 255)),
+            ("FOOD COURT", new Vector2(760, 1360), new Color(220, 120, 60, 255)),
+            ("TOYS",     new Vector2(1160, 1360), new Color(160, 90, 200, 255)),
+        };
+        static Dictionary<string, List<Rectangle>> miniShopInteriorObjects = new() {
+            { "CLOTHING",    new List<Rectangle>{ new(200,200,300,60), new(200,400,300,60), new(900,200,300,400) } },
+            { "ELECTRONICS", new List<Rectangle>{ new(200,200,900,60), new(200,600,900,60), new(600,300,200,200) } },
+            { "SPORTS",      new List<Rectangle>{ new(200,200,300,400), new(900,200,300,400), new(560,700,280,60) } },
+            { "BOOKS",       new List<Rectangle>{ new(150,150,40,500), new(1210,150,40,500), new(300,300,800,60) } },
+            { "FOOD COURT",  new List<Rectangle>{ new(200,150,1000,60), new(300,400,150,150), new(700,400,150,150), new(1000,400,150,150) } },
+            { "TOYS",        new List<Rectangle>{ new(200,250,300,300), new(900,250,300,300), new(560,650,280,60) } },
+        };
+
+        // Class tests
+        
+        // ── Maths class minigame ──────────────────────────────
+        static string classTestSubject = "";
+        static int    ctGridSize   = 3;
+        static int[]  ctNumbers    = System.Array.Empty<int>();
+        static int[]  ctSortedIdx  = System.Array.Empty<int>();
+        static int    ctNextClick  = 0;
+        static float  ctTimeLeft   = 60f;
+        static int    ctGridsDone  = 0;
+        static int    ctFlashIdx   = -1;
+        static float  ctFlashTimer = 0f;
+        static int ctXpGained = 0;
+        static readonly System.Random ctRng = new();
+
+        static void StartClassTest(string subject)
+        {
+            interiorReturnScene     = currentScene;      
+            interiorReturnPos       = player.Position;
+            interiorReturnBuilding  = currentBuilding;
+            interiorReturnClassroom = currentClassroom;
+
+            classTestSubject = subject;
+            int lvl = player.EducationLevel;
+            ctGridSize  = System.Math.Clamp(3 + lvl / 5, 3, 7);
+            ctTimeLeft  = 60f;
+            ctGridsDone = 0;
+            BuildClassGrid();
+            ChangeScene(SceneState.ClassTest);
+        }
+
+        static void BuildClassGrid()
+        {
+            int cells  = ctGridSize * ctGridSize;
+            int maxVal = ctGridSize * ctGridSize;
+            ctNumbers   = System.Linq.Enumerable.Range(1, maxVal)
+                              .OrderBy(_ => ctRng.Next()).Take(cells).ToArray();
+            ctSortedIdx = System.Linq.Enumerable.Range(0, cells)
+                              .OrderBy(i => ctNumbers[i]).ToArray();
+            ctNextClick = 0;
+            ctFlashIdx  = -1;
+        }
+
+        // Frame-time logic ONLY. Called from the UPDATE switch, never inside BeginDrawing.
+        static void UpdateClassTest(float dt)
+        {
+            ctTimeLeft   -= dt;
+            if (ctFlashTimer > 0f) ctFlashTimer -= dt;
+
+            if (ctTimeLeft <= 0f)
+            {
+                var sTime = schoolSubjects.First(x => x.Name == classTestSubject);
+                int reward = ctGridsDone * sTime.XP;
+                ShowNotification($"{classTestSubject} class over! {ctGridsDone} grids  +{reward} Education XP");
+                ChangeScene(interiorReturnScene, () => {
+                    currentBuilding  = interiorReturnBuilding;
+                    currentClassroom = interiorReturnClassroom;
+                    player.Position  = interiorReturnPos;
+                });
+                return;
+            }
+
+            Vector2 mouse = Raylib.GetMousePosition();
+            bool clicked  = Raylib.IsMouseButtonPressed(MouseButton.Left);
+            if (Raylib.IsKeyPressed(KeyboardKey.Q))
+            {
+                var sQ = schoolSubjects.First(x => x.Name == classTestSubject);
+                int reward = ctGridsDone * sQ.XP;
+                ShowNotification($"Left {classTestSubject} test. +{reward} Education XP");
+                ChangeScene(interiorReturnScene, () => {
+                    currentBuilding  = interiorReturnBuilding;
+                    currentClassroom = interiorReturnClassroom;
+                    player.Position  = interiorReturnPos;
+                });
+                return;
+            }
+
+            if (!clicked) return;
+
+            int gap  = 12;
+            int oyTop  = 250;                      
+            int availH = ScreenHeight - oyTop - 20; 
+            int availW = ScreenWidth  - 80;
+            int cell = Math.Min(
+                (availW - (ctGridSize - 1) * gap) / ctGridSize,
+                (availH - (ctGridSize - 1) * gap) / ctGridSize);
+            cell = Math.Clamp(cell, 40, 130);
+            int totW = ctGridSize * cell + (ctGridSize - 1) * gap;
+            int totH = ctGridSize * cell + (ctGridSize - 1) * gap;
+            int ox   = ScreenWidth / 2 - totW / 2;
+            int oy   = oyTop + (availH - totH) / 2;
+
+            for (int i = 0; i < ctNumbers.Length; i++)
+            {
+                int gx = i % ctGridSize, gy = i / ctGridSize;
+                var r = new Rectangle(ox + gx * (cell + gap), oy + gy * (cell + gap), cell, cell);
+                bool solved = System.Array.IndexOf(ctSortedIdx, i) < ctNextClick;
+                if (solved || !Raylib.CheckCollisionPointRec(mouse, r)) continue;
+
+                if (i == ctSortedIdx[ctNextClick])
+                {
+                    ctNextClick++;
+                    if (ctNextClick >= ctNumbers.Length)   // grid complete
+                    {
+                        ctGridsDone++;
+                        player.AddEducationXP(50);          
+                        player.MathsRating += 8; 
+                        ctXpGained += 50;
+                        BuildClassGrid();
+                    }
+                }
+                else { ctNextClick = 0; ctFlashIdx = i; ctFlashTimer = 0.3f; }
+
+                break;
+            }
+        }
+
+        // Drawing ONLY. Called from the DRAW switch, inside BeginDrawing/EndDrawing.
+        static void DrawClassTest()
+        {
+            var s = schoolSubjects.First(x => x.Name == classTestSubject);
+            Raylib.ClearBackground(new Color((byte)26,(byte)30,(byte)42,(byte)255));
+
+            Program.DrawTextUI($"{classTestSubject.ToUpper()} TEST", 40, 30, 40, s.Col);
+            Program.DrawTextUI($"Click 1..{ctGridSize*ctGridSize} lowest to highest", 40, 80, 22, Color.LightGray);
+            Program.DrawTextUI($"Grids: {ctGridsDone}", 40, 112, 22, Color.White);
+
+            float frac = ctTimeLeft / 60f;
+            Raylib.DrawRectangle(40, 230, 300, 20, new Color((byte)50,(byte)50,(byte)60,(byte)255));
+            Raylib.DrawRectangle(40, 230, (int)(300 * frac), 20,
+                frac < 0.25f ? Color.Red : new Color((byte)90,(byte)200,(byte)120,(byte)255));
+            Program.DrawTextUI($"{(int)(ctTimeLeft/60)}:{((int)ctTimeLeft%60):00}", 660, 228, 24, Color.White);
+
+            int gap  = 12;
+            
+            int oyTop  = 250;                     
+            int availH = ScreenHeight - oyTop - 20; 
+            int availW = ScreenWidth  - 80;
+            int cell = Math.Min(
+                (availW - (ctGridSize - 1) * gap) / ctGridSize,
+                (availH - (ctGridSize - 1) * gap) / ctGridSize);
+            cell = Math.Clamp(cell, 40, 130);
+            int totW = ctGridSize * cell + (ctGridSize - 1) * gap;
+            int totH = ctGridSize * cell + (ctGridSize - 1) * gap;
+            int ox   = ScreenWidth / 2 - totW / 2;
+            int oy   = oyTop + (availH - totH) / 2; 
+            Vector2 mouse = Raylib.GetMousePosition();
+
+            for (int i = 0; i < ctNumbers.Length; i++)
+            {
+                int gx = i % ctGridSize, gy = i / ctGridSize;
+                var r = new Rectangle(ox + gx * (cell + gap), oy + gy * (cell + gap), cell, cell);
+                bool solved = System.Array.IndexOf(ctSortedIdx, i) < ctNextClick;
+                bool hover  = Raylib.CheckCollisionPointRec(mouse, r);
+
+                Color fill = solved ? new Color((byte)60,(byte)120,(byte)70,(byte)255)
+                           : (i == ctFlashIdx && ctFlashTimer > 0f) ? new Color((byte)170,(byte)50,(byte)50,(byte)255)
+                           : hover ? new Color((byte)70,(byte)80,(byte)110,(byte)255)
+                                   : new Color((byte)55,(byte)62,(byte)85,(byte)255);
+                Raylib.DrawRectangleRec(r, fill);
+                Raylib.DrawRectangleLinesEx(r, 2, new Color((byte)30,(byte)34,(byte)48,(byte)255));
+
+                string num = ctNumbers[i].ToString();
+                int fs = cell / 2;
+                int tw = Raylib.MeasureText(num, fs);
+                Program.DrawTextUI(num, (int)(r.X + cell/2 - tw/2), (int)(r.Y + cell/2 - fs/2), fs,
+                    solved ? Color.LightGray : Color.White);
+            }
+
+            Program.DrawTextUI($"Grids: {ctGridsDone}", 40, 112, 22, Color.White);
+            // NEW — level + XP gained this session
+            Program.DrawTextUI($"Education Lv {player.EducationLevel}", 40, 142, 20, new Color((byte)90,(byte)140,(byte)230,(byte)255));
+            Program.DrawTextUI($"+{ctXpGained} XP this class", 260, 142, 20, new Color((byte)90,(byte)200,(byte)120,(byte)255));
+             int xpReq = player.EducationLevel * player.EducationLevel * 50;
+            float xpFrac = Math.Clamp((float)player.EducationXP / xpReq, 0f, 1f);
+            Raylib.DrawRectangle(40, 218, 300, 10, new Color((byte)40,(byte)40,(byte)40,(byte)255));
+            Raylib.DrawRectangle(40, 218, (int)(300 * xpFrac), 10, new Color((byte)90,(byte)200,(byte)120,(byte)255));
+            Program.DrawTextUI($"{player.EducationXP}/{xpReq}", 348, 214, 16, Color.LightGray);
+
+            // NEW — Maths rating bar, mirroring the card-game rating style
+            int mr = player.MathsRating;
+            string mRank = mr >= 1800 ? "Grand Master" : mr >= 1500 ? "Master" :
+                           mr >= 1200 ? "Expert" : mr >= 800 ? "Intermediate" : "Beginner";
+            Color mCol = mr >= 1800 ? Color.Gold :
+                         mr >= 1500 ? new Color((byte)180,(byte)100,(byte)255,(byte)255) :
+                         mr >= 1200 ? Color.SkyBlue :
+                         mr >= 800  ? Color.LightGray : Color.DarkGray;
+            Program.DrawTextUI($"Maths Rating: {mr}  ({mRank})", 40, 176, 18, mCol);
+            float mP = Math.Clamp(mr / 2000f, 0f, 1f);
+            Raylib.DrawRectangle(40, 200, 300, 10, new Color((byte)30,(byte)30,(byte)30,(byte)255));
+            Raylib.DrawRectangle(40, 200, (int)(300 * mP), 10, mCol);
+
+            Program.DrawTextUI("Q = Leave test early", 40, 940, 18, Color.LightGray);
+        }
+        static void DrawNotificationBanner()
+    {
+        if (levelUpTimer <= 0) return;
+        byte alpha = (byte)(255 * Math.Min(1f, levelUpTimer));
+        int textWidth = Program.MeasureTextUI(levelUpMessage, 40);
+        int bx = ScreenWidth / 2 - textWidth / 2;
+        // NEW — black backing box for readability (alpha fades with the text)
+        byte boxA = (byte)(200 * Math.Min(1f, levelUpTimer));
+        Raylib.DrawRectangle(bx - 20, 272, textWidth + 40, 56, new Color((byte)0,(byte)0,(byte)0,boxA));
+        Raylib.DrawRectangleLines(bx - 20, 272, textWidth + 40, 56, new Color((byte)255,(byte)215,(byte)0,alpha));
+        Program.DrawTextUI(levelUpMessage, bx, 280, 40, new Color((byte)255,(byte)215,(byte)0,alpha));
+    }
+        
+
+
         // SCHOOL
         record SchoolSubject(string Name, int Cost, int XP, Color Col);
         static SchoolSubject[] schoolSubjects = {
@@ -3525,7 +4489,11 @@ static List<TradingCard> OpenPack(CardSet set)
         { "English", new List<Rectangle> { new(300, 400, 800, 60), new(300, 530, 800, 60), new(300, 660, 800, 60) } },
         };
 
-        static string currentClassroom = "";   // "" = in main hall, else "Science"/"Maths"/"Art"/"Sports"/"English"
+        static string currentClassroom = ""; 
+        static SceneState interiorReturnScene = SceneState.Building;
+        static Vector2    interiorReturnPos   = Vector2.Zero;
+        static Building   interiorReturnBuilding = null;
+        static string     interiorReturnClassroom = "";  
         static (string subject, Vector2 doorPos)[] classroomDoors = {
             ("Maths",   new Vector2(270, 694)),
             ("Art",     new Vector2(620, 694)),
@@ -3546,6 +4514,17 @@ static List<TradingCard> OpenPack(CardSet set)
         const float PrisonSecondsPerDollar = 2f; // sentence length scales with debt owed
         static Vector2 prisonReturnPos;
         public static Vector2 prisonCellCenter = new Vector2(1000, 1200);
+        static string currentPrisonRoom = "";   // "" = main block, else "LAUNDRY"/"KITCHEN"/"TOILETS"
+        static (string name, Vector2 doorPos, Color col)[] prisonRooms = {
+            ("LAUNDRY", new Vector2(360, 1760),  new Color(80, 120, 160, 255)),
+            ("KITCHEN", new Vector2(1000, 1760), new Color(170, 110, 50, 255)),
+            ("TOILETS", new Vector2(1640, 1760), new Color(90, 150, 150, 255)),
+        };
+        static Dictionary<string, List<Rectangle>> prisonRoomInteriorObjects = new() {
+            { "LAUNDRY", new List<Rectangle>{ new(200,200,300,180), new(600,200,300,180), new(1000,200,300,180), new(300,600,800,80) } },
+            { "KITCHEN", new List<Rectangle>{ new(150,150,1100,80), new(200,400,250,200), new(600,400,250,200), new(1000,400,250,200) } },
+            { "TOILETS", new List<Rectangle>{ new(150,200,180,220), new(420,200,180,220), new(690,200,180,220), new(960,200,180,220) } },
+        };
 
         static void IssueFine(float amount, string reason)
         {
@@ -3561,7 +4540,6 @@ static List<TradingCard> OpenPack(CardSet set)
             new("Supermarket",new Vector2(3790, 640)),
             new("Desert",     new Vector2(8000, 260)),
             new("Snow Zone",  new Vector2(-9000,260)),
-            new("Gym",        new Vector2(2890, 640)),
             new("Hamiltron City", new Vector2(14800, 5660)),
             new("Rotoaira",       new Vector2(-16200, 4540)),
         };
@@ -3857,6 +4835,12 @@ static void UpdatePendingPet()
 static void StoreActivePet()
 {
     if (activePet == null) { ShowNotification("No pet is following you."); return; }
+    if (activePet.Adopted)                                   
+    {
+        activePet.AtSanctuary = true;                        
+        ShowNotification($"{activePet.Type} is safe at the sanctuary.");
+        return;
+    }
     storedPets.Add(activePet.Type);
     ShowNotification($"{activePet.Type} was sent to storage.");
     activePet = null;
@@ -3869,6 +4853,7 @@ static void WithdrawPet(int index)
     string type = storedPets[index];
     storedPets.RemoveAt(index);
     activePet = new Pet(player.Center, type, PetColorFor(type + " Egg"));
+    activePet = Pet.NewBaby(player.Center, "Kitten", "Cat", PetColorFor("Cat Egg"), 120f);
     ShowNotification($"{type} is now following you!");
 }
 static void DrawPetStorageMenu()
@@ -3930,6 +4915,7 @@ static string lastSentHairStyle = "";
 static string lastSentFacial2 = "None";
 static string lastSentWeapon = "";
 static bool   lastSentTwoHanded = false;
+static int lastKnownRemoteCount = 0;
 
 static void CheckSendAppearanceIfChanged()
 {
@@ -3938,6 +4924,10 @@ static void CheckSendAppearanceIfChanged()
     bool twoHandedNow = weaponNow.Length > 0 && IsTwoHandedWeapon(weaponNow);
     string hairStyleNow = playerHairStyle ?? "None";
     string facialHairNow = playerFacialHair ?? "None";
+    int remoteNow = multiplayer.RemotePlayers.Count;
+    if (remoteNow > lastKnownRemoteCount)
+        lastSentSkin = default;          
+    lastKnownRemoteCount = remoteNow;
 
     if (player.SkinColor.R != lastSentSkin.R || player.SkinColor.G != lastSentSkin.G || player.SkinColor.B != lastSentSkin.B ||
         playerHairColor.R != lastSentHair.R || playerHairColor.G != lastSentHair.G || playerHairColor.B != lastSentHair.B ||
@@ -4030,6 +5020,34 @@ static FishSpecies RollFish(string water, string tool)
         if (roll <= acc) return f;
     }
     return pool[0];
+}
+
+static void AwardBossKill(WorldBoss boss, bool isSuper)
+{
+    int killerId = boss.LastDamagerId >= 0 ? boss.LastDamagerId : multiplayer.MyId;
+    DropSpiritEssence(boss.Position, 20);                       // shared-world essence
+
+    if (killerId == multiplayer.MyId)                           // reward is ours
+    {
+        player.AddCombatXP(isSuper ? 1500 : 500);
+        player.Money += isSuper ? 3000 : 1000;
+        ShowLevelUp($"{boss.Name} defeated!", 0);
+    }
+    else
+        multiplayer.SendBossKillReward(killerId, isSuper);      // NEW: tell the client (see note)
+
+    if (Raylib.GetRandomValue(1, 100) <= eggDropChance)
+    {
+        string egg = $"{boss.Name} Egg";
+        droppedEggs.Add((boss.Center, egg, 0f));               
+        if (multiplayer.Connected && multiplayer.IsHost)
+            multiplayer.SendLootDrop(boss.Center.X, boss.Center.Y, egg, killerId);
+            if (killerId == multiplayer.MyId)                      
+        {
+            ShowNotification($" RARE DROP   {egg}!");
+            TriggerShake(0.25f);
+        }
+    }
 }
 static int GetGroceryCount(string name)
 {
@@ -4206,6 +5224,11 @@ public static void SpawnRemoteVisualProjectile(float x, float y, float vx, float
         Kind = kind,
         IsSpell = isSpell
     });
+}
+
+public static void SpawnNetworkEnemyProjectile(float x, float y, float vx, float vy, float life, string kind, int damage)
+{
+    enemyProjectiles.Add(new EnemyProjectile(new Vector2(x, y), new Vector2(vx, vy), kind, life, damage));
 }
 
 static void DrawFridgeUI()
@@ -4445,6 +5468,35 @@ static void TryFireSpell(Vector2 dir)
     // auto-clear ammo slot when essence runs out
     if (player.ArcaneEssence <= 0) equippedAmmo = null;
 }
+static void UpdateEnemyProjectiles(float dt)
+{
+    for (int i = enemyProjectiles.Count - 1; i >= 0; i--)
+    {
+        var p = enemyProjectiles[i];
+        p = p with { Pos = p.Pos + p.Vel * dt, Life = p.Life - dt };
+
+        if (p.Life <= 0) { enemyProjectiles.RemoveAt(i); continue; }
+
+        // hit the player?
+        Rectangle box = new Rectangle(p.Pos.X - 6, p.Pos.Y - 6, 12, 12);
+        if (Raylib.CheckCollisionRecs(box, player.Bounds))
+        {
+            int reduced = Math.Max(1, p.Damage - GetTotalDefense());
+            player.TakeDamage(reduced);
+            TriggerShake(0.18f);
+            floatingTexts.Add(new FloatingText {
+                Position = player.Position - new Vector2(0, 20),
+                Text = $"-{reduced}",
+                Timer = 1f,
+                TextColor = p.Kind == "Arrow" ? Color.Orange : Color.Violet
+            });
+            enemyProjectiles.RemoveAt(i);
+            continue;
+        }
+
+        enemyProjectiles[i] = p;
+    }
+}
 
 static void UpdateSpellProjectiles(float dt)
 {
@@ -4469,12 +5521,24 @@ static void UpdateSpellProjectiles(float dt)
             int dmg      = baseDmg + lvlBonus;
 
             int actualDmg = Math.Min(dmg, enemy.Health);
-            enemy.Health -= dmg;
+
+            if (!multiplayer.Connected || multiplayer.IsHost)
+            {
+                enemy.LastDamagerId = multiplayer.MyId;
+                enemy.Health -= dmg;
+                if (enemy.Health <= 0) HandleEnemyDeath(enemy);
+            }
+            else
+            {
+                multiplayer.SendEnemyHit(enemies.IndexOf(enemy), dmg, multiplayer.MyId);
+            }
+
             enemy.TriggerFlash();
             SpawnSplat(enemy.Center, GetSpellColor(p.SpellType));
             if (enemy.Health <= 0)
             {
                 enemy.Dead = true;
+                DropSpiritEssence(enemy.Position, 1);
                 SpawnDeathFx(enemy.Center, enemy.EnemyColor, enemy.Type);
             }
 
@@ -4503,6 +5567,7 @@ static void UpdateSpellProjectiles(float dt)
         if (worldBoss.Health <= 0)
         {
             worldBoss.Dead = true;
+            DropSpiritEssence(worldBoss.Position, 20);
             player.AddCombatXP(500);
             player.Money += 1000;
             ShowLevelUp($"{worldBoss.Name} defeated!", 0);
@@ -4514,7 +5579,7 @@ static void UpdateSpellProjectiles(float dt)
     else
     {
         // client: report the hit, let the host apply real damage and broadcast back
-        multiplayer.SendBossHit(false, dmg);
+        multiplayer.SendBossHit(false, dmg, multiplayer.MyId);
     }
 
     floatingTexts.Add(new FloatingText {
@@ -4590,13 +5655,21 @@ static void UpdateProjectiles(float dt)
 
             int baseDmg  = p.AmmoType == "Bolts" ? 18 : 12;
             int dmg = baseDmg + (player.RangedLevel / 5) + GetArmorStyleBonus().ranged;
-            enemy.Health -= dmg;
+            if (!multiplayer.Connected || multiplayer.IsHost)
+            {
+                enemy.LastDamagerId = multiplayer.MyId;
+                enemy.Health -= dmg;
+                if (enemy.Health <= 0) HandleEnemyDeath(enemy);
+            }
+            else
+            {
+                multiplayer.SendEnemyHit(enemies.IndexOf(enemy), dmg, multiplayer.MyId);
+            }
             enemy.TriggerFlash();
             SpawnSplat(enemy.Center, new Color((byte)170, (byte)20, (byte)20, (byte)255));
             if (enemy.Health <= 0)
             {
-                enemy.Dead = true;
-                SpawnDeathFx(enemy.Center, enemy.EnemyColor, enemy.Type);
+                HandleEnemyDeath(enemy);
             }
 
 
@@ -4629,7 +5702,7 @@ static void UpdateProjectiles(float dt)
     }
     else
     {
-        multiplayer.SendBossHit(false, dmg);
+        multiplayer.SendBossHit(false, dmg, multiplayer.MyId);
     }
 
     player.AddRangedXP(p.AmmoType == "Bolts" ? 6 : 4);
@@ -4653,6 +5726,7 @@ static void UpdateRemoteVisualProjectiles(float dt)
 }
 static float bossSyncTimer = 0f;
 static float superBossSyncTimer = 0f;
+static float enemySyncTimer = 0f;
 static void UpdateWorldBoss(WorldBoss boss, float dt)
 {
     if (boss == null) return;
@@ -4661,7 +5735,7 @@ static void UpdateWorldBoss(WorldBoss boss, float dt)
 
     if (amHost)
     {
-        boss.Update(dt, player.Center);
+        boss.Update(dt, NearestPlayerTo(boss.Center));
 
         if (isSuper)
         {
@@ -4686,7 +5760,7 @@ static void UpdateWorldBoss(WorldBoss boss, float dt)
     }
     else if (!multiplayer.Connected)
     {
-        boss.Update(dt, player.Center);
+        boss.Update(dt, NearestPlayerTo(boss.Center));
     }
     // else: client — boss state comes entirely from BossStateReceived; no local Update() at all.
 
@@ -4734,20 +5808,12 @@ static void UpdateWorldBoss(WorldBoss boss, float dt)
 
             if (amHost || !multiplayer.Connected)
             {
+                boss.LastDamagerId = multiplayer.MyId;
                 boss.Health -= dmg;
                 if (boss.Health <= 0)
                 {
                     boss.Dead = true;
-                    player.AddCombatXP(isSuper ? 1500 : 500);
-                    player.Money += isSuper ? 3000 : 1000;
-                    ShowLevelUp($"{boss.Name} defeated!", 0);
-                    if (Raylib.GetRandomValue(1, 100) <= eggDropChance)
-                    {
-                        string egg = $"{boss.Name} Egg";
-                        droppedEggs.Add((boss.Center, egg, 0f));
-                        ShowNotification($" RARE DROP   {egg}!");
-                        TriggerShake(0.25f);
-                    }
+                    AwardBossKill(boss, isSuper);
                 }
                 if (multiplayer.Connected)
                     multiplayer.BroadcastBossState(isSuper, boss.Health, boss.MaxHealth, boss.Dead,
@@ -4755,7 +5821,7 @@ static void UpdateWorldBoss(WorldBoss boss, float dt)
             }
             else
             {
-                multiplayer.SendBossHit(isSuper, dmg);
+                multiplayer.SendBossHit(isSuper, dmg, multiplayer.MyId);
             }
 
             floatingTexts.Add(new FloatingText {
@@ -4763,6 +5829,28 @@ static void UpdateWorldBoss(WorldBoss boss, float dt)
                 Text = $"-{dmg}", Timer = 1f, TextColor = Color.Orange
             });
         }
+    }
+}
+static float clockSyncTimer = 0f;
+static void SyncWorldClockIfHost(float dt)
+{
+    if (!multiplayer.Connected || !multiplayer.IsHost) return;
+    clockSyncTimer -= dt;
+    if (clockSyncTimer > 0f) return;
+    clockSyncTimer = 1.0f;   // once a second is plenty for a slow clock
+    multiplayer.BroadcastWorldClock(timeOfDay, dayOfWeek, dayOfMonth, currentMonth, isRaining);
+}
+static void SyncEnemiesIfHost(float dt)
+{
+    if (!multiplayer.Connected || !multiplayer.IsHost) return;
+    enemySyncTimer -= dt;
+    if (enemySyncTimer > 0f) return;
+    enemySyncTimer = 0.1f;   // 10 Hz, same cadence as boss
+
+    for (int i = 0; i < enemies.Count; i++)
+    {
+        var e = enemies[i];
+        multiplayer.BroadcastEnemyState(i, e.Position.X, e.Position.Y, e.Health, e.Dead, e.Aggro);
     }
 }
 
@@ -5313,6 +6401,19 @@ Raylib.DrawRectangleLines(200, 1350, 250, 40, wallCol);
 Raylib.DrawRectangle(500, 1350, 250, 40, new Color((byte)190,(byte)180,(byte)160,(byte)255));
 Raylib.DrawRectangleLines(500, 1350, 250, 40, wallCol);
 
+int shownS = 0;
+    foreach (var npc in npcs)
+    {
+        if (!npc.DrawInsideNow || npc.HomeBuilding != "SCHOOL") continue;
+        int cx = 760 + (shownS % 4) * 220 + (int)(MathF.Sin((float)Raylib.GetTime() + shownS) * 20);
+        int cy = 760 + (shownS / 4) * 180;
+        Raylib.DrawCircle(cx + 20, cy + 12, 10, Color.Beige);
+        Raylib.DrawRectangle(cx + 12, cy + 22, 16, 22, npc.IsParent ? Color.Maroon : Color.SkyBlue);
+        int tw = Program.MeasureTextUI(npc.Name, 12);
+        Program.DrawTextUI(npc.Name, cx + 20 - tw/2, cy - 12, 12, wallCol);
+        shownS++;
+    }
+
 }
 static void DrawClassroomInterior(string subject)
 {
@@ -5400,65 +6501,277 @@ static void DrawClassroomInterior(string subject)
         if (Raylib.IsKeyPressed(KeyboardKey.Space) && !chatInputOpen && player.Money >= s.Cost)
         {
             player.Money -= s.Cost;
-            player.AddEducationXP(s.XP);
-            ShowNotification($"Attended {subject} class! +{s.XP} Education XP");
+            if (subject == "Maths")
+                StartClassTest("Maths");
+            else
+            {
+                player.AddEducationXP(s.XP);
+                ShowNotification($"Attended {subject} class! +{s.XP} Education XP");
+            }
         }
     }
 }
 static void DrawPrisonExterior(float x, float y)
 {
     int bx = (int)x, by = (int)y;
-    Color brick = new Color((byte)120,(byte)55,(byte)40,(byte)255);
-    Color mortar = new Color((byte)90,(byte)40,(byte)30,(byte)255);
-    Color yardGrey = new Color((byte)140,(byte)140,(byte)145,(byte)255);
-    Color fence = new Color((byte)60,(byte)60,(byte)65,(byte)255);
+    Color concrete = new Color((byte)120,(byte)120,(byte)128,(byte)255);
+    Color seam     = new Color((byte)90,(byte)90,(byte)98,(byte)255);
+    Color roofCol  = new Color((byte)55,(byte)55,(byte)62,(byte)255);
+    Color trim     = new Color((byte)200,(byte)200,(byte)205,(byte)255);
+    Color barCol   = new Color((byte)30,(byte)30,(byte)35,(byte)255);
+    Color yardGrey = new Color((byte)150,(byte)150,(byte)155,(byte)255);
+    Color fence    = new Color((byte)70,(byte)70,(byte)78,(byte)255);
+    Color wire     = new Color((byte)205,(byte)205,(byte)210,(byte)255);
 
-    // outer brick perimeter (ring, yard visible in the middle)
-    int outerW = 550, outerH = 420, wallT = 40;
-    Raylib.DrawRectangle(bx, by, outerW, outerH, brick);
-    // brick coursing lines
-    for (int row = 0; row < outerH; row += 12)
-        Raylib.DrawRectangle(bx, by + row, outerW, 2, mortar);
+    int outerW = 500, outerH = 380;
 
-    // inner yard cut-out
-    Raylib.DrawRectangle(bx + wallT, by + wallT, outerW - wallT * 2, outerH - wallT * 2, yardGrey);
-    // yard fencing (chain-link look)
-    Raylib.DrawRectangleLinesEx(new Rectangle(bx + wallT, by + wallT, outerW - wallT * 2, outerH - wallT * 2), 3, fence);
-    for (int fx = bx + wallT; fx < bx + outerW - wallT; fx += 20)
-        Raylib.DrawLine(fx, by + wallT, fx, by + outerH - wallT, new Color((byte)100,(byte)100,(byte)105,(byte)100));
-
-    // watchtowers at corners
-    foreach (var (cx, cy) in new[] { (bx, by), (bx + outerW - 30, by), (bx, by + outerH - 30), (bx + outerW - 30, by + outerH - 30) })
+    // ── ADDITIVE YARDS (drawn first, around the footprint — MARAE/airport style) ──
+    // left exercise yard
+    void Yard(int yx, int yy, int yw, int yh, string label)
     {
-        Raylib.DrawRectangle(cx, cy, 30, 30, new Color((byte)50,(byte)50,(byte)55,(byte)255));
-        Raylib.DrawRectangleLines(cx, cy, 30, 30, Color.Black);
+        Raylib.DrawRectangle(yx, yy, yw, yh, yardGrey);
+        Raylib.DrawRectangleLinesEx(new Rectangle(yx, yy, yw, yh), 3, fence);
+        // chain-link cross-hatch
+        for (int fx = yx; fx < yx + yw; fx += 20)
+            Raylib.DrawLine(fx, yy, fx, yy + yh, new Color((byte)110,(byte)110,(byte)115,(byte)110));
+        for (int fy = yy; fy < yy + yh; fy += 20)
+            Raylib.DrawLine(yx, fy, yx + yw, fy, new Color((byte)110,(byte)110,(byte)115,(byte)90));
+        // razor-wire coil along the top rail
+        for (int wx = yx + 8; wx < yx + yw - 8; wx += 24)
+            Raylib.DrawCircleLines(wx, yy, 7, wire);
+        Program.DrawTextUI(label, yx + 8, yy + 6, 14, new Color((byte)80,(byte)80,(byte)88,(byte)255));
+    }
+    Yard(bx - 210, by + 30, 200, 320, "YARD");                       // left exercise yard
+    Yard(bx + outerW + 10, by + 30, 200, 320, "YARD");               // right exercise yard
+
+    // basketball hoop + half-court markings in the left yard (ambience, like airport runway hints)
+    Raylib.DrawCircleLines(bx - 110, by + 190, 60, new Color((byte)200,(byte)90,(byte)60,(byte)150));
+    Raylib.DrawRectangle(bx - 113, by + 44, 6, 34, roofCol);
+    Raylib.DrawRectangleLines(bx - 124, by + 78, 28, 16, new Color((byte)220,(byte)140,(byte)40,(byte)255));
+    // picnic-style benches in the right yard
+    Raylib.DrawRectangle(bx + outerW + 40, by + 120, 90, 20, new Color((byte)110,(byte)110,(byte)118,(byte)255));
+    Raylib.DrawRectangle(bx + outerW + 40, by + 220, 90, 20, new Color((byte)110,(byte)110,(byte)118,(byte)255));
+
+    // watchtowers at the outer yard corners
+    foreach (var (cx, cy) in new[] { (bx - 216, by + 24), (bx + outerW + 204, by + 24),
+                                     (bx - 216, by + 344), (bx + outerW + 204, by + 344) })
+    {
+        Raylib.DrawRectangle(cx, cy, 26, 26, roofCol);
+        Raylib.DrawRectangle(cx + 3, cy + 3, 20, 12, new Color((byte)90,(byte)130,(byte)160,(byte)200)); // cab glass
+        Raylib.DrawRectangleLines(cx, cy, 26, 26, Color.Black);
     }
 
-    // entrance gate
-    Raylib.DrawRectangle(bx + outerW/2 - 35, by + outerH - wallT, 70, wallT, new Color((byte)40,(byte)40,(byte)45,(byte)255));
-    Program.DrawTextUI("PRISON", bx + outerW/2 - 40, by - 24, 20, new Color((byte)200,(byte)200,(byte)200,(byte)255));
+    // ── MAIN CELLBLOCK FACADE (school-style solid block) ──
+    Raylib.DrawRectangle(bx, by, outerW, outerH, concrete);
+    for (int row = 0; row < outerH; row += 22)
+        Raylib.DrawRectangle(bx, by + row, outerW, 2, seam);
+    for (int row = 0; row < outerH; row += 22)
+        for (int cx = ((row / 22) % 2 == 0 ? 0 : 34); cx < outerW; cx += 68)
+            Raylib.DrawRectangle(bx + cx, by + row, 2, 22, seam);
+
+    // flat roof band along the top
+    Raylib.DrawRectangle(bx - 8, by - 16, outerW + 16, 18, roofCol);
+    Raylib.DrawRectangle(bx - 8, by - 16, outerW + 16, 4, new Color((byte)75,(byte)75,(byte)82,(byte)255));
+    // razor wire along the roofline
+    for (int wx = bx + 6; wx < bx + outerW - 6; wx += 26)
+        Raylib.DrawCircleLines(wx, by - 20, 8, wire);
+
+    // trim band under the roof
+    Raylib.DrawRectangle(bx, by, outerW, 10, trim);
+
+    // rows of BARRED windows across the facade (school window loop, with bars)
+    for (int wx = bx + 20; wx < bx + outerW - 20; wx += 55)
+    {
+        foreach (int wy in new[] { by + 40, by + 220 })
+        {
+            Raylib.DrawRectangle(wx, wy, 34, 40, new Color((byte)90,(byte)120,(byte)140,(byte)210));
+            Raylib.DrawRectangleLines(wx, wy, 34, 40, trim);
+            for (int b = wx + 6; b < wx + 34; b += 8)
+                Raylib.DrawRectangle(b, wy, 3, 40, barCol); // vertical bars
+        }
+    }
+
+    // main entrance — reinforced sally-port door
+    int doorW = 90, doorX = bx + outerW/2 - doorW/2;
+    Raylib.DrawRectangle(doorX, by + outerH - 60, doorW, 60, new Color((byte)45,(byte)45,(byte)50,(byte)255));
+    Raylib.DrawRectangleLines(doorX, by + outerH - 60, doorW, 60, trim);
+    Raylib.DrawRectangle(doorX + doorW/2 - 2, by + outerH - 60, 4, 60, trim); // door split
+    for (int b = doorX + 10; b < doorX + doorW; b += 14)
+        Raylib.DrawRectangle(b, by + outerH - 56, 3, 52, new Color((byte)90,(byte)90,(byte)100,(byte)255)); // gate bars
+    Raylib.DrawRectangle(doorX - 10, by + outerH - 68, doorW + 20, 10, roofCol); // awning
+
+    // steps leading up to the door
+    Raylib.DrawRectangle(doorX - 14, by + outerH, doorW + 28, 8, new Color((byte)175,(byte)175,(byte)180,(byte)255));
+    Raylib.DrawRectangle(doorX - 20, by + outerH + 8, doorW + 40, 8, new Color((byte)160,(byte)160,(byte)166,(byte)255));
+
+    // guard tower rising from the roof (like the airport control tower)
+    Raylib.DrawRectangle(bx + 24, by - 76, 30, 62, new Color((byte)100,(byte)100,(byte)108,(byte)255));
+    Raylib.DrawRectangle(bx + 14, by - 88, 50, 16, new Color((byte)90,(byte)130,(byte)160,(byte)255)); // cab
+    Raylib.DrawRectangleLines(bx + 14, by - 88, 50, 16, roofCol);
+    Raylib.DrawCircle(bx + 39, by - 94, 4, new Color((byte)220,(byte)40,(byte)40,(byte)255)); // searchlight beacon
+
+    // sign above entrance
+    Raylib.DrawRectangle(bx + outerW/2 - 90, by - 40, 180, 20, new Color((byte)40,(byte)40,(byte)45,(byte)255));
+    Program.DrawTextUI("PRISON", bx + outerW/2 - 40, by - 37, 20, trim);
 }
+
 static void DrawPrisonInterior()
 {
-    Color wallCol = new Color((byte)60,(byte)60,(byte)65,(byte)255);
-    Color barCol = new Color((byte)20,(byte)20,(byte)22,(byte)255);
+    Color floor1 = new Color((byte)150,(byte)150,(byte)158,(byte)255);
+    Color floor2 = new Color((byte)136,(byte)136,(byte)145,(byte)255);
+    Color wallCol = new Color((byte)70,(byte)70,(byte)78,(byte)255);
+    Color cellCol = new Color((byte)90,(byte)90,(byte)98,(byte)255);
+    Color barCol  = new Color((byte)18,(byte)18,(byte)22,(byte)255);
+    Color deskCol = new Color((byte)95,(byte)72,(byte)42,(byte)255);
 
-    // guard desk
-    Raylib.DrawRectangle(1400, 300, 1400, 80, new Color((byte)90,(byte)70,(byte)40,(byte)255));
+    // concrete floor
+    for (int fx = 0; fx < 2000; fx += 100)
+        for (int fy = 0; fy < 2000; fy += 100)
+            Raylib.DrawRectangle(fx, fy, 100, 100, ((fx / 100 + fy / 100) % 2 == 0) ? floor1 : floor2);
+
+    // outer walls
+    Raylib.DrawRectangle(0, 0, 2000, 20, wallCol);
+    Raylib.DrawRectangle(0, 1980, 2000, 20, wallCol);
+    Raylib.DrawRectangle(0, 0, 20, 2000, wallCol);
+    Raylib.DrawRectangle(1980, 0, 20, 2000, wallCol);
+
+    // guard desk (matches collision 1400,300,1400,80 — kept)
+    Raylib.DrawRectangle(1400, 300, 1400, 80, deskCol);
     Raylib.DrawRectangleLines(1400, 300, 1400, 80, Color.Black);
+    Raylib.DrawRectangle(1440, 270, 70, 30, new Color((byte)210,(byte)210,(byte)220,(byte)255)); // monitor
+    Program.DrawTextUI("GUARD DESK", 1470, 322, 20, Color.White);
 
-    // cell blocks — bars drawn as vertical lines over each cell rect
+    // ── HOLDING CELLS — a row of individual barred cells with bunk + toilet ──
     (int x, int y, int w, int h)[] cells = { (200,1000,400,400), (800,1000,400,400), (1400,1000,400,400) };
+    int cellNo = 1;
     foreach (var (cx, cy, cw, ch) in cells)
     {
-        Raylib.DrawRectangle(cx, cy, cw, ch, wallCol);
-        for (int bx = cx; bx <= cx + cw; bx += 30)
-            Raylib.DrawRectangle(bx, cy, 4, ch, barCol);
-        Program.DrawTextUI("CELL", cx + cw/2 - 20, cy - 24, 20, Color.LightGray);
+        Raylib.DrawRectangle(cx, cy, cw, ch, cellCol);
+        Raylib.DrawRectangleLines(cx, cy, cw, ch, wallCol);
+
+        // bunk bed (left)
+        Raylib.DrawRectangle(cx + 20, cy + 30, 90, 150, new Color((byte)70,(byte)55,(byte)35,(byte)255));
+        Raylib.DrawRectangle(cx + 24, cy + 34, 82, 40, new Color((byte)150,(byte)150,(byte)160,(byte)255)); // top mattress
+        Raylib.DrawRectangle(cx + 24, cy + 100, 82, 40, new Color((byte)150,(byte)150,(byte)160,(byte)255)); // bottom mattress
+        // steel toilet (back-right)
+        Raylib.DrawRectangle(cx + cw - 70, cy + 40, 44, 40, new Color((byte)190,(byte)195,(byte)200,(byte)255));
+        Raylib.DrawRectangleLines(cx + cw - 70, cy + 40, 44, 40, new Color((byte)120,(byte)120,(byte)130,(byte)255));
+        // small barred window
+        Raylib.DrawRectangle(cx + cw/2 - 20, cy + 20, 40, 30, new Color((byte)90,(byte)130,(byte)160,(byte)200));
+        for (int wbar = cx + cw/2 - 20; wbar <= cx + cw/2 + 20; wbar += 10)
+            Raylib.DrawRectangle(wbar, cy + 20, 3, 30, barCol);
+
+        // front bars with a door gap
+        for (int b = cx; b <= cx + cw; b += 30)
+            if (b < cx + cw/2 - 40 || b > cx + cw/2 + 40)
+                Raylib.DrawRectangle(b, cy + ch - 12, 4, 12, barCol);
+        Raylib.DrawRectangle(cx, cy + ch - 12, cw, 4, barCol); // sill
+
+        Program.DrawTextUI($"CELL {cellNo}", cx + cw/2 - 34, cy - 26, 20, Color.LightGray);
+        cellNo++;
     }
 
-    // back walkway
-    Raylib.DrawRectangle(200, 1500, 1600, 60, new Color((byte)50,(byte)50,(byte)55,(byte)255));
+    // back walkway (kept collision 200,1500,1600,60)
+    Raylib.DrawRectangle(200, 1500, 1600, 60, new Color((byte)60,(byte)60,(byte)66,(byte)255));
+
+    // ── DOORS to facility sub-rooms along the bottom wall ──
+    foreach (var (name, doorPos, col) in prisonRooms)
+    {
+        int dx = (int)doorPos.X, dy = (int)doorPos.Y;
+        Raylib.DrawRectangle(dx - 60, dy - 70, 120, 70, col);
+        Raylib.DrawRectangle(dx - 50, dy - 60, 100, 50, new Color((byte)40,(byte)40,(byte)46,(byte)255)); // doorway
+        Program.DrawTextUI(name, dx - 52, dy - 96, 18, col);
+        if (Vector2.Distance(player.Center, doorPos) < 90)
+            Program.DrawTextUI("E = Enter " + name, dx - 60, dy + 8, 18, Color.Gold);
+    }
+}
+static void DrawPrisonRoomInterior(string room)
+{
+    var meta = prisonRooms.First(r => r.name == room);
+    Color col = meta.col;
+    Color floor1 = new Color((byte)160,(byte)162,(byte)168,(byte)255);
+    Color floor2 = new Color((byte)146,(byte)148,(byte)156,(byte)255);
+    Color wallCol = new Color((byte)70,(byte)70,(byte)78,(byte)255);
+
+    Raylib.ClearBackground(new Color((byte)28,(byte)28,(byte)34,(byte)255));
+    for (int fx = 0; fx < 1400; fx += 100)
+        for (int fy = 0; fy < 1000; fy += 100)
+            Raylib.DrawRectangle(fx, fy, 100, 100, ((fx / 100 + fy / 100) % 2 == 0) ? floor1 : floor2);
+
+    Raylib.DrawRectangle(0, 0, 1400, 20, wallCol);
+    Raylib.DrawRectangle(0, 980, 1400, 20, wallCol);
+    Raylib.DrawRectangle(0, 0, 20, 1000, wallCol);
+    Raylib.DrawRectangle(1380, 0, 20, 1000, wallCol);
+    Raylib.DrawRectangle(0, 0, 1400, 64, col);
+    Program.DrawTextUI(room, 40, 18, 34, Color.White);
+
+    if (room == "LAUNDRY")
+    {
+        // washing machines (match collision rows at y=200)
+        foreach (int mx in new[] { 200, 600, 1000 })
+            for (int m = 0; m < 3; m++)
+            {
+                int wx = mx + m * 100;
+                Raylib.DrawRectangle(wx, 200, 90, 180, new Color((byte)200,(byte)205,(byte)215,(byte)255));
+                Raylib.DrawRectangleLines(wx, 200, 90, 180, new Color((byte)120,(byte)125,(byte)135,(byte)255));
+                Raylib.DrawCircle(wx + 45, 280, 30, new Color((byte)90,(byte)130,(byte)160,(byte)200)); // door
+                Raylib.DrawCircleLines(wx + 45, 280, 30, new Color((byte)70,(byte)75,(byte)85,(byte)255));
+            }
+        // folding table (match collision 300,600,800,80)
+        Raylib.DrawRectangle(300, 600, 800, 80, new Color((byte)120,(byte)90,(byte)55,(byte)255));
+        for (int p = 340; p < 1080; p += 90)
+            Raylib.DrawRectangle(p, 610, 60, 40, new Color((byte)230,(byte)230,(byte)235,(byte)255)); // folded linens
+    }
+    else if (room == "KITCHEN")
+    {
+        // serving counter (match 150,150,1100,80)
+        Raylib.DrawRectangle(150, 150, 1100, 80, new Color((byte)180,(byte)185,(byte)195,(byte)255));
+        Raylib.DrawRectangleLines(150, 150, 1100, 80, new Color((byte)110,(byte)115,(byte)125,(byte)255));
+        Program.DrawTextUI("SERVERY", 620, 168, 22, new Color((byte)60,(byte)60,(byte)70,(byte)255));
+        // cooking stations (match 200/600/1000, 400, 250x200)
+        foreach (int sx in new[] { 200, 600, 1000 })
+        {
+            Raylib.DrawRectangle(sx, 400, 250, 200, new Color((byte)150,(byte)150,(byte)160,(byte)255));
+            Raylib.DrawRectangleLines(sx, 400, 250, 200, new Color((byte)90,(byte)90,(byte)100,(byte)255));
+            // stove burners
+            Raylib.DrawCircle(sx + 70, 470, 26, new Color((byte)40,(byte)40,(byte)44,(byte)255));
+            Raylib.DrawCircle(sx + 180, 470, 26, new Color((byte)40,(byte)40,(byte)44,(byte)255));
+            Raylib.DrawCircle(sx + 70, 470, 14, new Color((byte)200,(byte)80,(byte)40,(byte)220)); // hot ring
+            // big pot
+            Raylib.DrawRectangle(sx + 100, 520, 60, 50, new Color((byte)70,(byte)70,(byte)78,(byte)255));
+        }
+        // hanging utensils on right wall
+        for (int u = 0; u < 4; u++)
+            Raylib.DrawRectangle(1300, 300 + u * 60, 40, 8, new Color((byte)180,(byte)180,(byte)190,(byte)255));
+    }
+    else // TOILETS
+    {
+        // stall partitions (match collisions at y=200, widths 180)
+        foreach (int sx in new[] { 150, 420, 690, 960 })
+        {
+            Raylib.DrawRectangle(sx, 200, 180, 220, new Color((byte)205,(byte)210,(byte)218,(byte)255));
+            Raylib.DrawRectangleLines(sx, 200, 180, 220, new Color((byte)120,(byte)125,(byte)135,(byte)255));
+            // toilet bowl
+            Raylib.DrawRectangle(sx + 60, 250, 60, 70, new Color((byte)235,(byte)238,(byte)242,(byte)255));
+            Raylib.DrawCircle(sx + 90, 250, 30, new Color((byte)235,(byte)238,(byte)242,(byte)255));
+            Raylib.DrawCircleLines(sx + 90, 250, 30, new Color((byte)150,(byte)155,(byte)165,(byte)255));
+        }
+        // sink row along the bottom
+        for (int s = 0; s < 5; s++)
+        {
+            int sx = 200 + s * 220;
+            Raylib.DrawRectangle(sx, 700, 120, 60, new Color((byte)210,(byte)214,(byte)222,(byte)255));
+            Raylib.DrawCircle(sx + 60, 730, 14, new Color((byte)150,(byte)155,(byte)165,(byte)255));
+        }
+        // long mirror above sinks
+        Raylib.DrawRectangle(180, 640, 1120, 40, new Color((byte)150,(byte)190,(byte)210,(byte)180));
+    }
+
+    // exit door
+    Raylib.DrawRectangle(650, 950, 100, 40, new Color((byte)55,(byte)55,(byte)62,(byte)255));
+    Raylib.DrawRectangleLines(650, 950, 100, 40, Color.Black);
+    if (Vector2.Distance(player.Center, new Vector2(700, 950)) < 70)
+        Program.DrawTextUI("Q = Back to cell block", 590, 900, 18, Color.LightGray);
 }
 static void AddPrison(float x, float y)
 {
@@ -5472,6 +6785,16 @@ static void AddPrison(float x, float y)
         entryPos: new Vector2(640, 880)
     );
     prison.InteriorObjects.Clear();
+    prison.InteriorObjects.Add(new Rectangle(1400, 300, 1400, 80));    // guard desk
+    prison.InteriorObjects.Add(new Rectangle(200, 1000, 400, 400));    // cell block 1
+    prison.InteriorObjects.Add(new Rectangle(800, 1000, 400, 400));    // cell block 2
+    prison.InteriorObjects.Add(new Rectangle(1400, 1000, 400, 400));   // cell block 3
+    prison.InteriorObjects.Add(new Rectangle(200, 1500, 1600, 60));    // back wall walkway
+    // facility-door surrounds along bottom wall (gaps left at door centres)
+    prison.InteriorObjects.Add(new Rectangle(0, 1690, 300, 40));       // wall before LAUNDRY
+    prison.InteriorObjects.Add(new Rectangle(420, 1690, 520, 40));     // between LAUNDRY & KITCHEN
+    prison.InteriorObjects.Add(new Rectangle(1060, 1690, 520, 40));    // between KITCHEN & TOILETS
+    prison.InteriorObjects.Add(new Rectangle(1700, 1690, 300, 40));    // wall after TOILETS
     prison.InteriorObjects.Add(new Rectangle(1400, 300, 1400, 80));    // guard desk
     prison.InteriorObjects.Add(new Rectangle(200, 1000, 400, 400));    // cell block 1
     prison.InteriorObjects.Add(new Rectangle(800, 1000, 400, 400));    // cell block 2
@@ -5625,6 +6948,7 @@ static void DrawHobbiesStoreUI()
         {
             player.Money -= 5;
             var opened = OpenPack(cardSets[hobbiesShopSetIndex]);
+            cardSets[hobbiesShopSetIndex].PacksOpened++; 
             foreach (var c in opened) cardSets[hobbiesShopSetIndex].MasterSet.Add(c.Name, c.ReverseHolo);
             lastPackOpened = opened;
             packRevealIndex = 0;
@@ -5695,6 +7019,90 @@ static void AddJobCentre(float x, float y)
     jc.InteriorObjects.Add(new Rectangle(440, 180, 400, 50));   // broker counter
     jc.InteriorObjects.Add(new Rectangle(100, 400, 60, 300));   // notice board wall
     buildings.Add(jc);
+}
+
+static void CompleteSideTask(string receiver)
+{
+    player.Money += activeSideTask.Pay;
+    activeSideTask.DoneToday = true;
+    activeSideTask.Accepted = false;
+    activeSideTask.ReadyToDeliver = false;
+    ShowNotification($"{receiver} thanks you! +${activeSideTask.Pay} ({activeSideTask.Title})");
+    activeSideTask = null;
+}
+
+static void DrawBillboard()   // call inside BeginMode2D(camera) in DrawWorld
+{
+    int bx = (int)billboardPos.X, by = (int)billboardPos.Y;
+    Raylib.DrawRectangle(bx - 6, by + 10, 12, 30, new Color((byte)90,(byte)60,(byte)35,(byte)255));   // post
+    Raylib.DrawRectangle(bx - 40, by - 50, 80, 60, new Color((byte)120,(byte)85,(byte)50,(byte)255)); // frame
+    Raylib.DrawRectangle(bx - 34, by - 44, 68, 48, new Color((byte)235,(byte)225,(byte)200,(byte)255));
+    Program.DrawTextUI("TASKS", bx - 24, by - 36, 14, Color.DarkGray);
+}
+
+static void DrawBillboardUI()   // call after EndMode2D with your other UI
+{
+    if (!billboardOpen) return;
+    int px = 340, py = 140;
+    Raylib.DrawRectangle(px, py, 600, 440, new Color((byte)25,(byte)20,(byte)12,(byte)245));
+    Raylib.DrawRectangleLines(px, py, 600, 440, new Color((byte)235,(byte)225,(byte)200,(byte)255));
+    Program.DrawTextUI("TOWN BILLBOARD — one task at a time (resets daily)", px + 20, py + 14, 19, Color.Gold);
+
+    Vector2 mouse = Raylib.GetMousePosition();
+    for (int i = 0; i < billboardTasks.Count; i++)
+    {
+        var t = billboardTasks[i];
+        Rectangle row = new Rectangle(px + 20, py + 56 + i * 86, 560, 74);
+        bool hov = Raylib.CheckCollisionPointRec(mouse, row);
+        Raylib.DrawRectangleRec(row, new Color((byte)45,(byte)38,(byte)25,(byte)255));
+        Raylib.DrawRectangleLinesEx(row, 2, t.DoneToday ? Color.DarkGray : t.Accepted ? Color.Gold : (hov ? Color.White : Color.Gray));
+        Program.DrawTextUI($"{t.Title} — ${t.Pay}", (int)row.X + 12, (int)row.Y + 8, 19, t.DoneToday ? Color.DarkGray : Color.White);
+        string line = t.DoneToday ? "DONE TODAY"
+            : t.Accepted ? (t.ReadyToDeliver ? t.DeliverLabel + " (H)" : $"In progress: {Math.Clamp(t.Progress() - t.Baseline, 0, t.Target)}/{t.Target}")
+            : $"Target: {t.Target}  |  {t.DeliverLabel}  |  CLICK TO ACCEPT";
+        Program.DrawTextUI(line, (int)row.X + 12, (int)row.Y + 42, 15, t.ReadyToDeliver ? Color.Green : Color.LightGray);
+
+        if (!t.DoneToday && !t.Accepted && activeSideTask == null && hov && Raylib.IsMouseButtonPressed(MouseButton.Left))
+        {
+            t.Accepted = true;
+            t.Baseline = t.Progress();
+            activeSideTask = t;
+            ShowNotification($"Task accepted: {t.Title}");
+        }
+    }
+    Program.DrawTextUI("Q = Close", px + 260, py + 408, 18, Color.DarkGray);
+    if (Raylib.IsKeyPressed(KeyboardKey.Q)) billboardOpen = false;
+}
+static void DrawPlushieLog()
+{
+    if (!plushLogOpen) return;
+    int px = 160, py = 60;
+    Raylib.DrawRectangle(px, py, 960, 600, new Color((byte)15,(byte)10,(byte)30,(byte)245));
+    Raylib.DrawRectangleLines(px, py, 960, 600, new Color((byte)255,(byte)80,(byte)160,(byte)255));
+    Program.DrawTextUI($"PLUSHIE COLLECTION — {plushiesOwned.Count}/50", px + 20, py + 14, 26, Color.Gold);
+
+    int ly = py + 52;
+    void Group(string label, string[] names, Color col)
+    {
+        Program.DrawTextUI($"{label} ({names.Count(n => plushiesOwned.ContainsKey(n))}/{names.Length})", px + 20, ly, 18, col);
+        ly += 24;
+        int cx = 0;
+        foreach (var n in names)
+        {
+            bool owned = plushiesOwned.ContainsKey(n);
+            int dupes = plushiesOwned.GetValueOrDefault(n);
+            Program.DrawTextUI(owned ? (dupes > 1 ? $"{n} x{dupes}" : n) : "???",
+                px + 20 + cx * 188, ly, 14, owned ? Color.White : Color.DarkGray);
+            if (++cx == 5) { cx = 0; ly += 20; }
+        }
+        if (cx != 0) ly += 20;
+        ly += 10;
+    }
+    Group("COMMON", plushCommon, Color.LightGray);
+    Group("RARE", plushRare, Color.SkyBlue);
+    Group("SUPER RARE", plushSuperRare, Color.Gold);
+    Program.DrawTextUI("Q = Close", px + 440, py + 568, 18, Color.DarkGray);
+    if (Raylib.IsKeyPressed(KeyboardKey.Q)) plushLogOpen = false;
 }
 
 static int GetResourceCount(string res) => res switch
@@ -7178,7 +8586,7 @@ static void StartDive()
 static bool IsNearDeepWater(Vector2 pos)
 {
     // ocean zone — adjust to wherever your water actually is
-    return pos.X > 30000 && pos.X < 45000;
+    return pos.X > 28600 && pos.X < 45000;
 }
 
 static void UpdateDive(float dt)
@@ -7993,6 +9401,7 @@ player.Position = d.PlayerPos;
         if (enemy.Health <= 0)
         {
             enemy.Dead = true;
+            DropSpiritEssence(enemy.Position, 1);   
             SpawnDeathFx(enemy.Position, enemy.EnemyColor, enemy.Type);
             player.AddCombatXP(enemy.XPReward);
             player.Money += enemy.MoneyDrop;
@@ -9761,6 +11170,7 @@ static readonly (PlayerMenuTab tab, string label)[] playerMenuTabs =
     (PlayerMenuTab.Unlocks,       "Unlocks"),
     (PlayerMenuTab.Relationships, "Relationships"),
     (PlayerMenuTab.Collectables,  "Collectables"),
+    (PlayerMenuTab.Collection,    "Collection Log"),
 };
 
 static void DrawPlayerMenu()
@@ -9802,14 +11212,36 @@ static void DrawPlayerMenu()
         case PlayerMenuTab.Crafting:      DrawPMCrafting(cx, cy, cw); break;
         case PlayerMenuTab.Achievements:  DrawPMPlaceholder(cx, cy, "Achievements"); break;
         case PlayerMenuTab.Unlocks:       DrawPMUnlocks(cx, cy, cw); break;
-        case PlayerMenuTab.Relationships: DrawPMPlaceholder(cx, cy, "Relationships"); break;
+        case PlayerMenuTab.Relationships: DrawPMRelationships(cx, cy, cw); break;
         case PlayerMenuTab.Collectables:  DrawPMCollectables(cx, cy, cw); break;
+        case PlayerMenuTab.Collection:    DrawIdentityCollectionPage(cx, cy, cw); break;
     }   
 }
 static void DrawPMPlaceholder(int cx, int cy, string label)
 {
     Program.DrawTextUI(label.ToUpper(), cx, cy, 26, Color.Gold);
     Program.DrawTextUI("Coming soon.", cx, cy + 40, 18, Color.LightGray);
+}
+static void DrawPMRelationships(int x, int y, int w)
+{
+    Program.DrawTextUI("RELATIONSHIPS", x, y, 34, Color.Gold);
+    if (friendNPCs.Count == 0)
+    {
+        Program.DrawTextUI("No friends yet — talk to people around town!", x, y + 60, 20, Color.Gray);
+        return;
+    }
+    int ry = y + 60;
+    foreach (var f in friendNPCs)
+    {
+        Raylib.DrawRectangle(x, ry, w - 40, 64, new Color((byte)26,(byte)30,(byte)44,(byte)255));
+        Raylib.DrawRectangleLinesEx(new Rectangle(x, ry, w - 40, 64), 1, new Color((byte)60,(byte)66,(byte)90,(byte)255));
+        Program.DrawTextUI(f.Name, x + 14, ry + 8, 20, Color.White);
+        Program.DrawTextUI(f.Tier, x + 14, ry + 34, 16, Color.Gold);
+        Raylib.DrawRectangle(x + 260, ry + 26, 240, 10, new Color((byte)40,(byte)40,(byte)40,(byte)255));
+        Raylib.DrawRectangle(x + 260, ry + 26, (int)(240 * Math.Min(1f, f.Friendship / 100f)), 10, new Color((byte)220,(byte)90,(byte)120,(byte)255));
+        Program.DrawTextUI($"{f.Friendship}/100", x + 510, ry + 22, 16, Color.LightGray);
+        ry += 74;
+    }
 }
 static void DrawPMCrafting(int cx, int cy, int cw)
 {
@@ -10073,44 +11505,60 @@ static void DrawPMIdentity(int x, int y, int w)
     colY += dzH + 16;
 }
 
-    // Licence card — yellow if restricted, green if full
-    // ... existing code (DropZone card unchanged) ...
-    string[] classes = { "D", "C", "B", "A", "S" };
-bool[] restricted = { hasTheoryD, hasTheoryC, hasTheoryB, hasTheoryA, hasTheoryS };
-bool[] full       = { hasPracticalD, hasPracticalC, hasPracticalB, hasPracticalA, hasPracticalS };
+ string[] classes = { "D", "C", "B", "A", "S" };
+    bool[] restricted = { hasTheoryD, hasTheoryC, hasTheoryB, hasTheoryA, hasTheoryS };
+    bool[] full       = { hasPracticalD, hasPracticalC, hasPracticalB, hasPracticalA, hasPracticalS };
 
-for (int i = 0; i < classes.Length; i++)
-{
-    if (!full[i] && !restricted[i]) continue;
-    int lcW = 280, lcH = 120;
-    bool wantFull = full[i];   // practical supersedes theory once earned
-    bool thisDelivered = wantFull ? licencePracticalDelivered[i] : licenceTheoryDelivered[i];
-    if (!thisDelivered)
+    // REPLACED — old stacking loop deleted; show only the top tier held
+    int topIdx = -1; bool topIsFull = false;
+    for (int i = classes.Length - 1; i >= 0; i--)
+        if (full[i] || restricted[i]) { topIdx = i; topIsFull = full[i]; break; }
+
+    if (topIdx >= 0)
     {
-        // paper-copy placeholder — earned but not yet collected from the mailbox
-        Raylib.DrawRectangle(colX, colY, lcW, lcH, new Color((byte)235,(byte)230,(byte)210,(byte)255));
-        Raylib.DrawRectangleLinesEx(new Rectangle(colX, colY, lcW, lcH), 2, new Color((byte)150,(byte)140,(byte)110,(byte)255));
-        Program.DrawTextUI($"LICENCE {classes[i]} PENDING", colX + 10, colY + 8, 16, new Color((byte)90,(byte)80,(byte)60,(byte)255));
-        string note = licenceMailWaiting[i] ? "Ready for pickup at your mailbox"
-                    : licencePending[i]     ? "Awaiting delivery"
-                    :                          "Passed — awaiting paperwork";
-        Program.DrawTextUI(note, colX + 10, colY + 34, 13, new Color((byte)120,(byte)110,(byte)90,(byte)255));
+        int lcW = 280, lcH = 120;
+        bool thisDelivered = topIsFull ? licencePracticalDelivered[topIdx] : licenceTheoryDelivered[topIdx];
+        if (!thisDelivered)
+        {
+            Raylib.DrawRectangle(colX, colY, lcW, lcH, new Color((byte)235,(byte)230,(byte)210,(byte)255));
+            Raylib.DrawRectangleLinesEx(new Rectangle(colX, colY, lcW, lcH), 2, new Color((byte)150,(byte)140,(byte)110,(byte)255));
+            Program.DrawTextUI($"LICENCE {classes[topIdx]} PENDING", colX + 10, colY + 8, 16, new Color((byte)90,(byte)80,(byte)60,(byte)255));
+            string note = licenceMailWaiting[topIdx] ? "Ready for pickup at your mailbox"
+                        : licencePending[topIdx]     ? "Awaiting delivery"
+                        :                              "Passed — awaiting paperwork";
+            Program.DrawTextUI(note, colX + 10, colY + 34, 13, new Color((byte)120,(byte)110,(byte)90,(byte)255));
+        }
+        else
+        {
+            Color lc = topIsFull ? new Color((byte)70,(byte)170,(byte)90,(byte)255)
+                                 : new Color((byte)220,(byte)200,(byte)60,(byte)255);
+            Raylib.DrawRectangle(colX, colY, lcW, lcH, new Color((byte)250,(byte)248,(byte)240,(byte)255));
+            Raylib.DrawRectangleLinesEx(new Rectangle(colX, colY, lcW, lcH), 3, lc);
+            Raylib.DrawRectangle(colX, colY, lcW, 24, lc);
+            Program.DrawTextUI($"CLASS {classes[topIdx]} LICENCE", colX + 10, colY + 4, 16, Color.Black);
+            Program.DrawTextUI(topIsFull ? "FULL" : "RESTRICTED", colX + 10, colY + 32, 20, new Color((byte)40,(byte)40,(byte)40,(byte)255));
+            Program.DrawTextUI($"Holder: {playerName}", colX + 10, colY + 56, 16, new Color((byte)80,(byte)80,(byte)80,(byte)255));
+            Program.DrawTextUI($"Class {classes[topIdx]}  •  {(topIsFull ? "Unrestricted hours" : "6am-10pm only")}", colX + 10, colY + 72, 16, new Color((byte)100,(byte)100,(byte)100,(byte)255));
+        }
         colY += lcH + 12;
-        continue;
     }
 
-    // delivered — full certificate styling
-    Color lc = full[i] ? new Color((byte)70,(byte)170,(byte)90,(byte)255)
-                       : new Color((byte)220,(byte)200,(byte)60,(byte)255);
-    Raylib.DrawRectangle(colX, colY, lcW, lcH, new Color((byte)250,(byte)248,(byte)240,(byte)255)); // paper background
-    Raylib.DrawRectangleLinesEx(new Rectangle(colX, colY, lcW, lcH), 3, lc);
-    Raylib.DrawRectangle(colX, colY, lcW, 24, lc);
-    Program.DrawTextUI($"CLASS {classes[i]} LICENCE", colX + 10, colY + 4, 16, Color.Black);
-    Program.DrawTextUI(full[i] ? "FULL" : "RESTRICTED", colX + 10, colY + 32, 20, new Color((byte)40,(byte)40,(byte)40,(byte)255));
-    Program.DrawTextUI($"Holder: {playerName}", colX + 10, colY + 56, 16, new Color((byte)80,(byte)80,(byte)80,(byte)255));
-    Program.DrawTextUI($"Class {classes[i]}  •  {(full[i] ? "Unrestricted hours" : "6am-10pm only")}", colX + 10, colY + 72, 16, new Color((byte)100,(byte)100,(byte)100,(byte)255));
-    colY += lcH + 12;
-}
+    // ADDED — boat licence card, own slot, highest tier only
+    int topBoat = -1;
+    for (int b = hasBoatPractical.Length - 1; b >= 0; b--)
+        if (hasBoatPractical[b]) { topBoat = b; break; }
+    if (topBoat >= 0)
+    {
+        int lcW = 280, lcH = 120;
+        Color bc = new Color((byte)60,(byte)130,(byte)200,(byte)255);
+        Raylib.DrawRectangle(colX, colY, lcW, lcH, new Color((byte)240,(byte)246,(byte)252,(byte)255));
+        Raylib.DrawRectangleLinesEx(new Rectangle(colX, colY, lcW, lcH), 3, bc);
+        Raylib.DrawRectangle(colX, colY, lcW, 24, bc);
+        Program.DrawTextUI($"BOAT LICENCE — {boatTierNames[topBoat].ToUpper()}", colX + 10, colY + 4, 16, Color.White);
+        Program.DrawTextUI($"Holder: {playerName}", colX + 10, colY + 44, 16, new Color((byte)80,(byte)80,(byte)80,(byte)255));
+        Program.DrawTextUI("Maritime NZ  •  All coastal waters", colX + 10, colY + 68, 14, new Color((byte)100,(byte)100,(byte)100,(byte)255));
+        colY += lcH + 12;
+    }
 }
 }
 
@@ -10148,6 +11596,56 @@ static void DrawPMUnlocks(int x, int y, int w)
     ly += 10;
     L("Practical D", hasPracticalD); L("Practical C", hasPracticalC); L("Practical B", hasPracticalB);
     L("Practical A", hasPracticalA); L("Practical S", hasPracticalS);
+}
+
+static void DrawIdentityCollectionPage(int x, int y, int w)
+{
+    int viewH = 540;                     // visible window height inside the menu
+    idColScrollY = Math.Clamp(idColScrollY - Raylib.GetMouseWheelMove() * 40f, 0f, 4000f);
+    Raylib.BeginScissorMode(x, y, w, viewH);
+    int ly = y - (int)idColScrollY;
+
+    // one slot: silhouette box, revealed when owned
+    void Slot(int sx, int sy, int sw, int sh, string label, bool owned, Color revealCol)
+    {
+        Raylib.DrawRectangle(sx, sy, sw, sh, new Color((byte)18,(byte)20,(byte)28,(byte)255));
+        Raylib.DrawRectangleLinesEx(new Rectangle(sx, sy, sw, sh), 1, owned ? Color.Gold : new Color((byte)60,(byte)60,(byte)70,(byte)255));
+        // shadowed silhouette blob
+        Raylib.DrawRectangle(sx + sw/2 - 14, sy + 10, 28, sh - 38, owned ? revealCol : new Color((byte)0,(byte)0,(byte)0,(byte)170));
+        string tag = owned ? label : "???";
+        int tw2 = Program.MeasureTextUI(tag, 12);
+        Program.DrawTextUI(tag, sx + sw/2 - tw2/2, sy + sh - 18, 12, owned ? Color.White : Color.DarkGray);
+    }
+
+    int slotW = 84, slotH = 92, perRow = Math.Max(1, w / (slotW + 10));
+    int GridSection(string title, string[] names, Func<string,bool> ownedFn, Color col, int startY)
+    {
+        Program.DrawTextUI(title, x, startY, 24, Color.Gold);
+        int gy = startY + 34;
+        for (int i = 0; i < names.Length; i++)
+            Slot(x + (i % perRow) * (slotW + 10), gy + (i / perRow) * (slotH + 10),
+                 slotW, slotH, names[i], ownedFn(names[i]), col);
+        return gy + ((names.Length - 1) / perRow + 1) * (slotH + 10) + 20;
+    }
+
+    ly = GridSection($"PLUSHIES ({plushiesOwned.Count}/50)", plushCommon, n => plushiesOwned.ContainsKey(n), new Color((byte)200,(byte)150,(byte)100,(byte)255), ly);
+    ly = GridSection("RARE PLUSHIES", plushRare, n => plushiesOwned.ContainsKey(n), new Color((byte)180,(byte)120,(byte)220,(byte)255), ly);
+    ly = GridSection("SUPER RARE", plushSuperRare, n => plushiesOwned.ContainsKey(n), Color.Gold, ly);
+    ly = GridSection($"HIDDEN COLLECTABLES ({CollectablesFound}/{collectables.Count})",
+                     collectables.Select(c => c.Name).ToArray(),
+                     n => collectables.First(c => c.Name == n).Found, Color.SkyBlue, ly);
+
+    // licence silhouettes — wider card-shaped slots
+    Program.DrawTextUI("LICENCES", x, ly, 24, Color.Gold); ly += 34;
+    string[] classes = { "D", "C", "B", "A", "S" };
+    bool[] full = { hasPracticalD, hasPracticalC, hasPracticalB, hasPracticalA, hasPracticalS };
+    for (int i = 0; i < 5; i++)
+        Slot(x + i * 150, ly, 140, 80, $"Class {classes[i]}", full[i], new Color((byte)70,(byte)170,(byte)90,(byte)255));
+    ly += 100;
+    for (int b = 0; b < boatTierNames.Length; b++)
+        Slot(x + b * 150, ly, 140, 80, boatTierNames[b], hasBoatPractical[b], new Color((byte)60,(byte)130,(byte)200,(byte)255));
+
+    Raylib.EndScissorMode();
 }
 
 static int collectablesScrollOffset = 0;
@@ -10195,9 +11693,10 @@ static void DrawPMCollectables(int cx, int cy, int cw)
     ? binder.Cards.Values.Sum() + binder.ReverseHoloCards.Values.Sum()
     : personalBinder.SlotAssignments.Values.Sum(d => d.Count);
     int uniqueOwned = viewingMasterSet
-        ? binder.Cards.Keys.Union(binder.ReverseHoloCards.Keys).Count()
+        ? binder.Cards.Keys.Count + binder.ReverseHoloCards.Keys.Count
         : personalBinder.SlotAssignments.Values.Select(d => (d.Name, d.IsReverse)).Distinct().Count();
     Program.DrawTextUI($"Unique: {uniqueOwned} / {TotalBinderSlots()}   Total cards: {totalOwned}", cx, cy + 90, 20, Color.LightGray);
+    Program.DrawTextUI($"Packs opened: {activeSet.PacksOpened}", cx + cardSets.Count * 180 + 20, cy + 90, 20, Color.LightGray);
 
     if (pageFlipTimer > 0f)
     {
@@ -11614,7 +13113,7 @@ static void AddCottage(float x, float y)
         new Rectangle(x, y, 120, 90), "Cottage"));
 }
 
-static void AddBarn(float x, float y) =>
+static void AddBarnHouse(float x, float y) =>
     decorativeAssets.Add(new DecorativeAsset(new Rectangle(x, y, 200, 230), "Barn"));
 
 static void AddShed(float x, float y) =>
@@ -11832,7 +13331,148 @@ static void AddLibrary(float x, float y)
 
     buildings.Add(library);
 }
+static void DrawLibraryExterior(float x, float y)
+{
+    int bx = (int)x, by = (int)y;
+    Color stone   = new Color((byte)170,(byte)140,(byte)95,(byte)255);
+    Color stoneHi = new Color((byte)195,(byte)165,(byte)120,(byte)255);
+    Color mortar  = new Color((byte)140,(byte)115,(byte)78,(byte)255);
+    Color roofCol = new Color((byte)70,(byte)50,(byte)35,(byte)255);
+    Color trim    = new Color((byte)235,(byte)225,(byte)205,(byte)255);
+    Color glass    = new Color((byte)150,(byte)195,(byte)220,(byte)220);
+    int w = 200, h = 150;
 
+    // body + ashlar stone courses
+    Raylib.DrawRectangle(bx, by, w, h, stone);
+    for (int row = 8; row < h; row += 18)
+        Raylib.DrawRectangle(bx, by + row, w, 2, mortar);
+    for (int row = 0; row < h; row += 18)
+        for (int cx = ((row / 18) % 2 == 0 ? 0 : 30); cx < w; cx += 60)
+            Raylib.DrawRectangle(bx + cx, by + row, 2, 18, mortar);
+
+    // pediment roof
+    Raylib.DrawTriangle(new Vector2(bx - 10, by + 4), new Vector2(bx + w + 10, by + 4),
+        new Vector2(bx + w / 2, by - 34), roofCol);
+    Raylib.DrawTriangleLines(new Vector2(bx - 10, by + 4), new Vector2(bx + w + 10, by + 4),
+        new Vector2(bx + w / 2, by - 34), trim);
+    Raylib.DrawRectangle(bx - 10, by, w + 20, 8, trim);
+
+    // portico columns
+    for (int c = 0; c < 4; c++)
+    {
+        int cxp = bx + 22 + c * 52;
+        Raylib.DrawRectangle(cxp, by + 40, 14, h - 40, stoneHi);
+        Raylib.DrawRectangle(cxp - 2, by + 36, 18, 6, trim);       // capital
+        Raylib.DrawRectangle(cxp - 3, by + h - 8, 20, 8, trim);    // base
+    }
+
+    // tall arched windows between columns
+    for (int c = 0; c < 3; c++)
+    {
+        int wx = bx + 44 + c * 52;
+        Raylib.DrawRectangle(wx, by + 56, 24, 60, glass);
+        Raylib.DrawCircle(wx + 12, by + 56, 12, glass);
+        Raylib.DrawRectangleLines(wx, by + 56, 24, 60, trim);
+    }
+
+    // door
+    int dW = 40, dX = bx + w / 2 - dW / 2;
+    Raylib.DrawRectangle(dX, by + h - 52, dW, 52, new Color((byte)80,(byte)55,(byte)30,(byte)255));
+    Raylib.DrawRectangle(dX + dW / 2 - 1, by + h - 52, 2, 52, trim);
+
+    // steps
+    Raylib.DrawRectangle(dX - 12, by + h, dW + 24, 7, stoneHi);
+    Raylib.DrawRectangle(dX - 20, by + h + 7, dW + 40, 7, stone);
+
+    // sign
+    Raylib.DrawRectangle(bx + w / 2 - 70, by - 30, 140, 18, roofCol);
+    Program.DrawTextUI("LIBRARY", bx + w / 2 - 42, by - 28, 16, trim);
+}
+
+static void DrawLibraryInterior()
+{
+    Color floor1 = new Color((byte)210,(byte)185,(byte)150,(byte)255);
+    Color floor2 = new Color((byte)195,(byte)168,(byte)132,(byte)255);
+    Color rug    = new Color((byte)120,(byte)40,(byte)45,(byte)255);
+    Color rugHi  = new Color((byte)150,(byte)55,(byte)60,(byte)255);
+    Color wood   = new Color((byte)95,(byte)60,(byte)30,(byte)255);
+    Color woodHi = new Color((byte)120,(byte)78,(byte)42,(byte)255);
+    Color wallCol = new Color((byte)70,(byte)55,(byte)40,(byte)255);
+
+    // parquet floor
+    for (int fx = 0; fx < 1400; fx += 80)
+        for (int fy = 0; fy < 1000; fy += 80)
+            Raylib.DrawRectangle(fx, fy, 80, 80, ((fx / 80 + fy / 80) % 2 == 0) ? floor1 : floor2);
+
+    // walls
+    Raylib.DrawRectangle(0, 0, 1400, 16, wallCol);
+    Raylib.DrawRectangle(0, 984, 1400, 16, wallCol);
+    Raylib.DrawRectangle(0, 0, 16, 1000, wallCol);
+    Raylib.DrawRectangle(1384, 0, 16, 1000, wallCol);
+
+    // central reading rug
+    Raylib.DrawRectangle(470, 560, 460, 300, rug);
+    Raylib.DrawRectangleLines(470, 560, 460, 300, rugHi);
+    Raylib.DrawRectangle(500, 590, 400, 240, new Color((byte)135,(byte)48,(byte)52,(byte)255));
+
+    // bookshelf helper
+    void Shelf(int sx, int sy, int sw, int sh, bool horizontal)
+    {
+        Raylib.DrawRectangle(sx, sy, sw, sh, wood);
+        Raylib.DrawRectangleLines(sx, sy, sw, sh, Color.Black);
+        if (horizontal)
+            for (int shelf = sy + 10; shelf < sy + sh - 6; shelf += 34)
+            {
+                Raylib.DrawRectangle(sx + 4, shelf, sw - 8, 5, woodHi);
+                for (int b = sx + 8; b < sx + sw - 10; b += 14)
+                    Raylib.DrawRectangle(b, shelf - 26, 10, 26,
+                        new Color((byte)(120 + (b * 7) % 110), (byte)(50 + (b * 5) % 90), (byte)(45 + (b * 3) % 70), (byte)255));
+            }
+        else
+            for (int shelf = sx + 8; shelf < sx + sw - 6; shelf += 34)
+            {
+                Raylib.DrawRectangle(shelf, sy + 4, 5, sh - 8, woodHi);
+                for (int b = sy + 8; b < sy + sh - 12; b += 14)
+                    Raylib.DrawRectangle(shelf - 26, b, 26, 10,
+                        new Color((byte)(120 + (b * 7) % 110), (byte)(50 + (b * 5) % 90), (byte)(45 + (b * 3) % 70), (byte)255));
+            }
+    }
+
+    // perimeter shelving (matches InteriorObjects collision rects)
+    Shelf(100, 150, 40, 400, false);   // left bookshelf
+    Shelf(1140, 150, 40, 400, false);  // right bookshelf
+    Shelf(200, 150, 300, 40, true);    // front desk area shelving
+
+    // extra ambience shelves along top wall
+    Shelf(560, 60, 300, 40, true);
+    Shelf(940, 150, 40, 400, false);
+
+    // reading tables with lamps
+    (int x, int y)[] tables = { (540, 620), (760, 620), (540, 740), (760, 740) };
+    foreach (var (tx, ty) in tables)
+    {
+        Raylib.DrawRectangle(tx, ty, 100, 60, woodHi);
+        Raylib.DrawRectangleLines(tx, ty, 100, 60, wood);
+        Raylib.DrawCircle(tx + 50, ty + 30, 10, new Color((byte)240,(byte)220,(byte)140,(byte)255)); // lamp glow
+        Raylib.DrawCircleLines(tx + 50, ty + 30, 10, new Color((byte)180,(byte)150,(byte)70,(byte)255));
+    }
+
+    // front desk (librarian counter)
+    Raylib.DrawRectangle(200, 150, 300, 40, wood);
+    Raylib.DrawRectangle(200, 150, 300, 8, woodHi);
+    Program.DrawTextUI("FRONT DESK", 260, 158, 16, new Color((byte)235,(byte)225,(byte)205,(byte)255));
+
+    // photo booth (matches collision + existing interaction rect 560,300,160,200)
+    Raylib.DrawRectangle(560, 300, 160, 200, new Color((byte)40,(byte)40,(byte)55,(byte)255));
+    Raylib.DrawRectangle(568, 308, 144, 130, new Color((byte)25,(byte)25,(byte)38,(byte)255));
+    Raylib.DrawRectangle(576, 316, 128, 90, new Color((byte)60,(byte)150,(byte)190,(byte)200)); // screen
+    Raylib.DrawRectangleLines(560, 300, 160, 200, Color.Gold);
+    Program.DrawTextUI("PHOTO BOOTH", 575, 270, 20, Color.Gold);
+
+    // entrance mat
+    Raylib.DrawRectangle(600, 900, 200, 84, new Color((byte)60,(byte)60,(byte)70,(byte)255));
+    Raylib.DrawRectangle(610, 910, 180, 64, new Color((byte)30,(byte)140,(byte)60,(byte)255));
+}
 
 static void AddDBar(float x, float y)
 {
@@ -11877,6 +13517,1029 @@ static void AddFarmingShop(float x, float y)
     farmShop.InteriorObjects.Add(new Rectangle(600, 200, 200, 120)); // seed display 2
 
     buildings.Add(farmShop);
+}
+
+static void DrawFarmingShopExterior(float x, float y)
+{
+    int bx = (int)x, by = (int)y;
+    Color plank   = new Color((byte)140,(byte)90,(byte)45,(byte)255);
+    Color plankHi = new Color((byte)165,(byte)110,(byte)58,(byte)255);
+    Color roofCol = new Color((byte)120,(byte)40,(byte)35,(byte)255);
+    Color roofHi  = new Color((byte)150,(byte)55,(byte)48,(byte)255);
+    Color trim    = new Color((byte)235,(byte)225,(byte)205,(byte)255);
+    int w = 160, h = 120;
+
+    // barn body with vertical planks
+    Raylib.DrawRectangle(bx, by, w, h, plank);
+    for (int px = 0; px < w; px += 16)
+        Raylib.DrawRectangle(bx + px, by, 2, h, plankHi);
+
+    // gambrel barn roof (two-slope)
+    Raylib.DrawTriangle(new Vector2(bx - 8, by + 2), new Vector2(bx + w + 8, by + 2),
+        new Vector2(bx + w / 2, by - 40), roofCol);
+    Raylib.DrawTriangleLines(new Vector2(bx - 8, by + 2), new Vector2(bx + w + 8, by + 2),
+        new Vector2(bx + w / 2, by - 40), roofHi);
+    Raylib.DrawRectangle(bx - 8, by, w + 16, 6, roofHi);
+
+    // hayloft window (diamond)
+    Raylib.DrawCircle(bx + w / 2, by - 16, 8, new Color((byte)60,(byte)40,(byte)20,(byte)255));
+    Raylib.DrawCircle(bx + w / 2, by - 16, 5, new Color((byte)230,(byte)200,(byte)120,(byte)255));
+
+    // big white cross-braced barn doors
+    int dW = 60, dX = bx + w / 2 - dW / 2, dY = by + h - 70;
+    Raylib.DrawRectangle(dX, dY, dW, 70, new Color((byte)120,(byte)70,(byte)35,(byte)255));
+    Raylib.DrawRectangleLines(dX, dY, dW, 70, trim);
+    Raylib.DrawRectangle(dX + dW / 2 - 1, dY, 2, 70, trim);
+    Raylib.DrawLineEx(new Vector2(dX, dY), new Vector2(dX + dW / 2, dY + 70), 3, trim);
+    Raylib.DrawLineEx(new Vector2(dX + dW, dY), new Vector2(dX + dW / 2, dY + 70), 3, trim);
+
+    // side windows
+    Raylib.DrawRectangle(bx + 14, by + 36, 28, 28, new Color((byte)150,(byte)195,(byte)220,(byte)220));
+    Raylib.DrawRectangleLines(bx + 14, by + 36, 28, 28, trim);
+    Raylib.DrawRectangle(bx + w - 42, by + 36, 28, 28, new Color((byte)150,(byte)195,(byte)220,(byte)220));
+    Raylib.DrawRectangleLines(bx + w - 42, by + 36, 28, 28, trim);
+
+    // little produce crates by the door
+    Raylib.DrawRectangle(dX - 26, by + h - 22, 20, 20, plankHi);
+    Raylib.DrawRectangle(dX + dW + 6, by + h - 22, 20, 20, plankHi);
+
+    // sign
+    Raylib.DrawRectangle(bx + w / 2 - 66, by - 34, 132, 18, new Color((byte)70,(byte)50,(byte)25,(byte)255));
+    Program.DrawTextUI("FARMING SHOP", bx + w / 2 - 58, by - 32, 13, trim);
+}
+
+static void DrawFarmingShopInterior()
+{
+    Color floor1 = new Color((byte)185,(byte)150,(byte)100,(byte)255);
+    Color floor2 = new Color((byte)170,(byte)135,(byte)88,(byte)255);
+    Color wood   = new Color((byte)110,(byte)72,(byte)38,(byte)255);
+    Color woodHi = new Color((byte)140,(byte)95,(byte)50,(byte)255);
+    Color wallCol = new Color((byte)80,(byte)55,(byte)30,(byte)255);
+    Color leaf   = new Color((byte)60,(byte)150,(byte)60,(byte)255);
+
+    // plank floor
+    for (int fx = 0; fx < 1400; fx += 70)
+        for (int fy = 0; fy < 1000; fy += 70)
+            Raylib.DrawRectangle(fx, fy, 70, 70, ((fx / 70 + fy / 70) % 2 == 0) ? floor1 : floor2);
+    for (int fy = 0; fy < 1000; fy += 70)
+        Raylib.DrawRectangle(0, fy, 1400, 2, new Color((byte)150,(byte)118,(byte)76,(byte)255));
+
+    // walls
+    Raylib.DrawRectangle(0, 0, 1400, 16, wallCol);
+    Raylib.DrawRectangle(0, 984, 1400, 16, wallCol);
+    Raylib.DrawRectangle(0, 0, 16, 1000, wallCol);
+    Raylib.DrawRectangle(1384, 0, 16, 1000, wallCol);
+
+    // counter (matches collision 400,80,400,40)
+    Raylib.DrawRectangle(400, 80, 400, 40, wood);
+    Raylib.DrawRectangle(400, 80, 400, 8, woodHi);
+    Raylib.DrawRectangle(410, 88, 60, 26, new Color((byte)200,(byte)190,(byte)170,(byte)255)); // till
+    Program.DrawTextUI("COUNTER", 560, 90, 18, new Color((byte)235,(byte)225,(byte)205,(byte)255));
+
+    // display bin helper (crates of produce/seed)
+    void Bin(int dx, int dy, int dw, int dh, Color prod, string label)
+    {
+        Raylib.DrawRectangle(dx, dy, dw, dh, wood);
+        Raylib.DrawRectangleLines(dx, dy, dw, dh, Color.Black);
+        Raylib.DrawRectangle(dx + 8, dy + 8, dw - 16, dh - 16, woodHi);
+        for (int px = dx + 16; px < dx + dw - 12; px += 22)
+            for (int py = dy + 16; py < dy + dh - 12; py += 22)
+                Raylib.DrawCircle(px, py, 7, prod);
+        Program.DrawTextUI(label, dx + 6, dy - 18, 14, new Color((byte)90,(byte)60,(byte)30,(byte)255));
+    }
+
+    // display stands (match collision rects)
+    Bin(100, 200, 200, 120, new Color((byte)150,(byte)150,(byte)160,(byte)255), "TOOLS");   // tool display
+    Bin(350, 200, 200, 120, new Color((byte)210,(byte)180,(byte)90,(byte)255), "SEEDS");    // seed display 1
+    Bin(600, 200, 200, 120, new Color((byte)200,(byte)90,(byte)70,(byte)255), "SEEDS");     // seed display 2
+
+    // hanging tools on right wall
+    for (int t = 0; t < 4; t++)
+    {
+        int tx = 1000 + t * 70;
+        Raylib.DrawRectangle(tx, 180, 8, 90, new Color((byte)90,(byte)90,(byte)95,(byte)255));
+        Raylib.DrawRectangle(tx - 10, 180, 28, 14, new Color((byte)120,(byte)120,(byte)130,(byte)255));
+    }
+
+    // potted plants for ambience
+    (int x, int y)[] pots = { (200, 560), (1150, 560), (200, 780), (1150, 780) };
+    foreach (var (px, py) in pots)
+    {
+        Raylib.DrawRectangle(px, py + 26, 40, 26, new Color((byte)150,(byte)80,(byte)45,(byte)255));
+        Raylib.DrawCircle(px + 20, py + 16, 22, leaf);
+        Raylib.DrawCircle(px + 8, py + 22, 12, new Color((byte)75,(byte)165,(byte)75,(byte)255));
+    }
+
+    // stacked hay bales bottom-left
+    for (int hb = 0; hb < 3; hb++)
+        Raylib.DrawRectangle(120 + hb * 6, 800 - hb * 44, 90, 44, new Color((byte)200,(byte)175,(byte)90,(byte)255));
+
+    // entrance mat
+    Raylib.DrawRectangle(600, 900, 200, 84, new Color((byte)70,(byte)50,(byte)30,(byte)255));
+    Raylib.DrawRectangle(610, 910, 180, 64, new Color((byte)110,(byte)80,(byte)45,(byte)255));
+}
+static void AddBarn(float x, float y)
+{
+    var barn = new Building(
+        new Rectangle(x, y, 220, 180),
+        new Color(150, 60, 45, 255),
+        new Color(70, 45, 25, 255),
+        new Vector2(x + 110, y + 160),
+        "BARN",
+        new NPC(new Vector2(700, 160), "Rancher", "After livestock? Step up and I'll sort you out."),
+        entryPos: new Vector2(700, 900)
+    );
+    barn.InteriorObjects.Clear();
+    barn.InteriorObjects.Add(new Rectangle(350, 80, 700, 60));    // counter
+    // stalls left
+    foreach (int sy in new[] { 200, 400, 600 })
+        barn.InteriorObjects.Add(new Rectangle(40, sy, 260, 150));
+    // stalls right
+    foreach (int sy in new[] { 200, 400, 600 })
+        barn.InteriorObjects.Add(new Rectangle(1100, sy, 260, 150));
+    barn.InteriorObjects.Add(new Rectangle(560, 780, 280, 80));   // hay bale display
+    buildings.Add(barn);
+}
+
+static void DrawBarnExterior(float x, float y)
+{
+    int bx = (int)x, by = (int)y;
+    Color plank   = new Color((byte)150,(byte)60,(byte)45,(byte)255);
+    Color plankHi = new Color((byte)175,(byte)75,(byte)55,(byte)255);
+    Color roofCol = new Color((byte)90,(byte)45,(byte)35,(byte)255);
+    Color trim    = new Color((byte)240,(byte)235,(byte)225,(byte)255);
+    int w = 220, h = 180;
+
+    // barn body, vertical planks
+    Raylib.DrawRectangle(bx, by, w, h, plank);
+    for (int px = 0; px < w; px += 18)
+        Raylib.DrawRectangle(bx + px, by, 2, h, plankHi);
+
+    // gambrel roof (two slopes)
+    Raylib.DrawTriangle(new Vector2(bx - 10, by + 40), new Vector2(bx + w/2, by - 44), new Vector2(bx + w + 10, by + 40), roofCol);
+    Raylib.DrawRectangle(bx - 10, by + 36, w + 20, 8, new Color((byte)70,(byte)35,(byte)28,(byte)255));
+
+    // hayloft door + pulley
+    Raylib.DrawRectangle(bx + w/2 - 18, by - 12, 36, 34, new Color((byte)70,(byte)40,(byte)22,(byte)255));
+    Raylib.DrawRectangle(bx + w/2 - 18, by - 12, 36, 4, trim);
+    Raylib.DrawCircle(bx + w/2, by - 20, 4, new Color((byte)40,(byte)40,(byte)44,(byte)255));
+
+    // big white cross-braced doors
+    int dW = 80, dX = bx + w/2 - dW/2, dY = by + h - 90;
+    Raylib.DrawRectangle(dX, dY, dW, 90, new Color((byte)120,(byte)55,(byte)40,(byte)255));
+    Raylib.DrawRectangleLines(dX, dY, dW, 90, trim);
+    Raylib.DrawRectangle(dX + dW/2 - 1, dY, 2, 90, trim);
+    Raylib.DrawLineEx(new Vector2(dX, dY), new Vector2(dX + dW/2, dY + 90), 3, trim);
+    Raylib.DrawLineEx(new Vector2(dX + dW, dY), new Vector2(dX + dW/2, dY + 90), 3, trim);
+    Raylib.DrawLineEx(new Vector2(dX, dY + 90), new Vector2(dX + dW/2, dY), 3, trim);
+    Raylib.DrawLineEx(new Vector2(dX + dW, dY + 90), new Vector2(dX + dW/2, dY), 3, trim);
+
+    // side windows
+    Raylib.DrawRectangle(bx + 20, by + 60, 30, 30, new Color((byte)150,(byte)195,(byte)220,(byte)220));
+    Raylib.DrawRectangleLines(bx + 20, by + 60, 30, 30, trim);
+    Raylib.DrawRectangle(bx + w - 50, by + 60, 30, 30, new Color((byte)150,(byte)195,(byte)220,(byte)220));
+    Raylib.DrawRectangleLines(bx + w - 50, by + 60, 30, 30, trim);
+
+    // little fenced paddock beside the barn
+    for (int fxp = bx + w + 6; fxp < bx + w + 90; fxp += 20)
+        Raylib.DrawRectangle(fxp, by + h - 60, 3, 60, new Color((byte)120,(byte)90,(byte)55,(byte)255));
+    Raylib.DrawRectangle(bx + w + 6, by + h - 60, 84, 3, new Color((byte)120,(byte)90,(byte)55,(byte)255));
+
+    // sign
+    Raylib.DrawRectangle(bx + w/2 - 50, by - 40, 100, 20, roofCol);
+    Program.DrawTextUI("BARN", bx + w/2 - 26, by - 38, 16, trim);
+}
+
+static void DrawBarnInterior()
+{
+    Color floor1 = new Color((byte)175,(byte)140,(byte)90,(byte)255);
+    Color floor2 = new Color((byte)160,(byte)126,(byte)80,(byte)255);
+    Color wood   = new Color((byte)110,(byte)72,(byte)38,(byte)255);
+    Color woodHi = new Color((byte)140,(byte)95,(byte)50,(byte)255);
+    Color wallCol = new Color((byte)80,(byte)50,(byte)28,(byte)255);
+
+    for (int fx = 0; fx < 1400; fx += 70)
+        for (int fy = 0; fy < 1000; fy += 70)
+            Raylib.DrawRectangle(fx, fy, 70, 70, ((fx / 70 + fy / 70) % 2 == 0) ? floor1 : floor2);
+
+    Raylib.DrawRectangle(0, 0, 1400, 16, wallCol);
+    Raylib.DrawRectangle(0, 984, 1400, 16, wallCol);
+    Raylib.DrawRectangle(0, 0, 16, 1000, wallCol);
+    Raylib.DrawRectangle(1384, 0, 16, 1000, wallCol);
+
+    // counter
+    Raylib.DrawRectangle(350, 80, 700, 60, wood);
+    Raylib.DrawRectangle(350, 80, 700, 8, woodHi);
+    Program.DrawTextUI("LIVESTOCK COUNTER", 520, 96, 20, new Color((byte)240,(byte)235,(byte)225,(byte)255));
+
+    // stalls with animal silhouettes
+    string[] leftAnimals  = { "Chicken", "Cow", "Sheep" };
+    string[] rightAnimals = { "Pig", "Goat", "Chicken" };
+    void Stall(int sx, int sy, string label)
+    {
+        Raylib.DrawRectangle(sx, sy, 260, 150, new Color((byte)150,(byte)120,(byte)80,(byte)255));
+        for (int b = sx; b <= sx + 260; b += 30)
+            Raylib.DrawRectangle(b, sy, 4, 150, wood);
+        Raylib.DrawRectangle(sx, sy, 260, 6, woodHi);
+        // hay + trough
+        Raylib.DrawRectangle(sx + 20, sy + 110, 60, 24, new Color((byte)210,(byte)185,(byte)95,(byte)255));
+        Program.DrawTextUI(label, sx + 90, sy + 60, 20, new Color((byte)60,(byte)40,(byte)20,(byte)255));
+    }
+    for (int i = 0; i < 3; i++) Stall(40, 200 + i * 200, leftAnimals[i]);
+    for (int i = 0; i < 3; i++) Stall(1100, 200 + i * 200, rightAnimals[i]);
+
+    // hay bale display
+    for (int hb = 0; hb < 3; hb++)
+        Raylib.DrawRectangle(560 + hb * 90, 780, 84, 80, new Color((byte)205,(byte)180,(byte)90,(byte)255));
+
+    // browse prompt
+    if (Vector2.Distance(player.Center, new Vector2(700, 160)) < 180)
+    {
+        Raylib.DrawRectangle(0, 620, 1400, 90, new Color((byte)0,(byte)0,(byte)0,(byte)180));
+        Program.DrawTextUI("RANCHER", 20, 636, 26, new Color((byte)210,(byte)130,(byte)60,(byte)255));
+        Program.DrawTextUI("E = Buy animals & supplies", 20, 672, 22, Color.White);
+    }
+}
+
+static void DrawBarnShopUI()
+{
+    if (!barnShopOpen) return;
+
+    int px = ScreenWidth/2 - 340, py = 50, pw = 680, ph = 560;
+    Color brown = new Color((byte)170,(byte)110,(byte)50,(byte)255);
+    Raylib.DrawRectangle(px, py, pw, ph, new Color((byte)25,(byte)16,(byte)8,(byte)245));
+    Raylib.DrawRectangleLines(px, py, pw, ph, brown);
+    Program.DrawTextUI("LIVESTOCK & SUPPLIES", px + 190, py + 12, 26, brown);
+    Program.DrawTextUI($"${player.Money}", px + pw - 100, py + 16, 20, Color.Gold);
+
+    Vector2 mouse = Raylib.GetMousePosition();
+    int rowH = 50, y = py + 56;
+
+    Program.DrawTextUI("ANIMALS  (placed in a pen behind the barn)", px + 24, y, 18, new Color((byte)200,(byte)170,(byte)110,(byte)255));
+    y += 30;
+    for (int i = 0; i < barnStock.Length; i++)
+    {
+        var (animal, price, produce, cycle, feed) = barnStock[i];
+        Rectangle row = new Rectangle(px + 20, y + i * rowH, pw - 40, rowH - 8);
+        bool hover = Raylib.CheckCollisionPointRec(mouse, row);
+        bool canAfford = player.Money >= price;
+        Raylib.DrawRectangleRec(row, new Color((byte)38,(byte)26,(byte)14,(byte)255));
+        Raylib.DrawRectangleLinesEx(row, hover ? 2 : 1, hover ? brown : new Color((byte)70,(byte)50,(byte)28,(byte)255));
+        Program.DrawTextUI($"{animal}  →  {produce}", px + 32, y + i * rowH + 8, 18, Color.White);
+        Program.DrawTextUI($"feed: {feed}", px + 320, y + i * rowH + 10, 15, new Color((byte)170,(byte)170,(byte)175,(byte)255));
+        Program.DrawTextUI($"${price}", px + pw - 96, y + i * rowH + 10, 16, canAfford ? Color.Gold : Color.Red);
+
+        if (hover && Raylib.IsMouseButtonPressed(MouseButton.Left))
+        {
+            if (!canAfford) ShowNotification($"Need ${price}!");
+            else
+            {
+                player.Money -= price;
+                // place a pen near the farming area origin, offset per existing pen count
+                int n = livestockPens.Count;
+                Vector2 penPos = new Vector2(-1200 + (n % 5) * 160, -9200 + (n / 5) * 160);
+                livestockPens.Add(new LivestockPen {
+                    Position = penPos, Animal = animal, Produce = produce,
+                    Feed = feed, Cycle = cycle, Timer = 0f
+                });
+                ShowNotification($"Bought a {animal}! Pen placed on your farm.");
+            }
+        }
+    }
+
+    y += barnStock.Length * rowH + 16;
+    Program.DrawTextUI("SUPPLIES", px + 24, y, 18, new Color((byte)200,(byte)170,(byte)110,(byte)255));
+    y += 28;
+    for (int i = 0; i < barnSupplies.Length; i++)
+    {
+        var (item, price) = barnSupplies[i];
+        Rectangle row = new Rectangle(px + 20, y + i * (rowH - 8), pw - 40, rowH - 14);
+        bool hover = Raylib.CheckCollisionPointRec(mouse, row);
+        bool canAfford = player.Money >= price;
+        Raylib.DrawRectangleRec(row, new Color((byte)38,(byte)26,(byte)14,(byte)255));
+        Raylib.DrawRectangleLinesEx(row, hover ? 2 : 1, hover ? brown : new Color((byte)70,(byte)50,(byte)28,(byte)255));
+        Program.DrawTextUI(item, px + 32, y + i * (rowH - 8) + 8, 18, Color.White);
+        Program.DrawTextUI($"${price}", px + pw - 96, y + i * (rowH - 8) + 8, 16, canAfford ? Color.Gold : Color.Red);
+        if (hover && Raylib.IsMouseButtonPressed(MouseButton.Left))
+        {
+            if (!canAfford) ShowNotification($"Need ${price}!");
+            else if (TryGiveItem(item, 1)) { player.Money -= price; ShowNotification($"Bought {item}!"); }
+            else ShowNotification("Inventory full!");
+        }
+    }
+
+    Program.DrawTextUI("Q = Close", px + pw/2 - 38, py + ph - 26, 16, Color.DarkGray);
+    if (Raylib.IsKeyPressed(KeyboardKey.Q)) barnShopOpen = false;
+}
+
+static void AddZoo(float x, float y)
+{
+    var zoo = new Building(
+        new Rectangle(x, y, 360, 260),
+        new Color(70, 140, 80, 255),
+        new Color(40, 80, 50, 255),
+        new Vector2(x + 180, y + 240),
+        "ZOO",
+        new NPC(new Vector2(700, 160), "Zookeeper", "Welcome to the zoo! $20 entry — mind the enclosures."),
+        entryPos: new Vector2(1000, 1850)
+    );
+    zoo.InteriorObjects.Clear();
+    // enclosure walls (rects the player can't walk through) — a ring of exhibits
+    (int x, int y, int w, int h)[] pens = {
+        (150,200,420,320), (900,200,420,320), (150,700,420,320),
+        (900,700,420,320), (525,1150,420,300),
+    };
+    foreach (var (ex, ey, ew, eh) in pens)
+    {
+        zoo.InteriorObjects.Add(new Rectangle(ex, ey, ew, 20));
+        zoo.InteriorObjects.Add(new Rectangle(ex, ey + eh - 20, ew, 20));
+        zoo.InteriorObjects.Add(new Rectangle(ex, ey, 20, eh));
+        zoo.InteriorObjects.Add(new Rectangle(ex + ew - 20, ey, 20, eh));
+    }
+    zoo.InteriorObjects.Add(new Rectangle(880, 60, 240, 60)); // ticket booth
+    buildings.Add(zoo);
+}
+
+static void DrawZooExterior(float x, float y)
+{
+    int bx = (int)x, by = (int)y;
+    Color wall   = new Color((byte)90,(byte)150,(byte)95,(byte)255);
+    Color wallHi = new Color((byte)115,(byte)175,(byte)118,(byte)255);
+    Color stone  = new Color((byte)150,(byte)150,(byte)140,(byte)255);
+    Color trim   = new Color((byte)240,(byte)240,(byte)225,(byte)255);
+    int w = 360, h = 260;
+
+    // safari-green perimeter wall
+    Raylib.DrawRectangle(bx, by, w, h, wall);
+    Raylib.DrawRectangle(bx, by, w, 40, wallHi);
+    for (int px = 0; px < w; px += 40)
+        Raylib.DrawRectangle(bx + px, by, 3, h, new Color((byte)70,(byte)120,(byte)78,(byte)255));
+
+    // grand stone archway entrance
+    int aW = 120, aX = bx + w/2 - aW/2;
+    Raylib.DrawRectangle(aX, by + h - 90, aW, 90, stone);
+    Raylib.DrawCircle(bx + w/2, by + h - 90, aW/2, stone);
+    Raylib.DrawRectangle(aX + 16, by + h - 74, aW - 32, 74, new Color((byte)50,(byte)40,(byte)30,(byte)255)); // gate opening
+    Raylib.DrawCircle(bx + w/2, by + h - 90, aW/2 - 16, new Color((byte)50,(byte)40,(byte)30,(byte)255));
+
+    // "ZOO" banner across the arch
+    Raylib.DrawRectangle(aX - 6, by + h - 120, aW + 12, 26, new Color((byte)210,(byte)120,(byte)40,(byte)255));
+    Program.DrawTextUI("ZOO", bx + w/2 - 24, by + h - 118, 22, trim);
+
+    // palm-tree silhouettes on the wall corners
+    foreach (int txp in new[] { bx + 30, bx + w - 40 })
+    {
+        Raylib.DrawRectangle(txp, by + 60, 8, 80, new Color((byte)110,(byte)80,(byte)45,(byte)255));
+        Raylib.DrawCircle(txp + 4, by + 56, 22, new Color((byte)60,(byte)150,(byte)70,(byte)255));
+    }
+
+    // animal-print signage flags along the top
+    for (int fxp = bx + 20; fxp < bx + w - 20; fxp += 60)
+        Raylib.DrawTriangle(new Vector2(fxp, by - 12), new Vector2(fxp + 24, by - 12), new Vector2(fxp + 12, by + 6),
+            (fxp / 60) % 2 == 0 ? new Color((byte)230,(byte)180,(byte)60,(byte)255) : new Color((byte)220,(byte)110,(byte)50,(byte)255));
+}
+
+static void DrawZooInterior()
+{
+    Color path1 = new Color((byte)200,(byte)185,(byte)150,(byte)255);
+    Color path2 = new Color((byte)188,(byte)172,(byte)138,(byte)255);
+    Color grass = new Color((byte)90,(byte)160,(byte)90,(byte)255);
+    Color wallCol = new Color((byte)80,(byte)120,(byte)80,(byte)255);
+
+    // grass base
+    Raylib.ClearBackground(grass);
+    for (int fx = 0; fx < 2000; fx += 100)
+        for (int fy = 0; fy < 2000; fy += 100)
+            if ((fx/100 + fy/100) % 3 == 0)
+                Raylib.DrawRectangle(fx, fy, 100, 100, new Color((byte)80,(byte)150,(byte)82,(byte)255));
+
+    // walking paths (cross layout)
+    Raylib.DrawRectangle(600, 0, 200, 2000, path1);
+    Raylib.DrawRectangle(0, 900, 2000, 200, path2);
+
+    // outer walls
+    Raylib.DrawRectangle(0, 0, 2000, 20, wallCol);
+    Raylib.DrawRectangle(0, 1980, 2000, 20, wallCol);
+    Raylib.DrawRectangle(0, 0, 20, 2000, wallCol);
+    Raylib.DrawRectangle(1980, 0, 20, 2000, wallCol);
+
+    // enclosure helper
+    void Exhibit(int ex, int ey, int ew, int eh, string label, Color habitat, Color animal)
+    {
+        Raylib.DrawRectangle(ex, ey, ew, eh, habitat);
+        // fence
+        Raylib.DrawRectangleLinesEx(new Rectangle(ex, ey, ew, eh), 4, new Color((byte)90,(byte)70,(byte)45,(byte)255));
+        for (int b = ex; b < ex + ew; b += 26)
+            Raylib.DrawRectangle(b, ey, 3, eh, new Color((byte)110,(byte)85,(byte)55,(byte)150));
+        // a couple of animal blobs
+        Raylib.DrawCircle(ex + ew/2, ey + eh/2, 26, animal);
+        Raylib.DrawCircle(ex + ew/2 + 34, ey + eh/2 + 14, 18, animal);
+        Raylib.DrawCircle(ex + ew/2 + 18, ey + eh/2 - 6, 8, animal); // head
+        // name plaque
+        Raylib.DrawRectangle(ex + ew/2 - 60, ey - 26, 120, 22, new Color((byte)60,(byte)45,(byte)30,(byte)255));
+        Program.DrawTextUI(label, ex + ew/2 - 52, ey - 24, 16, Color.White);
+    }
+
+    Exhibit(150, 200, 420, 320, "LIONS",     new Color((byte)200,(byte)180,(byte)120,(byte)255), new Color((byte)200,(byte)150,(byte)60,(byte)255));
+    Exhibit(900, 200, 420, 320, "ELEPHANTS", new Color((byte)170,(byte)175,(byte)165,(byte)255), new Color((byte)130,(byte)130,(byte)138,(byte)255));
+    Exhibit(150, 700, 420, 320, "PENGUINS",  new Color((byte)150,(byte)200,(byte)225,(byte)255), new Color((byte)40,(byte)40,(byte)48,(byte)255));
+    Exhibit(900, 700, 420, 320, "MONKEYS",   new Color((byte)110,(byte)160,(byte)90,(byte)255),  new Color((byte)120,(byte)80,(byte)45,(byte)255));
+    Exhibit(525, 1150, 420, 300, "GIRAFFES", new Color((byte)200,(byte)185,(byte)120,(byte)255), new Color((byte)220,(byte)180,(byte)90,(byte)255));
+
+    // ticket booth
+    Raylib.DrawRectangle(880, 60, 240, 60, new Color((byte)210,(byte)120,(byte)40,(byte)255));
+    Program.DrawTextUI("TICKET BOOTH", 910, 78, 20, Color.White);
+
+    // exit mat
+    Raylib.DrawRectangle(900, 1880, 200, 90, new Color((byte)60,(byte)45,(byte)30,(byte)255));
+    Program.DrawTextUI("EXIT", 960, 1905, 20, Color.Gold);
+}
+
+static void AddCastle(float x, float y)
+{
+    var castle = new Building(
+        new Rectangle(x, y, 420, 320),
+        new Color(120, 120, 130, 255),
+        new Color(45, 42, 55, 255),
+        new Vector2(x + 210, y + 300),
+        "CASTLE",
+        new NPC(new Vector2(700, 260), "Steward", "Welcome to the keep, traveller."),
+        entryPos: new Vector2(986, 1866)
+    );
+    castle.InteriorObjects.Clear();
+
+    // throne dais (top-centre)
+    castle.InteriorObjects.Add(new Rectangle(850, 120, 300, 160));
+    // long banquet tables
+    castle.InteriorObjects.Add(new Rectangle(300, 700, 160, 500));
+    castle.InteriorObjects.Add(new Rectangle(1540, 700, 160, 500));
+    // central pillars
+    for (int p = 0; p < 4; p++)
+    {
+        castle.InteriorObjects.Add(new Rectangle(560, 500 + p * 320, 70, 70));
+        castle.InteriorObjects.Add(new Rectangle(1370, 500 + p * 320, 70, 70));
+    }
+    // braziers flanking throne
+    castle.InteriorObjects.Add(new Rectangle(760, 180, 50, 50));
+    castle.InteriorObjects.Add(new Rectangle(1190, 180, 50, 50));
+
+    buildings.Add(castle);
+}
+
+static void DrawCastleExterior(float x, float y)
+{
+    int bx = (int)x, by = (int)y;
+    Color stone   = new Color((byte)140,(byte)140,(byte)150,(byte)255);
+    Color stoneHi = new Color((byte)165,(byte)165,(byte)175,(byte)255);
+    Color mortar  = new Color((byte)110,(byte)110,(byte)120,(byte)255);
+    Color roofCol = new Color((byte)90,(byte)45,(byte)55,(byte)255);
+    Color flag    = new Color((byte)180,(byte)40,(byte)45,(byte)255);
+    int w = 420, h = 320;
+
+    // curtain wall
+    Raylib.DrawRectangle(bx, by + 40, w, h - 40, stone);
+    for (int row = 40; row < h; row += 22)
+        Raylib.DrawRectangle(bx, by + row, w, 2, mortar);
+    for (int row = 40; row < h; row += 22)
+        for (int cx = ((row / 22) % 2 == 0 ? 0 : 34); cx < w; cx += 68)
+            Raylib.DrawRectangle(bx + cx, by + row, 2, 22, mortar);
+
+    // corner + centre towers
+    int[] towerX = { bx - 10, bx + w / 2 - 35, bx + w - 60 };
+    foreach (int tx in towerX)
+    {
+        Raylib.DrawRectangle(tx, by, 70, h, stoneHi);
+        for (int row = 0; row < h; row += 22)
+            Raylib.DrawRectangle(tx, by + row, 70, 2, mortar);
+        // crenellations
+        for (int cxp = tx; cxp < tx + 70; cxp += 24)
+            Raylib.DrawRectangle(cxp, by - 14, 14, 16, stone);
+        // conical roof on centre tower
+        if (tx == bx + w / 2 - 35)
+        {
+            Raylib.DrawTriangle(new Vector2(tx - 4, by - 12), new Vector2(tx + 74, by - 12),
+                new Vector2(tx + 35, by - 70), roofCol);
+            // flag
+            Raylib.DrawRectangle(tx + 34, by - 100, 3, 34, new Color((byte)60,(byte)50,(byte)40,(byte)255));
+            Raylib.DrawTriangle(new Vector2(tx + 37, by - 100), new Vector2(tx + 37, by - 84),
+                new Vector2(tx + 62, by - 92), flag);
+        }
+        // arrow-slit windows
+        Raylib.DrawRectangle(tx + 30, by + 60, 8, 30, new Color((byte)30,(byte)30,(byte)40,(byte)255));
+        Raylib.DrawRectangle(tx + 30, by + 140, 8, 30, new Color((byte)30,(byte)30,(byte)40,(byte)255));
+    }
+
+    // curtain-wall crenellations
+    for (int cxp = bx + 60; cxp < bx + w - 60; cxp += 30)
+        Raylib.DrawRectangle(cxp, by + 26, 18, 16, stone);
+
+    // portcullis gate
+    int gW = 90, gX = bx + w / 2 - gW / 2, gY = by + h - 110;
+    Raylib.DrawRectangle(gX, gY, gW, 110, new Color((byte)55,(byte)40,(byte)25,(byte)255));
+    Raylib.DrawCircle(gX + gW / 2, gY, gW / 2, new Color((byte)55,(byte)40,(byte)25,(byte)255)); // arch
+    for (int g = gX + 10; g < gX + gW; g += 16)
+        Raylib.DrawRectangle(g, gY, 3, 108, new Color((byte)90,(byte)90,(byte)100,(byte)255));
+    for (int g = gY + 12; g < gY + 108; g += 18)
+        Raylib.DrawRectangle(gX, g, gW, 3, new Color((byte)90,(byte)90,(byte)100,(byte)255));
+
+    // sign
+    Raylib.DrawRectangle(bx + w / 2 - 60, by + h + 4, 120, 18, roofCol);
+    Program.DrawTextUI("CASTLE", bx + w / 2 - 36, by + h + 6, 16, new Color((byte)235,(byte)225,(byte)210,(byte)255));
+}
+
+static void DrawCastleInterior()
+{
+    Color floor1 = new Color((byte)90,(byte)85,(byte)95,(byte)255);
+    Color floor2 = new Color((byte)78,(byte)74,(byte)84,(byte)255);
+    Color wallCol = new Color((byte)55,(byte)52,(byte)62,(byte)255);
+    Color stoneHi = new Color((byte)110,(byte)105,(byte)118,(byte)255);
+    Color gold    = new Color((byte)210,(byte)175,(byte)70,(byte)255);
+    Color carpet  = new Color((byte)130,(byte)30,(byte)40,(byte)255);
+
+    // flagstone floor (2000x2000 like school)
+    for (int fx = 0; fx < 2000; fx += 100)
+        for (int fy = 0; fy < 2000; fy += 100)
+            Raylib.DrawRectangle(fx, fy, 100, 100, ((fx / 100 + fy / 100) % 2 == 0) ? floor1 : floor2);
+    for (int g = 0; g < 2000; g += 100)
+    {
+        Raylib.DrawRectangle(g, 0, 2, 2000, wallCol);
+        Raylib.DrawRectangle(0, g, 2000, 2, wallCol);
+    }
+
+    // outer walls
+    Raylib.DrawRectangle(0, 0, 2000, 20, wallCol);
+    Raylib.DrawRectangle(0, 1980, 2000, 20, wallCol);
+    Raylib.DrawRectangle(0, 0, 20, 2000, wallCol);
+    Raylib.DrawRectangle(1980, 0, 20, 2000, wallCol);
+
+    // red carpet runner from entrance to throne
+    Raylib.DrawRectangle(940, 280, 120, 1600, carpet);
+    Raylib.DrawRectangleLines(940, 280, 120, 1600, gold);
+
+    // throne dais (matches collision 850,120,300,160)
+    Raylib.DrawRectangle(850, 120, 300, 160, stoneHi);
+    Raylib.DrawRectangleLines(850, 120, 300, 160, gold);
+    Raylib.DrawRectangle(960, 150, 80, 110, new Color((byte)80,(byte)40,(byte)45,(byte)255)); // throne back
+    Raylib.DrawRectangle(950, 220, 100, 50, gold);                                            // throne seat
+    Program.DrawTextUI("THRONE", 940, 90, 20, gold);
+
+    // braziers (matches collision)
+    foreach (var (bxp, byp) in new[] { (760, 180), (1190, 180) })
+    {
+        Raylib.DrawRectangle(bxp, byp, 50, 50, new Color((byte)60,(byte)55,(byte)50,(byte)255));
+        Raylib.DrawCircle(bxp + 25, byp + 20, 18, new Color((byte)255,(byte)150,(byte)40,(byte)255));
+        Raylib.DrawCircle(bxp + 25, byp + 12, 10, new Color((byte)255,(byte)220,(byte)120,(byte)255));
+    }
+
+    // banquet tables (matches collision 300,700 / 1540,700)
+    foreach (int tx in new[] { 300, 1540 })
+    {
+        Raylib.DrawRectangle(tx, 700, 160, 500, new Color((byte)110,(byte)72,(byte)38,(byte)255));
+        Raylib.DrawRectangleLines(tx, 700, 160, 500, new Color((byte)70,(byte)45,(byte)20,(byte)255));
+        for (int p = 720; p < 1180; p += 90)
+        {
+            Raylib.DrawRectangle(tx + 20, p, 30, 20, gold);            // platters
+            Raylib.DrawRectangle(tx + 110, p, 30, 20, new Color((byte)200,(byte)60,(byte)60,(byte)255));
+        }
+    }
+
+    // pillars (match collision)
+    for (int p = 0; p < 4; p++)
+        foreach (int px in new[] { 560, 1370 })
+        {
+            Raylib.DrawRectangle(px, 500 + p * 320, 70, 70, stoneHi);
+            Raylib.DrawRectangleLines(px, 500 + p * 320, 70, 70, wallCol);
+            Raylib.DrawCircle(px + 35, 500 + p * 320 + 35, 18, new Color((byte)95,(byte)90,(byte)102,(byte)255));
+        }
+
+    // wall banners
+    for (int b = 0; b < 5; b++)
+    {
+        int bxp = 200 + b * 380;
+        Raylib.DrawRectangle(bxp, 30, 60, 130, (b % 2 == 0) ? carpet : new Color((byte)40,(byte)55,(byte)110,(byte)255));
+        Raylib.DrawTriangle(new Vector2(bxp, 160), new Vector2(bxp + 60, 160),
+            new Vector2(bxp + 30, 190), (b % 2 == 0) ? carpet : new Color((byte)40,(byte)55,(byte)110,(byte)255));
+        Raylib.DrawCircle(bxp + 30, 90, 16, gold);
+    }
+
+    // exit mat
+    Raylib.DrawRectangle(900, 1880, 200, 90, new Color((byte)60,(byte)45,(byte)30,(byte)255));
+    Program.DrawTextUI("EXIT", 960, 1905, 20, gold);
+}
+
+static void AddMall(float x, float y)
+{
+    var mall = new Building(
+        new Rectangle(x, y, 480, 340),
+        new Color(180, 185, 195, 255),
+        new Color(235, 235, 240, 255),
+        new Vector2(x + 240, y + 320),
+        "MALL",
+        new NPC(new Vector2(1000, 200), "Concierge", "Welcome! Six shops to browse — take your pick."),
+        entryPos: new Vector2(1000, 1850)
+    );
+    mall.InteriorObjects.Clear();
+
+    // storefront walls with door gaps (mirrors mallShops door positions)
+    void ShopFront(int rx, int ry, int rw, int rh, int doorOffset, int doorW)
+    {
+        mall.InteriorObjects.Add(new Rectangle(rx, ry, rw, 14));                          // top
+        mall.InteriorObjects.Add(new Rectangle(rx, ry, 14, rh));                          // left
+        mall.InteriorObjects.Add(new Rectangle(rx + rw - 14, ry, 14, rh));               // right
+        // bottom split around the door
+        mall.InteriorObjects.Add(new Rectangle(rx, ry + rh - 14, doorOffset, 14));
+        mall.InteriorObjects.Add(new Rectangle(rx + doorOffset + doorW, ry + rh - 14, rw - doorOffset - doorW, 14));
+    }
+
+    // top row of shops
+    ShopFront(200, 300, 340, 340, 130, 80);   // CLOTHING
+    ShopFront(600, 300, 340, 340, 130, 80);   // ELECTRONICS
+    ShopFront(1000, 300, 340, 340, 130, 80);  // SPORTS
+    // bottom row of shops
+    ShopFront(200, 1020, 340, 340, 130, 80);  // BOOKS
+    ShopFront(600, 1020, 340, 340, 130, 80);  // FOOD COURT
+    ShopFront(1000, 1020, 340, 340, 130, 80); // TOYS
+
+    // central fountain + benches (concourse furniture)
+    mall.InteriorObjects.Add(new Rectangle(920, 820, 160, 160)); // fountain
+    mall.InteriorObjects.Add(new Rectangle(500, 880, 120, 40));  // bench
+    mall.InteriorObjects.Add(new Rectangle(1380, 880, 120, 40)); // bench
+
+    buildings.Add(mall);
+}
+
+static void DrawMallExterior(float x, float y)
+{
+    int bx = (int)x, by = (int)y;
+    Color body   = new Color((byte)190,(byte)195,(byte)205,(byte)255);
+    Color bodyHi = new Color((byte)215,(byte)220,(byte)230,(byte)255);
+    Color glass  = new Color((byte)150,(byte)205,(byte)230,(byte)220);
+    Color trim   = new Color((byte)90,(byte)95,(byte)110,(byte)255);
+    Color accent = new Color((byte)210,(byte)90,(byte)140,(byte)255);
+    int w = 480, h = 340;
+
+    // main block
+    Raylib.DrawRectangle(bx, by, w, h, body);
+    Raylib.DrawRectangle(bx, by, w, 40, bodyHi);
+
+    // flat roof parapet + accent stripe
+    Raylib.DrawRectangle(bx - 8, by - 14, w + 16, 16, trim);
+    Raylib.DrawRectangle(bx - 8, by - 4, w + 16, 4, accent);
+
+    // curved glass entrance atrium
+    Raylib.DrawRectangle(bx + w / 2 - 90, by + 40, 180, h - 40, glass);
+    Raylib.DrawRectangleLines(bx + w / 2 - 90, by + 40, 180, h - 40, trim);
+    for (int g = bx + w / 2 - 90; g <= bx + w / 2 + 90; g += 30)
+        Raylib.DrawRectangle(g, by + 40, 2, h - 40, trim);
+    Raylib.DrawRectangle(bx + w / 2 - 40, by + h - 60, 80, 60, new Color((byte)70,(byte)80,(byte)95,(byte)255)); // doors
+    Raylib.DrawRectangle(bx + w / 2 - 1, by + h - 60, 2, 60, trim);
+
+    // window bands each side
+    for (int side = 0; side < 2; side++)
+    {
+        int sx = side == 0 ? bx + 20 : bx + w / 2 + 110;
+        for (int wx = sx; wx < sx + 130; wx += 44)
+        {
+            Raylib.DrawRectangle(wx, by + 70, 34, 60, glass);
+            Raylib.DrawRectangleLines(wx, by + 70, 34, 60, trim);
+            Raylib.DrawRectangle(wx, by + 170, 34, 60, glass);
+            Raylib.DrawRectangleLines(wx, by + 170, 34, 60, trim);
+        }
+    }
+
+    // pylon sign
+    Raylib.DrawRectangle(bx + 20, by - 70, 8, 60, trim);
+    Raylib.DrawRectangle(bx + 2, by - 96, 90, 30, accent);
+    Program.DrawTextUI("MALL", bx + 18, by - 90, 18, Color.White);
+
+    // main fascia sign
+    Raylib.DrawRectangle(bx + w / 2 - 70, by - 40, 140, 22, trim);
+    Program.DrawTextUI("MALL", bx + w / 2 - 26, by - 37, 18, Color.White);
+}
+
+static void DrawMallConcourse()
+{
+    Color floor1 = new Color((byte)232,(byte)230,(byte)236,(byte)255);
+    Color floor2 = new Color((byte)218,(byte)216,(byte)224,(byte)255);
+    Color wallCol = new Color((byte)90,(byte)95,(byte)110,(byte)255);
+
+    // polished tile floor
+    for (int fx = 0; fx < 2000; fx += 100)
+        for (int fy = 0; fy < 2000; fy += 100)
+            Raylib.DrawRectangle(fx, fy, 100, 100, ((fx / 100 + fy / 100) % 2 == 0) ? floor1 : floor2);
+
+    // outer walls
+    Raylib.DrawRectangle(0, 0, 2000, 20, wallCol);
+    Raylib.DrawRectangle(0, 1980, 2000, 20, wallCol);
+    Raylib.DrawRectangle(0, 0, 20, 2000, wallCol);
+    Raylib.DrawRectangle(1980, 0, 20, 2000, wallCol);
+
+    // entrance gap, bottom-centre
+    Program.DrawTextUI("ENTRANCE", 920, 1940, 16, Color.White);
+
+    // storefront helper — matches AddMall ShopFront geometry + door gap
+    void Storefront(int rx, int ry, int rw, int rh, string label, Color col, int doorOffset, int doorW)
+    {
+        Raylib.DrawRectangle(rx, ry, rw, rh, new Color((byte)245,(byte)245,(byte)250,(byte)255)); // shop fill
+        Raylib.DrawRectangle(rx, ry, rw, 14, wallCol);
+        Raylib.DrawRectangle(rx, ry, 14, rh, wallCol);
+        Raylib.DrawRectangle(rx + rw - 14, ry, 14, rh, wallCol);
+        Raylib.DrawRectangle(rx, ry + rh - 14, doorOffset, 14, wallCol);
+        Raylib.DrawRectangle(rx + doorOffset + doorW, ry + rh - 14, rw - doorOffset - doorW, 14, wallCol);
+
+        // coloured fascia + glowing sign
+        Raylib.DrawRectangle(rx, ry + 14, rw, 40, col);
+        Program.DrawTextUI(label, rx + 30, ry + 22, 22, Color.White);
+
+        // window display glass either side of the door
+        Raylib.DrawRectangle(rx + 20, ry + rh - 90, doorOffset - 30, 76, new Color((byte)150,(byte)205,(byte)230,(byte)200));
+        Raylib.DrawRectangle(rx + doorOffset + doorW + 10, ry + rh - 90, rw - doorOffset - doorW - 30, 76, new Color((byte)150,(byte)205,(byte)230,(byte)200));
+
+        // door prompt
+        Vector2 dPos = new Vector2(rx + doorOffset + doorW / 2, ry + rh);
+        if (Vector2.Distance(player.Center, dPos) < 90)
+            Program.DrawTextUI("E = Enter " + label, rx + doorOffset - 40, ry + rh + 20, 18, Color.Gold);
+    }
+
+    Storefront(200, 300, 340, 340, "CLOTHING",   mallShops[0].col, 130, 80);
+    Storefront(600, 300, 340, 340, "ELECTRONICS", mallShops[1].col, 130, 80);
+    Storefront(1000, 300, 340, 340, "SPORTS",     mallShops[2].col, 130, 80);
+    Storefront(200, 1020, 340, 340, "BOOKS",      mallShops[3].col, 130, 80);
+    Storefront(600, 1020, 340, 340, "FOOD COURT", mallShops[4].col, 130, 80);
+    Storefront(1000, 1020, 340, 340, "TOYS",      mallShops[5].col, 130, 80);
+
+    // central fountain (matches collision 920,820,160,160)
+    Raylib.DrawCircle(1000, 900, 84, new Color((byte)120,(byte)130,(byte)150,(byte)255));
+    Raylib.DrawCircle(1000, 900, 74, new Color((byte)90,(byte)170,(byte)210,(byte)255));
+    Raylib.DrawCircle(1000, 900, 30, new Color((byte)140,(byte)205,(byte)235,(byte)255));
+    Raylib.DrawCircle(1000, 900, 10, Color.White);
+
+    // benches
+    foreach (var (bxp, byp) in new[] { (500, 880), (1380, 880) })
+    {
+        Raylib.DrawRectangle(bxp, byp, 120, 40, new Color((byte)150,(byte)110,(byte)70,(byte)255));
+        Raylib.DrawRectangleLines(bxp, byp, 120, 40, new Color((byte)90,(byte)65,(byte)35,(byte)255));
+    }
+
+    // potted planters between shops
+    foreach (var (px, py) in new[] { (560, 830), (1420, 830) })
+    {
+        Raylib.DrawRectangle(px, py, 40, 40, new Color((byte)120,(byte)80,(byte)50,(byte)255));
+        Raylib.DrawCircle(px + 20, py, 24, new Color((byte)70,(byte)160,(byte)80,(byte)255));
+    }
+}
+
+static void DrawMiniShopInterior(string shop)
+{
+    var meta = mallShops.First(s => s.name == shop);
+    Color col = meta.col;
+    Color floor1 = new Color((byte)238,(byte)236,(byte)242,(byte)255);
+    Color floor2 = new Color((byte)224,(byte)222,(byte)230,(byte)255);
+    Color wallCol = new Color((byte)90,(byte)95,(byte)110,(byte)255);
+
+    Raylib.ClearBackground(new Color((byte)30,(byte)30,(byte)38,(byte)255));
+    for (int fx = 0; fx < 1400; fx += 100)
+        for (int fy = 0; fy < 1000; fy += 100)
+            Raylib.DrawRectangle(fx, fy, 100, 100, ((fx / 100 + fy / 100) % 2 == 0) ? floor1 : floor2);
+
+    // walls + coloured header
+    Raylib.DrawRectangle(0, 0, 1400, 20, wallCol);
+    Raylib.DrawRectangle(0, 980, 1400, 20, wallCol);
+    Raylib.DrawRectangle(0, 0, 20, 1000, wallCol);
+    Raylib.DrawRectangle(1380, 0, 20, 1000, wallCol);
+    Raylib.DrawRectangle(0, 0, 1400, 70, col);
+    Program.DrawTextUI(shop, 40, 22, 34, Color.White);
+
+    // draw the shop's collision furniture as shelves/racks
+    foreach (var r in miniShopInteriorObjects.GetValueOrDefault(shop, new List<Rectangle>()))
+    {
+        Raylib.DrawRectangleRec(r, new Color((byte)110,(byte)78,(byte)42,(byte)255));
+        Raylib.DrawRectangleLinesEx(r, 2, new Color((byte)70,(byte)45,(byte)20,(byte)255));
+        // product dots
+        for (float px = r.X + 20; px < r.X + r.Width - 12; px += 34)
+            for (float py = r.Y + 18; py < r.Y + r.Height - 12; py += 34)
+                Raylib.DrawCircle((int)px, (int)py, 9,
+                    new Color((byte)((int)(px + py) % 200 + 40), (byte)((int)px % 180 + 50), (byte)((int)py % 160 + 60), (byte)255));
+    }
+
+    // counter with till
+    Raylib.DrawRectangle(560, 760, 280, 60, new Color((byte)120,(byte)85,(byte)45,(byte)255));
+    Raylib.DrawRectangle(600, 730, 60, 30, new Color((byte)210,(byte)210,(byte)220,(byte)255));
+    Program.DrawTextUI("COUNTER", 620, 775, 18, Color.White);
+
+    // exit door
+    Raylib.DrawRectangle(650, 950, 100, 40, new Color((byte)60,(byte)40,(byte)20,(byte)255));
+    Raylib.DrawRectangleLines(650, 950, 100, 40, Color.Black);
+    if (Vector2.Distance(player.Center, new Vector2(700, 950)) < 70)
+        Program.DrawTextUI("Q = Leave shop", 610, 900, 18, Color.LightGray);
+
+    // browse prompt
+    if (Vector2.Distance(player.Center, new Vector2(700, 790)) < 180)
+    {
+        Raylib.DrawRectangle(0, 620, 1400, 90, new Color((byte)0,(byte)0,(byte)0,(byte)180));
+        Program.DrawTextUI($"Welcome to {shop}!  SPACE = Browse", 20, 645, 24, col);
+    }
+}
+static void AddFamilyHub(float x, float y)
+{
+    var FamilyHub = new Building(
+        new Rectangle(x, y, 500, 380),
+        new Color(120, 90, 150, 255),
+        new Color(60, 45, 80, 255),
+        new Vector2(x + 250, y + 340),
+        "FamilyHub",
+        new NPC(new Vector2(700, 200), "Matron", "Welcome. You can adopt a little one at reception."),
+        entryPos: new Vector2(700, 1750)
+    );
+    FamilyHub.InteriorObjects.Clear();
+
+    // reception desk (top, near Matron)
+    FamilyHub.InteriorObjects.Add(new Rectangle(560, 150, 300, 60));
+
+    // bedroom rows: beds down each side of a central 1400-wide room, walking aisle in the middle
+    // left column of beds (x=120) and right column (x=1180), 5 rows
+    for (int row = 0; row < 5; row++)
+    {
+        int by = 350 + row * 240;
+        FamilyHub.InteriorObjects.Add(new Rectangle(120, by, 120, 70));   // left bed
+        FamilyHub.InteriorObjects.Add(new Rectangle(1160, by, 120, 70));  // right bed
+    }
+    FamilyHubNPCs.Clear();
+    FamilyHubNPCs.Add(new NPC(new Vector2(700, 300), "Matron", "Welcome to the sanctuary."));
+    FamilyHubNPCs.Add(new NPC(new Vector2(300, 600), "Nurse Ivy", "The little ones are thriving."));
+    for (int k = 0; k < 6; k++)
+        FamilyHubNPCs.Add(new NPC(new Vector2(250 + (k % 3) * 450, 700 + (k / 3) * 500),
+                                  "Fairy" + (k + 1), "Wanna play?"));
+    buildings.Add(FamilyHub);
+}
+static void DrawFamilyHubExterior(float x, float y)
+{
+    int bx = (int)x, by = (int)y;
+    Color wall  = new Color((byte)140,(byte)110,(byte)165,(byte)255);
+    Color trim  = new Color((byte)235,(byte)225,(byte)240,(byte)255);
+    Color roof  = new Color((byte)80,(byte)60,(byte)95,(byte)255);
+    int w = 500, h = 380;
+
+    Raylib.DrawRectangle(bx, by, w, h, wall);
+    Raylib.DrawRectangle(bx - 8, by - 18, w + 16, 20, roof);
+    Raylib.DrawRectangle(bx, by, w, 10, trim);
+
+    for (int wx = bx + 24; wx < bx + w - 24; wx += 58)
+    {
+        Raylib.DrawRectangle(wx, by + 46, 34, 40, new Color((byte)200,(byte)220,(byte)235,(byte)210));
+        Raylib.DrawRectangleLines(wx, by + 46, 34, 40, trim);
+    }
+
+    int doorW = 90, doorX = bx + w/2 - doorW/2;
+    Raylib.DrawRectangle(doorX, by + h - 60, doorW, 60, new Color((byte)90,(byte)60,(byte)40,(byte)255));
+    Raylib.DrawRectangleLines(doorX, by + h - 60, doorW, 60, trim);
+
+    Raylib.DrawRectangle(bx + w/2 - 95, by - 42, 190, 20, roof);
+    Program.DrawTextUI("FamilyHub", bx + w/2 - 58, by - 39, 18, trim);
+}
+static void DrawFamilyHubInterior()
+{
+    Color floor1 = new Color((byte)235,(byte)225,(byte)240,(byte)255);
+    Color floor2 = new Color((byte)222,(byte)210,(byte)230,(byte)255);
+    Color wallCol = new Color((byte)70,(byte)55,(byte)85,(byte)255);
+
+    for (int fx = 0; fx < 1400; fx += 100)
+        for (int fy = 0; fy < 1900; fy += 100)
+            Raylib.DrawRectangle(fx, fy, 100, 100, ((fx/100 + fy/100) % 2 == 0) ? floor1 : floor2);
+
+    // boundary
+    Raylib.DrawRectangle(0, 0, 1400, 20, wallCol);
+    Raylib.DrawRectangle(0, 1880, 1400, 20, wallCol);
+    Raylib.DrawRectangle(0, 0, 20, 1900, wallCol);
+    Raylib.DrawRectangle(1380, 0, 20, 1900, wallCol);
+
+    // entrance gap (bottom centre) — matches entryPos (700,1750)
+    Raylib.DrawRectangle(620, 1880, 160, 20, floor1);
+    Program.DrawTextUI("EXIT (Q)", 630, 1840, 16, wallCol);
+
+    // reception desk
+    Raylib.DrawRectangle(560, 150, 300, 60, new Color((byte)110,(byte)80,(byte)55,(byte)255));
+    Program.DrawTextUI("RECEPTION", 610, 168, 20, Color.White);
+    Program.DrawTextUI("Press E to adopt", 600, 230, 16, wallCol);
+
+    // beds down each side
+    Color bedFrame = new Color((byte)150,(byte)110,(byte)80,(byte)255);
+    Color bedSheet = new Color((byte)200,(byte)225,(byte)240,(byte)255);
+    Color pillow   = new Color((byte)250,(byte)245,(byte)235,(byte)255);
+    for (int row = 0; row < 5; row++)
+    {
+        int by = 350 + row * 240;
+        foreach (int bxp in new[] { 120, 1160 })
+        {
+            Raylib.DrawRectangle(bxp, by, 120, 70, bedFrame);
+            Raylib.DrawRectangle(bxp + 6, by + 6, 108, 58, bedSheet);
+            Raylib.DrawRectangle(bxp + 8, by + 8, 40, 28, pillow);
+        }
+    }
+    foreach (var o in FamilyHubNPCs)   
+    {
+        o.Draw();
+        int tw = Program.MeasureTextUI(o.Name, 14);
+        Program.DrawTextUI(o.Name, (int)o.Position.X + 20 - tw/2, (int)o.Position.Y - 16, 14, Color.White);
+    }
+}
+static void AddDaycare(float x, float y)
+{
+    var daycare = new Building(
+        new Rectangle(x, y, 460, 340),
+        new Color(255, 200, 90, 255),
+        new Color(255, 235, 190, 255),
+        new Vector2(x + 230, y + 300),
+        "BEST START",
+        new NPC(new Vector2(700, 200), "Cride", "Best Start! Enroll a little one here."),
+        entryPos: new Vector2(700, 900)
+    );
+    daycare.InteriorObjects.Clear();
+
+    daycare.InteriorObjects.Add(new Rectangle(540, 150, 320, 60));   // sign-in desk
+    // play mats / low tables (non-blocking feel kept small)
+    for (int i = 0; i < 3; i++)
+        daycare.InteriorObjects.Add(new Rectangle(300 + i * 300, 500, 160, 120));
+
+    buildings.Add(daycare);
+}
+static void DrawDaycareExterior(float x, float y)
+{
+    int bx = (int)x, by = (int)y;
+    float hr = Program.GetCurrentHour();
+    bool open = hr >= 8f && hr < 17f;
+    Color wall = new Color((byte)255,(byte)205,(byte)100,(byte)255);
+    Color trim = new Color((byte)255,(byte)250,(byte)235,(byte)255);
+    Color roof = new Color((byte)230,(byte)140,(byte)70,(byte)255);
+    int w = 460, h = 340;
+
+    Raylib.DrawRectangle(bx, by, w, h, wall);
+    // cheerful scalloped roof
+    Raylib.DrawRectangle(bx - 8, by - 16, w + 16, 18, roof);
+    for (int sx = bx; sx < bx + w; sx += 40)
+        Raylib.DrawCircle(sx + 20, by - 16, 12, roof);
+
+    for (int wx = bx + 24; wx < bx + w - 24; wx += 60)
+    {
+        Raylib.DrawRectangle(wx, by + 60, 36, 40, new Color((byte)200,(byte)230,(byte)245,(byte)220));
+        Raylib.DrawRectangleLines(wx, by + 60, 36, 40, trim);
+    }
+
+    int doorW = 84, doorX = bx + w/2 - doorW/2;
+    Color doorCol = open ? new Color((byte)200,(byte)120,(byte)60,(byte)255)   // ── CHANGED ──
+                         : new Color((byte)90,(byte)55,(byte)30,(byte)255);    // shut = darker
+    Raylib.DrawRectangle(doorX, by + h - 56, doorW, 56, doorCol);
+    Raylib.DrawRectangleLines(doorX, by + h - 56, doorW, 56, trim);
+
+    Raylib.DrawRectangle(bx + w/2 - 100, by - 40, 200, 22, roof);
+    Program.DrawTextUI("BEST START", bx + w/2 - 62, by - 37, 18, trim);
+
+    string status = open ? $"{EnrolledToday()} enrolled today" : "Closed - open 8am";
+    Color statusCol = open ? trim : new Color((byte)255,(byte)180,(byte)180,(byte)255);
+    int sw = Program.MeasureTextUI(status, 14);
+    Program.DrawTextUI(status, bx + w/2 - sw/2, by - 16, 14, statusCol);
+}
+static void DrawDaycareInterior()
+{
+    Color floor1 = new Color((byte)255,(byte)240,(byte)200,(byte)255);
+    Color floor2 = new Color((byte)250,(byte)225,(byte)175,(byte)255);
+    Color wallCol = new Color((byte)200,(byte)150,(byte)80,(byte)255);
+
+    for (int fx = 0; fx < 1400; fx += 100)
+        for (int fy = 0; fy < 1000; fy += 100)
+            Raylib.DrawRectangle(fx, fy, 100, 100, ((fx/100 + fy/100) % 2 == 0) ? floor1 : floor2);
+
+    Raylib.DrawRectangle(0, 0, 1400, 20, wallCol);
+    Raylib.DrawRectangle(0, 980, 1400, 20, wallCol);
+    Raylib.DrawRectangle(0, 0, 20, 1000, wallCol);
+    Raylib.DrawRectangle(1380, 0, 20, 1000, wallCol);
+
+    Raylib.DrawRectangle(620, 980, 160, 20, floor1);   // entrance gap, matches entryPos (700,900)
+    Program.DrawTextUI("EXIT (Q)", 630, 940, 16, wallCol);
+
+    Raylib.DrawRectangle(540, 150, 320, 60, new Color((byte)120,(byte)85,(byte)50,(byte)255));
+    Program.DrawTextUI("SIGN IN", 640, 168, 20, Color.White);
+    Program.DrawTextUI("Press E to enroll / adopt", 560, 230, 16, wallCol);
+
+    Color mat = new Color((byte)140,(byte)200,(byte)170,(byte)255);
+    for (int i = 0; i < 3; i++)
+    {
+        int mx = 300 + i * 300;
+        Raylib.DrawRectangle(mx, 500, 160, 120, mat);
+        Raylib.DrawRectangleLines(mx, 500, 160, 120, wallCol);
+    }
+    int shown = 0;
+    foreach (var npc in npcs)
+    {
+        if (!npc.DrawInsideNow || npc.HomeBuilding != "DAYCARE") continue;
+        int cx = 300 + (shown % 3) * 300 + (int)(MathF.Sin((float)Raylib.GetTime() + shown) * 20);
+        int cy = 520 + (shown / 3) * 160;
+        Raylib.DrawCircle(cx + 20, cy + 12, 10, Color.Beige);                 // head
+        Raylib.DrawRectangle(cx + 12, cy + 22, 16, 22, Color.SkyBlue);        // body
+        int tw = Program.MeasureTextUI(npc.Name, 12);
+        Program.DrawTextUI(npc.Name, cx + 20 - tw/2, cy - 12, 12, wallCol);
+        shown++;
+    }
 }
 
 static void AddKiwiCuts(float x, float y)
@@ -13469,6 +16132,7 @@ static void DrawSpeechBubbleScreen(int sx, int sy, string text, float alphaPct =
             if (pos.X >= -1260 - buffer && pos.X <= -1140 + buffer) return true;
             if (pos.X >= 200 - buffer && pos.X <= 320 + buffer && pos.Y <= 550 + buffer) return true;
             if (pos.X >= 500 - buffer && pos.X <= 620 + buffer && pos.Y <= 550 + buffer) return true;
+            if (RoadManager.IsNearRoad(pos, buffer)) return true;
 
             return false;
         }
@@ -13520,6 +16184,7 @@ static void DrawSpeechBubbleScreen(int sx, int sy, string text, float alphaPct =
             // desert vertical connectors - scoped to Y range
             if (pos.X >= 14985 && pos.X <= 15135 && (pos.Y <= 188 || pos.Y >= 333)) return true;
             if (pos.X >= 24985 && pos.X <= 25135 && (pos.Y <= 188 || pos.Y >= 333)) return true;
+            if (RoadManager.IsOnFootprint(pos)) return true;
 
             return false;
         }
@@ -13867,6 +16532,7 @@ static void DrawSpeechBubbleScreen(int sx, int sy, string text, float alphaPct =
     if (pos.X >= -18000 && pos.X <= -17880 && pos.Y >= 3200 && pos.Y <= 6220) return true; // loop W
     if (pos.X >= -13920 && pos.X <= -13800 && pos.Y >= 3200 && pos.Y <= 6220) return true; // loop E
     if (pos.X >= -16200 && pos.X <= -16080 && pos.Y >= 260  && pos.Y <= 3320) return true; // connector
+    if (RoadManager.IsOnRoadSurface(pos)) return true;
 
     return false;
 }
@@ -14150,64 +16816,7 @@ static void DrawBiomeTextures()
 
         static void DrawStreetLights()
     {
-        // main horizontal road - north side
-        for (int i = -40000; i < 40000; i += 600)
-            DrawStreetLight(i, 520);
-
-        // main horizontal road - south side
-        for (int i = -40000; i < 40000; i += 600)
-            DrawStreetLight(i, 740);
-
-        // north highway - west side
-        for (int i = -40000; i < 550; i += 600)
-            DrawStreetLight(180, i);
-
-        // north highway - east side
-        for (int i = -40000; i < 550; i += 600)
-            DrawStreetLight(326, i);
-
-        // south highway - west side
-        for (int i = 730; i < 40000; i += 600)
-            DrawStreetLight(180, i);
-
-        // south highway - east side
-        for (int i = 730; i < 40000; i += 600)
-            DrawStreetLight(326, i);
-
-        // desert side road
-        for (int i = 4000; i < 40000; i += 600)
-            DrawStreetLight(i, 180);
-
-        // snow side road
-        for (int i = -40000; i < -3000; i += 600)
-            DrawStreetLight(i, 180);
-
-        // ring road top
-        for (int i = -40000; i < 40000; i += 600)
-            DrawStreetLight(i, -38020);
-
-        // ring road bottom
-        for (int i = -40000; i < 40000; i += 600)
-            DrawStreetLight(i, 38020);
         
-        // City of Hamiltron street lights
-        for (int i = 12000; i < 18000; i += 400)
-        {
-            DrawStreetLight(i, 5490);
-            DrawStreetLight(i, 3890);
-            DrawStreetLight(i, 7190);
-        }
-        for (int i = 3200; i < 8200; i += 400)
-        {
-            DrawStreetLight(14790, i);
-            DrawStreetLight(12790, i);
-            DrawStreetLight(16590, i);
-        }
-        // Country town street lights
-        for (int i = -17800; i < -13900; i += 500)
-            DrawStreetLight(i, 4390);
-        DrawStreetLight(-17210, 3800);
-        DrawStreetLight(-15410, 3800);
     }
 
       static void SaveGame()
@@ -14258,6 +16867,12 @@ static void DrawBiomeTextures()
     SF("food", player.Food); SF("thirst", player.Thirst); SF("stamina", player.Stamina);
     S("educationLv", player.EducationLevel); S("educationXp", player.EducationXP);
     S("staminaLv", player.StaminaLevel); S("staminaXp", player.StaminaXP);
+    S("faithLv", player.FaithLevel); S("faithXp", player.FaithXP);
+    S("mysticalLv", player.MysticalLevel); S("mysticalXp", player.MysticalXP); 
+    S("darkArtsLv", player.DarkArtsLevel); S("darkArtsXp", player.DarkArtsXP);
+
+    // Ratings
+    S("mathsRating", player.MathsRating); 
 
     // ── Health & identity ──
     S("health", player.Health); S("maxHealth", player.MaxHealth); S("name", playerName);
@@ -14314,14 +16929,31 @@ static void DrawBiomeTextures()
     // Collectables
     foreach (var c in collectables) SB("collect." + c.Id, c.Found);
 
+    // Plushies
+    for (int i = 0; i < 10; i++) { S("plushStock." + i, dailyPlushStock[i] ?? ""); SB("plushTaken." + i, dailyPlushTaken[i]); }
+    S("plushOwned.count", plushiesOwned.Count);
+    int pli = 0;
+    foreach (var kv in plushiesOwned) { S("plushOwned." + pli + ".k", kv.Key); S("plushOwned." + pli + ".v", kv.Value); pli++; }
+
     // Jobs
     for (int i = 0; i < jobBoard.Count; i++) SB("job." + i + ".done", jobBoard[i].CompletedToday);
     S("lastJobResetDay", lastJobResetDay);
+
+    // Tasks
+    S("sideTask.active", activeSideTask != null ? billboardTasks.IndexOf(activeSideTask) : -1);
+    for (int i = 0; i < billboardTasks.Count; i++)
+    { SB("sideTask." + i + ".done", billboardTasks[i].DoneToday); SB("sideTask." + i + ".ready", billboardTasks[i].ReadyToDeliver);
+    S("sideTask." + i + ".base", billboardTasks[i].Baseline); }
 
     // Relationships
     foreach (var f in friendNPCs)
     { S("friend." + f.Name, f.Friendship); SB("friend." + f.Name + ".talked", f.TalkedToday);
     SB("friend." + f.Name + ".gifted", f.GiftedToday); SB("friend." + f.Name + ".reward", f.RewardGiven); }
+
+    // Banking
+    S("bankSigned", bankSignedUp ? 1 : 0); S("bankBal", bankBalance);
+    S("bankTier", bankCardTier); S("bankSpent", cardSpentToday);
+    S("bankCardState", bankCardDelivered ? 3 : bankCardMailWaiting ? 2 : bankCardPending ? 1 : 0);
     
     // ── Player loot materials ──
     S("dogFangs", player.DogFangs); S("wolfClaws", player.WolfClaws); S("venomSacs", player.VenomSacs);
@@ -14337,6 +16969,10 @@ static void DrawBiomeTextures()
     for (int i = 0; i < quests.Count; i++)
     { S("quest." + i + ".prog", quests[i].Progress); SB("quest." + i + ".done", quests[i].Completed); }
     S("wolvesKilled", wolvesKilled); S("cropsHarvested", cropsHarvested); S("mealsCooked", mealsCooked);
+    for (int i = 0; i < storyQuests.Count; i++)
+
+    { SB("story." + i + ".started", storyQuests[i].Started); SB("story." + i + ".done", storyQuests[i].Completed);
+    S("story." + i + ".stage", storyQuests[i].Stage); S("story." + i + ".base", storyQuests[i].Current?.Baseline ?? 0); }
 
     // ── World / time ──
     SF("playtime", totalPlayTime);
@@ -14393,6 +17029,8 @@ for (int s = 0; s < cardSets.Count; s++)
     int mbi = 0;
     foreach (var kv in set.MasterSet.Cards) { S("set." + s + ".mb." + mbi + ".k", kv.Key); S("set." + s + ".mb." + mbi + ".v", kv.Value); mbi++; }
     S("set." + s + ".mbr.count", set.MasterSet.ReverseHoloCards.Count);
+    S("set." + s + ".packs", set.PacksOpened);
+
     int mbri = 0;
     foreach (var kv in set.MasterSet.ReverseHoloCards) { S("set." + s + ".mbr." + mbri + ".k", kv.Key); S("set." + s + ".mbr." + mbri + ".v", kv.Value); mbri++; }
 
@@ -14415,9 +17053,13 @@ for (int s = 0; s < cardSets.Count; s++)
     SB("inPrison", inPrison);
     SF("prisonSentenceTimer", prisonSentenceTimer);
     SF("prisonReturnPos.x", prisonReturnPos.X); SF("prisonReturnPos.y", prisonReturnPos.Y);
+    S("currentPrisonRoom", currentPrisonRoom ?? "");
 
     // School
     S("currentClassroom", currentClassroom ?? "");
+
+    // Mall
+    S("currentMiniShop", currentMiniShop ?? "");
 
     // Garages
     S("garages.count", garages.Count);
@@ -14519,6 +17161,18 @@ for (int s = 0; s < cardSets.Count; s++)
     SB("wheatSeedsPickedUp", wheatSeedsPickedUp);
     for (int i = 0; i < 8; i++) SF("toolbarWaterCharge." + i, toolbarWaterCharge[i]);
 
+    // Livestock save
+    S("livestockPens.count", livestockPens.Count);
+for (int i = 0; i < livestockPens.Count; i++)
+{
+    var pen = livestockPens[i];
+    SF("pen." + i + ".x", pen.Position.X); SF("pen." + i + ".y", pen.Position.Y);
+    S("pen." + i + ".animal", pen.Animal); S("pen." + i + ".produce", pen.Produce);
+    S("pen." + i + ".feed", pen.Feed); SF("pen." + i + ".cycle", pen.Cycle);
+    SF("pen." + i + ".timer", pen.Timer); SB("pen." + i + ".fed", pen.Fed);
+    SB("pen." + i + ".ready", pen.ReadyToHarvest);
+}
+
     // ── Gear ──
     S("gear.count", player.OwnedGear.Count);
     for (int i = 0; i < player.OwnedGear.Count; i++) S("gear." + i, player.OwnedGear[i]);
@@ -14550,6 +17204,8 @@ for (int s = 0; s < cardSets.Count; s++)
     }
 
     // ── Pets ──
+    S("activePet.adultType", activePet != null ? activePet.AdultType : "");
+    SF("activePet.age", activePet != null ? activePet.AgeTimer : 0f);
     S("eggs.count", ownedEggs.Count);
     for (int i = 0; i < ownedEggs.Count; i++) S("egg." + i, ownedEggs[i]);
     S("incubatingEgg", NN(incubatingEgg));
@@ -14560,6 +17216,12 @@ for (int s = 0; s < cardSets.Count; s++)
     S("pendingPet.type", pendingPet != null ? pendingPet.Type : "empty");
     SF("pendingPet.x", pendingPet != null ? pendingPet.Position.X : 0f);
     SF("pendingPet.y", pendingPet != null ? pendingPet.Position.Y : 0f);
+    S("activePet.adultRole", activePet != null ? activePet.AdultRole : "");
+    SF("activePet.bond",     activePet != null ? activePet.Bond : 0);
+    SF("activePet.str",      activePet != null ? activePet.StrengthXP : 0);
+    SF("activePet.mag",      activePet != null ? activePet.MagicXP : 0);
+    SF("activePet.soc",      activePet != null ? activePet.SocialXP : 0);
+    S("activePet.adopted",   activePet != null && activePet.Adopted ? "1" : "0");
     S("storedPets.count", storedPets.Count);
     for (int i = 0; i < storedPets.Count; i++) S("storedPet." + i, storedPets[i]);
 
@@ -14623,6 +17285,12 @@ static void LoadGame()
     player.Food = GF("food", 100f); player.Thirst = GF("thirst", 100f); player.Stamina = GF("stamina", 100f);
     player.EducationLevel = GI("educationLv", 1); player.EducationXP = GI("educationXp");
     player.StaminaLevel = GI("staminaLv", 1); player.StaminaXP = GI("staminaXp");
+    player.FaithLevel = GI("faithLv", 1);    player.FaithXP = GI("faithXp");
+    player.MysticalLevel = GI("mysticalLv", 1); player.MysticalXP = GI("mysticalXp");
+    player.DarkArtsLevel = GI("darkArtsLv", 1); player.DarkArtsXP = GI("darkArtsXp");
+
+    // Ratings
+    player.MathsRating = GI("mathsRating", 200);
 
     // ── Health & identity ──
     player.Health = GI("health", 100); player.MaxHealth = GI("maxHealth", 100);
@@ -14691,14 +17359,34 @@ static void LoadGame()
     // Collectables
     foreach (var c in collectables) c.Found = GB("collect." + c.Id);
 
+    // Plushies
+    for (int i = 0; i < 10; i++) { dailyPlushStock[i] = GS("plushStock." + i, ""); dailyPlushTaken[i] = GB("plushTaken." + i); }
+    if (string.IsNullOrEmpty(dailyPlushStock[0])) RollDailyPlushStock();
+    plushiesOwned.Clear();
+    int plc = GI("plushOwned.count");
+    for (int i = 0; i < plc; i++) { string k = GS("plushOwned." + i + ".k", ""); if (k != "") plushiesOwned[k] = GI("plushOwned." + i + ".v"); }
+
     // Jobs
     for (int i = 0; i < jobBoard.Count; i++) jobBoard[i].CompletedToday = GB("job." + i + ".done");
     lastJobResetDay = GI("lastJobResetDay", -1);
+
+    // Tasks
+    for (int i = 0; i < billboardTasks.Count; i++)
+    { billboardTasks[i].DoneToday = GB("sideTask." + i + ".done"); billboardTasks[i].ReadyToDeliver = GB("sideTask." + i + ".ready");
+    billboardTasks[i].Baseline = GI("sideTask." + i + ".base"); }
+    int atIdx = GI("sideTask.active", -1);
+    if (atIdx >= 0) { activeSideTask = billboardTasks[atIdx]; activeSideTask.Accepted = true; }
 
     // Relationships
     foreach (var f in friendNPCs)
     { f.Friendship = GI("friend." + f.Name); f.TalkedToday = GB("friend." + f.Name + ".talked");
     f.GiftedToday = GB("friend." + f.Name + ".gifted"); f.RewardGiven = GB("friend." + f.Name + ".reward"); }
+
+    // Banking load
+    bankSignedUp = GI("bankSigned") == 1; bankBalance = GI("bankBal");
+    bankCardTier = GI("bankTier"); cardSpentToday = GI("bankSpent");
+    int bcs = GI("bankCardState");
+    bankCardPending = bcs == 1; bankCardMailWaiting = bcs == 2; bankCardDelivered = bcs == 3;
 
     // Stray stat-items
      foreach (var stat in statItems)
@@ -14723,6 +17411,12 @@ static void LoadGame()
         quests[i].Completed = GB("quest." + i + ".done", GB("quest" + i + "done"));
     }
     wolvesKilled = GI("wolvesKilled"); cropsHarvested = GI("cropsHarvested"); mealsCooked = GI("mealsCooked");
+
+    for (int i = 0; i < storyQuests.Count; i++)
+    { var q = storyQuests[i];
+    q.Started = GB("story." + i + ".started"); q.Completed = GB("story." + i + ".done");
+    q.Stage = GI("story." + i + ".stage");
+    if (q.Current != null) q.Current.Baseline = GI("story." + i + ".base"); }
 
     // ── World / time ──
     totalPlayTime = GF("playtime");
@@ -14754,6 +17448,7 @@ static void LoadGame()
 {
     var set = cardSets[s];
     set.MasterSet.Cards.Clear(); set.MasterSet.ReverseHoloCards.Clear();
+    set.PacksOpened = GI("set." + s + ".packs");
     int mbc = GI("set." + s + ".mb.count");
     for (int i = 0; i < mbc; i++) { var k = GS("set." + s + ".mb." + i + ".k", ""); if (k != "") set.MasterSet.Cards[k] = GI("set." + s + ".mb." + i + ".v"); }
     int mbrc = GI("set." + s + ".mbr.count");
@@ -14802,12 +17497,16 @@ static void LoadGame()
     // School
     currentClassroom = GS("currentClassroom", "");
 
+    // Mall
+    currentMiniShop = GS("currentMiniShop", ""); 
+
     // Prison
     playerDebt = GF("playerDebt");
     debtDueTimer = GF("debtDueTimer");
     inPrison = GB("inPrison");
     prisonSentenceTimer = GF("prisonSentenceTimer");
     prisonReturnPos = new Vector2(GF("prisonReturnPos.x"), GF("prisonReturnPos.y"));
+    currentPrisonRoom = GS("currentPrisonRoom", "");
     if (inPrison)
     {
         player.Position = prisonCellCenter;
@@ -14935,6 +17634,18 @@ wateringCanPickedUp = GB("wateringCanPickedUp");
 wheatSeedsPickedUp = GB("wheatSeedsPickedUp");
 for (int i = 0; i < 8; i++) toolbarWaterCharge[i] = GF("toolbarWaterCharge." + i);
 
+    // Livestock load
+    livestockPens.Clear();
+int penCount = GI("livestockPens.count");
+for (int i = 0; i < penCount; i++)
+    livestockPens.Add(new LivestockPen {
+        Position = new Vector2(GF("pen." + i + ".x"), GF("pen." + i + ".y")),
+        Animal = GS("pen." + i + ".animal"), Produce = GS("pen." + i + ".produce"),
+        Feed = GS("pen." + i + ".feed"), Cycle = GF("pen." + i + ".cycle"),
+        Timer = GF("pen." + i + ".timer"), Fed = GB("pen." + i + ".fed"),
+        ReadyToHarvest = GB("pen." + i + ".ready"),
+    });
+
     // ── Gear ──
     player.OwnedGear.Clear();
     int gearCount = GI("gear.count");
@@ -15002,7 +17713,21 @@ for (int i = 0; i < 8; i++) toolbarWaterCharge[i] = GF("toolbarWaterCharge." + i
     string apType = GS("activePet.type", "empty");
     activePet = apType == "empty" ? null
         : new Pet(new Vector2(GF("activePet.x"), GF("activePet.y")), apType, PetColorFor(apType + " Egg"));
-
+    if (activePet != null && (apType == "Kitten" || apType == "Puppy"))
+    {
+        activePet.IsBaby = true;
+        activePet.AdultType = GS("activePet.adultType", apType == "Kitten" ? "Cat" : "Dog");
+        activePet.AgeTimer = GF("activePet.age");
+    }
+    if (activePet != null)
+    {
+        activePet.Adopted   = GS("activePet.adopted", "0") == "1";
+        activePet.Bond      = (int)GF("activePet.bond");
+        activePet.StrengthXP= (int)GF("activePet.str");
+        activePet.MagicXP   = (int)GF("activePet.mag");
+        activePet.SocialXP  = (int)GF("activePet.soc");
+        activePet.AdultRole = GS("activePet.adultRole", "");
+    }
     string ppType = GS("pendingPet.type", "empty");
     pendingPet = ppType == "empty" ? null
         : new Pet(new Vector2(GF("pendingPet.x"), GF("pendingPet.y")), ppType, PetColorFor(ppType + " Egg"));
@@ -15899,6 +18624,9 @@ static void DrawFarmingShopUI()
     Rectangle row = new Rectangle(px + 20, startY + i * rowH, pw - 40, rowH - 8);
     bool hover = !locked && Raylib.CheckCollisionPointRec(mouse, row);
     bool alreadyOwned = isTool && ToolInToolbar(name);
+
+    int finalPrice = DiscountedPrice(price);
+
     bool canAfford = player.Money >= price;
 
     Raylib.DrawRectangleRec(row, new Color((byte)35,(byte)25,(byte)15,(byte)255));
@@ -15911,7 +18639,7 @@ static void DrawFarmingShopUI()
     {
         if (!canAfford)
         {
-            ShowNotification($"Need ${price}!");
+            ShowNotification($"Need ${finalPrice}!");
         }
         else if (TryGiveItem(name, 1))
         {
@@ -15979,8 +18707,9 @@ static void DrawMagicShopUI()
             owned ? staffs[i].col : (hover ? staffs[i].col : Color.DarkGray));
 
         // ... orb preview unchanged ...
+        int finalStaffPrice = DiscountedPrice(staffs[i].price);
 
-        Program.DrawTextUI(owned ? "OWNED" : $"${staffs[i].price}",
+        Program.DrawTextUI(owned ? "OWNED" : $"${finalStaffPrice}",
             sx + 10, sy + 62, 14, owned ? Color.Green : Color.White);
 
         // animated spell orb preview
@@ -15990,9 +18719,7 @@ static void DrawMagicShopUI()
 
         Program.DrawTextUI(staffs[i].name, sx + 36, sy + 22, 14, staffs[i].col);
         Program.DrawTextUI($"Spell: {staffs[i].spell}", sx + 10, sy + 44, 13, Color.LightGray);
-        Program.DrawTextUI(owned ? "OWNED" : $"${staffs[i].price}",
-            sx + 10, sy + 62, 14, owned ? Color.Green : Color.White);
-
+    
         if (hover && Raylib.IsMouseButtonPressed(MouseButton.Left))
         {
             if (owned)
@@ -16009,7 +18736,7 @@ static void DrawMagicShopUI()
             }
             else
             {
-                shopMessage = $"Need ${staffs[i].price}!";
+                shopMessage = $"Need ${finalStaffPrice}!";
                 shopMessageTimer = 1.5f;
             }
         }
@@ -16025,6 +18752,8 @@ static void DrawMagicShopUI()
         int ey = panelY + 390;
         bool hover = Raylib.CheckCollisionPointRec(mouse, new Rectangle(ex, ey, 180, 70));
 
+        int finalEssencePrice = DiscountedPrice(essencePacks[i].price);
+
         Raylib.DrawRectangle(ex, ey, 180, 70, new Color((byte)25,(byte)10,(byte)50,(byte)255));
         Raylib.DrawRectangleLines(ex, ey, 180, 70, hover ? Color.Gold : purple);
 
@@ -16034,14 +18763,14 @@ static void DrawMagicShopUI()
         Raylib.DrawCircle(ex + 20, ey + 35, 3, Color.White);
 
         Program.DrawTextUI($"x{essencePacks[i].qty} Essence", ex + 36, ey + 12, 16, Color.LightGray);
-        Program.DrawTextUI($"${essencePacks[i].price}", ex + 36, ey + 38, 18, Color.Gold);
+        Program.DrawTextUI($"${finalEssencePrice}", ex + 36, ey + 38, 18, Color.Gold);
 
         if (hover && Raylib.IsMouseButtonPressed(MouseButton.Left))
         {
             bool canAfford = player.Money >= essencePacks[i].price;
             if (!canAfford)
             {
-                shopMessage = $"Need ${essencePacks[i].price}!";
+                shopMessage = $"Need ${finalEssencePrice}!";
                 shopMessageTimer = 1.5f;
             }
             else if (TryGiveItem("Arcane Essence", essencePacks[i].qty))
@@ -17203,7 +19932,7 @@ static void DrawStarShape(int cx, int cy, int radius, Color color)
         static Color GetNightOverlay()
             {
                 float d = GetDarkness();
-                byte alpha = (byte)(235 * d);
+                byte alpha = (byte)(185 * d);
                 float hour = timeOfDay * 24f;
                 // warm orange sunset tint through the first half of dusk, cooling to deep night blue
                 if (hour >= 20f && hour < 22.5f)
@@ -17956,6 +20685,13 @@ static void DrawDropConfirm()
         rainTimer = 0f;
         isRaining = !isRaining;
 
+        if (multiplayer.Connected && !multiplayer.IsHost)
+        {
+            if (isRaining)
+                for (int i = 0; i < raindrops.Count; i++) { /* ... existing drop-move code ... */ }
+            return;
+        }
+    
         if (isRaining)
         {
             // just started raining — pick how long this rain lasts
@@ -18032,7 +20768,7 @@ static void DrawDropConfirm()
 }
             static void DrawQuestsUI()
 {
-    // QUESTS button
+    // 1. QUESTS Toggle Button (Bottom Right)
     Rectangle questsBtn = new Rectangle(ScreenWidth - 320, ScreenHeight - 60, 140, 40);
     Raylib.DrawRectangleRec(questsBtn, new Color((byte)0, (byte)0, (byte)0, (byte)200));
     Raylib.DrawRectangleLinesEx(questsBtn, 2, questsOpen ? Color.Gold : Color.White);
@@ -18040,22 +20776,70 @@ static void DrawDropConfirm()
 
     if (!questsOpen) return;
 
-    // Quest panel
-    Raylib.DrawRectangle(ScreenWidth - 320, ScreenHeight - 260, 300, 200, new Color((byte)0, (byte)0, (byte)0, (byte)200));
-    Raylib.DrawRectangleLines(ScreenWidth - 320, ScreenHeight - 480, 300, 200, Color.White);
-    Program.DrawTextUI("QUESTS", ScreenWidth - 290, ScreenHeight - 248, 22, Color.Gold);
+    // 2. Dynamic Panel Positioning Math
+    // We base everything off px (X) and py (Y) so it forms a clean matching container box
+    int px = ScreenWidth - 330;
+    int py = ScreenHeight - 480; // The box top edge sits at Y=240
+    int pw = 310;
+    int ph = 410; // Expanded to 410 tall so both standard and story quests easily fit!
 
-    int yOffset = 0;
+    // Draw the main panel background frame
+    Raylib.DrawRectangle(px, py, pw, ph, new Color((byte)0, (byte)0, (byte)0, (byte)220));
+    Raylib.DrawRectangleLines(px, py, pw, ph, Color.White);
+    Program.DrawTextUI("ACTIVE QUESTS", px + 20, py + 12, 22, Color.Gold);
+
+    int contentTop = py + 44;
+    int contentH = ph - 54;
+    int totalItems = quests.Count + storyQuests.Count(sq => sq != null && sq.Started && !sq.Completed && sq.Current != null);
+    int contentTotal = totalItems * 55;
+    float maxScroll = Math.Max(0, contentTotal - contentH);
+    if (Raylib.CheckCollisionPointRec(Raylib.GetMousePosition(), new Rectangle(px, py, pw, ph)))
+        questScrollY = Math.Clamp(questScrollY - Raylib.GetMouseWheelMove() * 40f, 0f, maxScroll);
+    questScrollY = Math.Clamp(questScrollY, 0f, maxScroll);   // re-clamp when quests complete
+    Raylib.BeginScissorMode(px, contentTop, pw, contentH);
+
+    int yOffset = 50 - (int)questScrollY; 
+
+    // --- LOOP A: Standard Side-Quests ---
     foreach (Quest quest in quests)
     {
         Color questColor = quest.Completed ? Color.Green : Color.White;
         string tick = quest.Completed ? "[DONE]" : $"{quest.Progress}/{quest.Target}";
-        Program.DrawTextUI(quest.Description, ScreenWidth - 310, ScreenHeight - 210 + yOffset, 18, questColor);
-        Program.DrawTextUI(tick, ScreenWidth - 310, ScreenHeight - 192 + yOffset, 16, questColor);
-        Program.DrawTextUI($"Reward: ${quest.Reward}", ScreenWidth - 180, ScreenHeight - 192 + yOffset, 16, Color.Gold);
-        yOffset += 50;
+        
+        Program.DrawTextUI(quest.Description, px + 15, py + yOffset, 18, questColor);
+        Program.DrawTextUI(tick, px + 15, py + yOffset + 22, 16, questColor);
+        Program.DrawTextUI($"Reward: ${quest.Reward}", px + 160, py + yOffset + 22, 16, Color.Gold);
+        
+        yOffset += 55; // Steps down so the next quest draws cleanly beneath
+    }
+
+    // --- LOOP B: Main Story Quests (Appends beneath standard quests automatically!) ---
+    foreach (var sq in storyQuests)
+    {
+        if (sq == null || !sq.Started || sq.Completed) continue;
+        
+        var st = sq.Current;
+        if (st == null) continue;
+
+        int prog = st.Progress != null ? Math.Clamp(st.Progress() - st.Baseline, 0, st.Target) : 0;
+        
+        Program.DrawTextUI($"[STORY] {sq.Title}", px + 15, py + yOffset, 18, Color.SkyBlue);
+        
+        string progressText = st.Progress != null ? $"{st.Description} ({prog}/{st.Target})" : st.Description;
+        Program.DrawTextUI(progressText, px + 15, py + yOffset + 22, 16, Color.LightGray);
+        
+        yOffset += 55; // Pushes down context steps for any additional listings
+    }
+    Raylib.EndScissorMode();
+    if (maxScroll > 0)   
+    {
+        float barH = Math.Max(30f, contentH * (contentH / (float)contentTotal));
+        float barY = contentTop + (questScrollY / maxScroll) * (contentH - barH);
+        Raylib.DrawRectangle(px + pw - 8, contentTop, 6, contentH, new Color((byte)40,(byte)40,(byte)40,(byte)200));
+        Raylib.DrawRectangle(px + pw - 8, (int)barY, 6, (int)barH, Color.Gold);
     }
 }
+
 
             static void UpdateSkillsUI()
 {
@@ -18113,6 +20897,8 @@ static void DrawDropConfirm()
                 skillDetailOpen = "";
             else if (Raylib.CheckCollisionPointRec(mouse, new Rectangle(ScreenWidth - 320, ScreenHeight - 530, 140, 40)))
                 skillDetailOpen = skillDetailOpen == "farming" ? "" : "farming";
+            else if (Raylib.CheckCollisionPointRec(mouse, new Rectangle(ScreenWidth - 320, ScreenHeight - 580, 140, 40)))
+                skillDetailOpen = skillDetailOpen == "education" ? "" : "education";
                     }
         hoverWoodcutting = Raylib.CheckCollisionPointRec(mouse, wcBtn);
         hoverWoodcutting = Raylib.CheckCollisionPointRec(mouse, wcBtn);
@@ -18136,6 +20922,9 @@ static void DrawDropConfirm()
         hoverBlacksmith = Raylib.CheckCollisionPointRec(mouse, new Rectangle(ScreenWidth - 480, ScreenHeight - 180, 140, 40));
         hoverEnchanting = Raylib.CheckCollisionPointRec(mouse, new Rectangle(ScreenWidth - 480, ScreenHeight - 230, 140, 40));
         hoverStaminaSkill = Raylib.CheckCollisionPointRec(mouse, new Rectangle(ScreenWidth - 480, ScreenHeight - 280, 140, 40));
+        hoverFaith = Raylib.CheckCollisionPointRec(mouse, new Rectangle(ScreenWidth - 480, ScreenHeight - 330, 140, 40));
+        hoverMystical = Raylib.CheckCollisionPointRec(mouse, new Rectangle(ScreenWidth - 480, ScreenHeight - 380, 140, 40));
+        hoverDarkArts = Raylib.CheckCollisionPointRec(mouse, new Rectangle(ScreenWidth - 480, ScreenHeight - 430, 140, 40));
 
     }
     else
@@ -18165,6 +20954,11 @@ static void DrawDropConfirm()
         hoverCraftSkill = false; 
         hoverBlacksmith = false;
         hoverEnchanting = false;
+        hoverStaminaSkill = false;
+        hoverFaith = false;
+        hoverMystical = false;
+        hoverDarkArts = false;
+
             }
 }
     static void DrawSkillsUI()
@@ -18466,6 +21260,9 @@ if (!hoverEducation)
     ("Blacksmith", player.BlacksmithLevel, player.BlacksmithXP, hoverBlacksmith, 180),
     ("Enchanting", player.EnchantingLevel, player.EnchantingXP, hoverEnchanting, 230),
     ("Stamina", player.StaminaLevel, player.StaminaXP, hoverStaminaSkill, 280),
+    ("Faith", player.FaithLevel, player.FaithXP, hoverFaith, 330),
+    ("Mystical", player.MysticalLevel, player.MysticalXP, hoverMystical, 380),
+    ("DarkArts", player.DarkArtsLevel, player.DarkArtsXP, hoverDarkArts, 430),
 };
 foreach (var s in newSkills)
 {
@@ -18778,6 +21575,31 @@ foreach (var s in newSkills)
                 Program.DrawTextUI($"{prefix}  {pText}", mx + 20, my + 356 + i * 22, 15, pc);
             }
         }
+        else if (skillDetailOpen == "education")
+        {
+            Program.DrawTextUI("EDUCATION", mx + 20, my + 20, 28, new Color((byte)90,(byte)140,(byte)230,(byte)255));
+            Program.DrawTextUI($"Level {player.EducationLevel}", mx + 20, my + 60, 22, Color.White);
+            int req = player.EducationLevel * player.EducationLevel * 50;
+            Program.DrawTextUI($"XP: {player.EducationXP}/{req}", mx + 20, my + 90, 18, Color.LightGray);
+
+            Program.DrawTextUI("SUBJECT RATINGS", mx + 20, my + 130, 18, Color.White);
+            int mr = player.MathsRating;
+            string mRank = mr >= 1800 ? "Grand Master" : mr >= 1500 ? "Master" :
+                           mr >= 1200 ? "Expert" : mr >= 800 ? "Intermediate" : "Beginner";
+            Color mCol = mr >= 1800 ? Color.Gold :
+                         mr >= 1500 ? new Color((byte)180,(byte)100,(byte)255,(byte)255) :
+                         mr >= 1200 ? Color.SkyBlue :
+                         mr >= 800  ? Color.LightGray : Color.DarkGray;
+            int ry = my + 160;
+            Raylib.DrawRectangle(mx + 10, ry, mw - 20, 54, new Color((byte)15,(byte)15,(byte)30,(byte)200));
+            Raylib.DrawRectangleLines(mx + 10, ry, mw - 20, 54, new Color((byte)55,(byte)55,(byte)55,(byte)255));
+            Program.DrawTextUI("Maths", mx + 20, ry + 6, 18, Color.White);
+            Program.DrawTextUI($"Rating: {mr}", mx + 20, ry + 30, 14, Color.LightGray);
+            Program.DrawTextUI(mRank, mx + 290, ry + 16, 20, mCol);
+            float mP = Math.Clamp(mr / 2000f, 0f, 1f);
+            Raylib.DrawRectangle(mx + 430, ry + 20, 140, 8, new Color((byte)30,(byte)30,(byte)30,(byte)255));
+            Raylib.DrawRectangle(mx + 430, ry + 20, (int)(140 * mP), 8, mCol);
+        }
     }
 
     static void DrawMinimap()
@@ -18922,77 +21744,13 @@ foreach (var s in newSkills)
             Raylib.DrawRectangle(bx - 1, by - 1, 3, 3, Color.Yellow);
     }
 
+    RoadManager.DrawOnMinimap(cx, cy, minimapScale, player.Position);
+
     // Roads drawn on top of buildings
     Color roadCol = new Color((byte)75,(byte)75,(byte)75,(byte)255);
     int mmRoadT  = cy + (int)((550 - player.Position.Y) * minimapScale);
     int mmHwyX   = cx + (int)((200 - player.Position.X) * minimapScale);
     int mmSideY  = cy + (int)((200 - player.Position.Y) * minimapScale);
-
-    // Main horizontal road
-    Raylib.DrawRectangle(minimapX, mmRoadT, minimapSize, 2, roadCol);
-    // North + south highway
-    Raylib.DrawRectangle(mmHwyX, minimapY, 2, minimapSize, roadCol);
-    // Desert side road (rightward from X 4000)
-    int desSideX = cx + (int)((4000 - player.Position.X) * minimapScale);
-    Raylib.DrawRectangle(Math.Clamp(desSideX, minimapX, minimapX+minimapSize), mmSideY,
-        Math.Clamp(minimapX+minimapSize - desSideX, 0, minimapSize), 2, roadCol);
-    // Snow side road (leftward to X -3000)
-    int snSideEndX = cx + (int)((-3000 - player.Position.X) * minimapScale);
-    Raylib.DrawRectangle(minimapX, mmSideY,
-        Math.Clamp(snSideEndX - minimapX, 0, minimapSize), 2, roadCol);
-
-    // Ring roads
-    int ringTopY   = cy + (int)((-38000 - player.Position.Y) * minimapScale);
-    int ringBotY   = cy + (int)((38000  - player.Position.Y) * minimapScale);
-    int ringLeftX  = cx + (int)((-40000 - player.Position.X) * minimapScale);
-    int ringRightX = cx + (int)((39820  - player.Position.X) * minimapScale);
-    Raylib.DrawRectangle(minimapX, ringTopY,   minimapSize, 2, roadCol);
-    Raylib.DrawRectangle(minimapX, ringBotY,   minimapSize, 2, roadCol);
-    Raylib.DrawRectangle(ringLeftX,  minimapY, 2, minimapSize, roadCol);
-    Raylib.DrawRectangle(ringRightX, minimapY, 2, minimapSize, roadCol);
-
-    // Snow/mountain vertical connectors (clipped to Y -12000 to 12000)
-    int connT = Math.Clamp(cy + (int)((-12000 - player.Position.Y) * minimapScale), minimapY, minimapY+minimapSize);
-    int connB = Math.Clamp(cy + (int)((12000  - player.Position.Y) * minimapScale), minimapY, minimapY+minimapSize);
-    int snow1X = cx + (int)((-20000 - player.Position.X) * minimapScale);
-    int snow2X = cx + (int)((-10000 - player.Position.X) * minimapScale);
-    Raylib.DrawRectangle(snow1X, connT, 2, connB - connT, roadCol);
-    Raylib.DrawRectangle(snow2X, connT, 2, connB - connT, roadCol);
-    // Desert vertical connectors
-    int des1X = cx + (int)((15000 - player.Position.X) * minimapScale);
-    int des2X = cx + (int)((25000 - player.Position.X) * minimapScale);
-    Raylib.DrawRectangle(des1X, connT, 2, connB - connT, roadCol);
-    Raylib.DrawRectangle(des2X, connT, 2, connB - connT, roadCol);
-
-    // City of Hamiltron roads
-    int cityWX  = Math.Clamp(cx + (int)((11800 - player.Position.X) * minimapScale), minimapX, minimapX+minimapSize);
-    int cityEX  = Math.Clamp(cx + (int)((18200 - player.Position.X) * minimapScale), minimapX, minimapX+minimapSize);
-    int cityNY  = Math.Clamp(cy + (int)((3000  - player.Position.Y) * minimapScale), minimapY, minimapY+minimapSize);
-    int citySY  = Math.Clamp(cy + (int)((8200  - player.Position.Y) * minimapScale), minimapY, minimapY+minimapSize);
-    int cityBoulY   = cy + (int)((5500  - player.Position.Y) * minimapScale);
-    int cityNAveX   = cx + (int)((14800 - player.Position.X) * minimapScale);
-    int cityCrossNY = cy + (int)((3900  - player.Position.Y) * minimapScale);
-    int cityCrossSY = cy + (int)((7200  - player.Position.Y) * minimapScale);
-    Raylib.DrawRectangle(cityWX, cityBoulY,   cityEX-cityWX, 2, roadCol);
-    Raylib.DrawRectangle(cityNAveX, cityNY,   2, citySY-cityNY, roadCol);
-    Raylib.DrawRectangle(cityWX, cityCrossNY, cityEX-cityWX, 2, roadCol);
-    Raylib.DrawRectangle(cityWX, cityCrossSY, cityEX-cityWX, 2, roadCol);
-    Raylib.DrawRectangle(cityWX, cityNY, cityEX-cityWX, 2, roadCol);
-    Raylib.DrawRectangle(cityWX, citySY, cityEX-cityWX, 2, roadCol);
-    Raylib.DrawRectangle(cityWX, cityNY, 2, citySY-cityNY, roadCol);
-    Raylib.DrawRectangle(cityEX, cityNY, 2, citySY-cityNY, roadCol);
-
-    // Rotoaira roads
-    int rtWX  = Math.Clamp(cx + (int)((-18000 - player.Position.X) * minimapScale), minimapX, minimapX+minimapSize);
-    int rtEX  = Math.Clamp(cx + (int)((-13800 - player.Position.X) * minimapScale), minimapX, minimapX+minimapSize);
-    int rtNY  = Math.Clamp(cy + (int)((3200   - player.Position.Y) * minimapScale), minimapY, minimapY+minimapSize);
-    int rtSY  = Math.Clamp(cy + (int)((6200   - player.Position.Y) * minimapScale), minimapY, minimapY+minimapSize);
-    int rtMainY = cy + (int)((4400 - player.Position.Y) * minimapScale);
-    Raylib.DrawRectangle(rtWX, rtMainY,  rtEX-rtWX, 2, roadCol);
-    Raylib.DrawRectangle(rtWX, rtNY,     rtEX-rtWX, 2, roadCol);
-    Raylib.DrawRectangle(rtWX, rtSY,     rtEX-rtWX, 2, roadCol);
-    Raylib.DrawRectangle(rtWX, rtNY,     2, rtSY-rtNY, roadCol);
-    Raylib.DrawRectangle(rtEX, rtNY,     2, rtSY-rtNY, roadCol);
 
     Raylib.DrawRectangleLines(minimapX, minimapY, minimapSize, minimapSize, Color.White);
     Raylib.DrawCircle(cx, cy, 4, Color.White);
@@ -19101,6 +21859,15 @@ foreach (var s in newSkills)
             musicLoaded = true;
             musicPlaying = true;
         }
+        RoadManager.Add(new Vector2(2650, -1400), new Vector2(2650, 2000));  
+        RoadManager.Add(new Vector2(-2000, 2000), new Vector2(3550, 2000));
+        RoadManager.Add(new Vector2(-60000, 500), new Vector2(60000, 500));
+        RoadManager.Add(new Vector2(200, -60000), new Vector2(200, 60000));
+        RoadManager.Add(new Vector2(1400, 2000), new Vector2(1400, 500));
+        RoadManager.Add(new Vector2(200, -200), new Vector2(2650, -200));
+        RoadManager.Add(new Vector2(-1700, 1100), new Vector2(200, 1100));
+        RoadManager.Add(new Vector2(-1600, 1240), new Vector2(-1600, -850));
+        RoadManager.Add(new Vector2(-2500, -850), new Vector2(200, -850));        
 
             GenerateWorld();
 
@@ -19165,6 +21932,23 @@ Raylib.UnloadRenderTexture(nightMask);
             if (!pauseMenuOpen && !armorMenuOpen && !skillsOpen && !questsOpen)
                     player.InventoryOpen = !player.InventoryOpen;
             }
+
+   if (testTransitionActive)
+{
+    testTransitionTimer += dt;
+    if (testTransitionFadeIn)
+    {
+        testTransitionAlpha = Math.Min(1f, testTransitionTimer / 0.6f);
+        if (testTransitionAlpha >= 1f) testTransitionFadeIn = false;
+    }
+    else if (testTransitionTimer >= testTransitionDuration)
+    {
+        testTransitionActive = false;
+        testTransitionCallback?.Invoke();
+        testTransitionCallback = null;
+    }
+}
+
             switch(currentScene)
             {
                 case SceneState.MainMenu:
@@ -19338,6 +22122,7 @@ if (Raylib.IsMouseButtonPressed(MouseButton.Left) && !multiplayerMenuOpen)
                 CheckSendAppearanceIfChanged();
                 UpdateTutorial(dt);
                 UpdateDroppedItems(dt);
+                UpdateStoryQuests();
 
 // Toolbar slot selection — number keys 1-8
 if (!chatInputOpen)
@@ -19392,6 +22177,16 @@ if (Raylib.IsKeyPressed(KeyboardKey.E) && !chatInputOpen && !chestOpen && !playe
             }
         }
 
+foreach (var pen in livestockPens)
+{
+    if (pen.ReadyToHarvest) continue;
+    if (pen.Fed)
+    {
+        pen.Timer += dt;
+        if (pen.Timer >= pen.Cycle) { pen.ReadyToHarvest = true; pen.Timer = 0f; pen.Fed = false; }
+    }
+}
+
 foreach (var plot in farmPlots)
 {
     if (plot.Planted && plot.Watered && !plot.ReadyToHarvest)
@@ -19417,6 +22212,7 @@ foreach (var tree in fruitTrees)
 }
 
 UpdateCollectables("World", player.Center);
+UpdateShrines();
 
 // Also mouse scroll wheel
 float scroll = Raylib.GetMouseWheelMove();
@@ -19628,7 +22424,7 @@ if (Raylib.IsKeyPressed(KeyboardKey.J) && !chatInputOpen)
                     }
 
 // Dive entry — press J near deep water / ocean
-                    if (Raylib.IsKeyPressed(KeyboardKey.J) && IsNearDeepWater(player.Center) && !chatInputOpen)
+                    if (Raylib.IsKeyPressed(KeyboardKey.Z) && IsNearDeepWater(player.Center) && !chatInputOpen)
                     {
                         StartDive();
                     }
@@ -19709,7 +22505,12 @@ if (Raylib.IsKeyPressed(KeyboardKey.F8))
                         }
                     }                                        
 
-                    timeOfDay += daySpeed * dt;
+                    if (!multiplayer.Connected || multiplayer.IsHost)   
+                    {
+                        timeOfDay += daySpeed * dt;
+                        if (timeOfDay > 1f) { /* ... existing rollover: dayOfWeek/dayOfMonth/currentMonth ... */ }
+                    }
+
                     UpdateWeather(dt);
                     UpdateQuests();
                     player.UpdateHealth(dt);
@@ -19765,7 +22566,10 @@ if (Raylib.IsKeyPressed(KeyboardKey.F8))
                     {
                         lastJobResetDay = dayOfWeek;
                         foreach (var j in jobBoard) j.CompletedToday = false;
-                        foreach (var f in friendNPCs) { f.TalkedToday = false; f.GiftedToday = false; }  // used in section 5
+                        foreach (var f in friendNPCs) { f.TalkedToday = false; f.GiftedToday = false; }
+                        cardSpentToday = 0;
+                        foreach (var t in billboardTasks) { t.DoneToday = false; }
+                        RollDailyPlushStock();
                     }
 
 
@@ -19795,11 +22599,16 @@ if (Raylib.IsKeyPressed(KeyboardKey.F8))
 
     if (!drop.Collected && Raylib.CheckCollisionRecs(player.Bounds, drop.Bounds))
     {
+        if (drop.OwnerId >= 0 && drop.OwnerId != multiplayer.MyId) continue; 
         string canonicalName = lootDropToItemName.GetValueOrDefault(drop.ItemType, drop.ItemType);
 
         if (TryGiveItem(canonicalName, 1))
         {
             drop.Collected = true;
+            if (multiplayer.Connected && !multiplayer.IsHost)                    
+                multiplayer.SendLootPickup(drop.Position.X, drop.Position.Y, drop.ItemType);
+            if (multiplayer.Connected && multiplayer.IsHost)                    // host: despawn for clients
+                multiplayer.SendLootDrop(drop.Position.X, drop.Position.Y, "__REMOVE__" + drop.ItemType, -2);
             floatingTexts.Add(new FloatingText {
                 Position = player.Position - new Vector2(0, 40),
                 Text = $"+1 {drop.ItemType}",
@@ -19818,6 +22627,28 @@ if (Raylib.IsKeyPressed(KeyboardKey.F8))
             });
             // leave drop.Collected false and skip removal — stays on the ground
         }
+    }
+}
+
+if (Vector2.Distance(player.Center, billboardPos) < 70 && Raylib.IsKeyPressed(KeyboardKey.E) && !chatInputOpen)
+    billboardOpen = !billboardOpen;
+
+if (activeSideTask != null && !activeSideTask.ReadyToDeliver
+    && activeSideTask.Progress() - activeSideTask.Baseline >= activeSideTask.Target)
+{
+    activeSideTask.ReadyToDeliver = true;
+    ShowNotification($"{activeSideTask.Title} done! {activeSideTask.DeliverLabel} (press H)");
+}
+
+// NPC delivery — H near the named friend (also boosts friendship)
+if (activeSideTask?.ReadyToDeliver == true && activeSideTask.DeliverTo.StartsWith("NPC:"))
+{
+    var target = friendNPCs.FirstOrDefault(f => f.Name == activeSideTask.DeliverTo[4..]);
+    if (target != null && Vector2.Distance(player.Center, target.Npc.Position) < 60
+        && Raylib.IsKeyPressed(KeyboardKey.H) && !chatInputOpen)
+    {
+        target.Friendship = Math.Min(100, target.Friendship + 5);
+        CompleteSideTask(target.Name);
     }
 }
 
@@ -19875,8 +22706,52 @@ if (Raylib.IsKeyPressed(KeyboardKey.Space) && !chatInputOpen)
 
                     foreach (Enemy enemy in enemies)
                     {
+                        bool enemyAuthority = !multiplayer.Connected || multiplayer.IsHost;
                         Vector2 enemyOldPos = enemy.Position;
-                        enemy.Update(dt, player.Center);
+                        if (!enemyAuthority && enemy.FlashTimer > 0f)
+                            enemy.FlashTimer -= dt;
+                        Vector2 nearest = player.Center;   
+                        if (enemyAuthority)
+                        {
+                            float bestDist = Vector2.DistanceSquared(enemy.Center, player.Center);
+                            if (multiplayer.Connected)
+                            {
+                                lock (multiplayer.RemotePlayers)
+                                    foreach (var rp in multiplayer.RemotePlayers)
+                                    {
+                                        if (!rp.Active || rp.Scene != "World") continue;
+                                        Vector2 rpPos = new Vector2(rp.X, rp.Y);
+                                        float d = Vector2.DistanceSquared(enemy.Center, rpPos);
+                                        if (d < bestDist) { bestDist = d; nearest = rpPos; }
+                                    }
+                            }
+                            enemy.Update(dt, nearest);
+                        }
+
+                        // CHANGED: gate firing to the authority, aim at the aggro'd (nearest) player
+                        if (enemyAuthority && !enemy.Dead && enemy.Aggro && enemy.AttackCooldown <= 0f)
+                        {
+                            float dToPlayer = Vector2.Distance(enemy.Center, nearest);
+                            Vector2 aim = Vector2.Normalize(nearest - enemy.Center);
+
+                            if (enemy.Type == "Wizard" && dToPlayer <= 420f)
+                            {
+                                Vector2 vel = aim * 340f;
+                                enemyProjectiles.Add(new EnemyProjectile(enemy.Center, vel, "Spell", 3f, 12));
+                                if (multiplayer.Connected)
+                                    multiplayer.SendEnemyProjectile(enemy.Center.X, enemy.Center.Y, vel.X, vel.Y, 3f, "Spell", 12);
+                                enemy.AttackCooldown = 1.6f;
+                            }
+                            else if (enemy.Type == "Archer" && dToPlayer <= 420f)
+                            {
+                                Vector2 vel = aim * 520f;
+                                enemyProjectiles.Add(new EnemyProjectile(enemy.Center, vel, "Arrow", 3f, 10));
+                                if (multiplayer.Connected)
+                                    multiplayer.SendEnemyProjectile(enemy.Center.X, enemy.Center.Y, vel.X, vel.Y, 3f, "Arrow", 10);
+                                enemy.AttackCooldown = 1.2f;
+                            }
+                            // (Warrior + other melee handled by the contact-damage block below)
+                        }
 
                         // collide with fences, rocks, trees — revert on overlap
                         bool blocked = false;
@@ -19891,7 +22766,7 @@ if (Raylib.IsKeyPressed(KeyboardKey.Space) && !chatInputOpen)
                         if (blocked)
                             enemy.Position = enemyOldPos;
                         
-                        if (!enemy.Dead && Raylib.CheckCollisionRecs(player.Bounds, enemy.Bounds))
+                        if (!enemy.Dead && enemy.AttackCooldown <= 0f   && Raylib.CheckCollisionRecs(player.Bounds, enemy.Bounds))
             {
                 int damage = 0;
                 if (enemy.Type == "Wild Dog") damage = 5;
@@ -19906,10 +22781,17 @@ if (Raylib.IsKeyPressed(KeyboardKey.Space) && !chatInputOpen)
                 else if (enemy.Type == "Magma Beetle")  damage = 22;
                 else if (enemy.Type == "Eagle")         damage = 13;
                 else if (enemy.Type == "Mountain Goat") damage = 17;
+                else if (enemy.Type == "Warrior")       damage = 16;
+                else if (enemy.Type == "Goblin")        damage = 7;
+                else if (enemy.Type == "Thug")          damage = 10;
+                else if (enemy.Type == "Robber")        damage = 9;
+                else if (enemy.Type == "Gangster")      damage = 12;
+                else if (enemy.Type == "Giant Bug")     damage = 14;
 
                 int defense = GetTotalDefense();
                 int reducedDamage = Math.Max(1, damage - defense);
                 player.TakeDamage(reducedDamage);
+                enemy.AttackCooldown = 1.0f;   
                 TriggerShake(0.2f);
 
                 floatingTexts.Add(new FloatingText {
@@ -19948,7 +22830,17 @@ if (Raylib.IsKeyPressed(KeyboardKey.Space) && !chatInputOpen)
         bool isCrit = Raylib.GetRandomValue(1, 100) <= (int)(critChance * 100);
         if (isCrit) attackDamage = (int)(attackDamage * critMultiplier);
 
-        enemy.Health -= attackDamage;
+        if (!multiplayer.Connected || multiplayer.IsHost)
+        {
+            enemy.LastDamagerId = multiplayer.MyId;
+            enemy.Health -= attackDamage;                       // host/singleplayer: apply directly
+            if (enemy.Health <= 0) HandleEnemyDeath(enemy);
+        }
+        else
+        {
+            multiplayer.SendEnemyHit(enemies.IndexOf(enemy), attackDamage, multiplayer.MyId);
+        }
+
         AwardMeleeXP(equipped, Math.Max(1, Math.Min(attackDamage, enemy.Health + attackDamage)));
         enemy.TriggerFlash();
         SpawnSplat(enemy.Center, new Color((byte)170, (byte)20, (byte)20, (byte)255), isCrit ? 16 : 8);
@@ -19968,90 +22860,10 @@ if (Raylib.IsKeyPressed(KeyboardKey.Space) && !chatInputOpen)
         TriggerShake(isCrit ? 0.22f : 0.1f);
 
         if (enemy.Health <= 0)
-        {
-            enemy.Dead = true;
-            SpawnDeathFx(enemy.Center, enemy.EnemyColor, enemy.Type);
-
-                if (enemy.Type == "Wild Dog") Raylib.PlaySound(soundDogDie);
-
-                if (enemy.Type == "Wild Dog") player.AddCombatXP(20);
-                else if (enemy.Type == "Wolf") player.AddCombatXP(35);
-                else if (enemy.Type == "Scorpion") player.AddCombatXP(30);
-                else if (enemy.Type == "Bear") player.AddCombatXP(50);
-                else if (enemy.Type == "Crab")          player.AddCombatXP(55);
-                else if (enemy.Type == "Shark")         player.AddCombatXP(70);
-                else if (enemy.Type == "Snake")         player.AddCombatXP(55);
-                else if (enemy.Type == "Crocodile")     player.AddCombatXP(75);
-                else if (enemy.Type == "Fire Lizard")   player.AddCombatXP(65);
-                else if (enemy.Type == "Magma Beetle")  player.AddCombatXP(80);
-                else if (enemy.Type == "Eagle")         player.AddCombatXP(60);
-                else if (enemy.Type == "Mountain Goat") player.AddCombatXP(70);
-
-        // Loot drops
-        int rareRoll = Raylib.GetRandomValue(1, 100);
-
-if (enemy.Type == "Wild Dog") {
-    lootDrops.Add(new LootDrop(enemy.Position, "Bone"));
-    if (rareRoll <= 20) lootDrops.Add(new LootDrop(enemy.Position, "Fur"));          // 20% extra fur
-    if (rareRoll <= 5)  lootDrops.Add(new LootDrop(enemy.Position, "Dog Fang"));     // 5% rare fang
-}
-else if (enemy.Type == "Wolf")  {
-    wolvesKilled++;
-    lootDrops.Add(new LootDrop(enemy.Position, "Fur"));
-    if (rareRoll <= 25) lootDrops.Add(new LootDrop(enemy.Position, "Bone"));         // 25% bone
-    if (rareRoll <= 8)  lootDrops.Add(new LootDrop(enemy.Position, "Wolf Claw"));    // 8% rare claw
-}
-else if (enemy.Type == "Scorpion") {
-    lootDrops.Add(new LootDrop(enemy.Position, "Stinger"));
-    if (rareRoll <= 20) lootDrops.Add(new LootDrop(enemy.Position, "Stinger"));      // 20% extra stinger
-    if (rareRoll <= 6)  lootDrops.Add(new LootDrop(enemy.Position, "Venom Sac"));    // 6% rare venom
-}
-else if (enemy.Type == "Bear") {
-    lootDrops.Add(new LootDrop(enemy.Position, "Bear Pelt"));
-    if (rareRoll <= 30) lootDrops.Add(new LootDrop(enemy.Position, "Fur"));          // 30% fur
-    if (rareRoll <= 7)  lootDrops.Add(new LootDrop(enemy.Position, "Bear Claw"));    // 7% rare claw
-}
-else if (enemy.Type == "Crab") {
-    lootDrops.Add(new LootDrop(enemy.Position, "Crab Claw"));
-    if (rareRoll <= 25) lootDrops.Add(new LootDrop(enemy.Position, "Crab Claw"));    // 25% extra claw
-    if (rareRoll <= 8)  lootDrops.Add(new LootDrop(enemy.Position, "Crab Shell"));   // 8% rare shell
-}
-else if (enemy.Type == "Shark") {
-    lootDrops.Add(new LootDrop(enemy.Position, "Shark Fin"));
-    if (rareRoll <= 20) lootDrops.Add(new LootDrop(enemy.Position, "Shark Fin"));    // 20% extra fin
-    if (rareRoll <= 5)  lootDrops.Add(new LootDrop(enemy.Position, "Shark Tooth"));  // 5% rare tooth
-}
-else if (enemy.Type == "Snake") {
-    lootDrops.Add(new LootDrop(enemy.Position, "Snake Skin"));
-    if (rareRoll <= 20) lootDrops.Add(new LootDrop(enemy.Position, "Stinger"));      // 20% venom fang (reuse stinger)
-    if (rareRoll <= 6)  lootDrops.Add(new LootDrop(enemy.Position, "Snake Fang"));   // 6% rare fang
-}
-else if (enemy.Type == "Crocodile") {
-    lootDrops.Add(new LootDrop(enemy.Position, "Croc Scale"));
-    if (rareRoll <= 25) lootDrops.Add(new LootDrop(enemy.Position, "Croc Scale"));   // 25% extra scale
-    if (rareRoll <= 7)  lootDrops.Add(new LootDrop(enemy.Position, "Croc Tooth"));   // 7% rare tooth
-}
-else if (enemy.Type == "Fire Lizard") {
-    lootDrops.Add(new LootDrop(enemy.Position, "Lizard Scale"));
-    if (rareRoll <= 20) lootDrops.Add(new LootDrop(enemy.Position, "Lizard Scale")); // 20% extra scale
-    if (rareRoll <= 6)  lootDrops.Add(new LootDrop(enemy.Position, "Ember Stone"));  // 6% rare ember
-}
-else if (enemy.Type == "Magma Beetle") {
-    lootDrops.Add(new LootDrop(enemy.Position, "Magma Shard"));
-    if (rareRoll <= 25) lootDrops.Add(new LootDrop(enemy.Position, "Magma Shard"));  // 25% extra shard
-    if (rareRoll <= 5)  lootDrops.Add(new LootDrop(enemy.Position, "Lava Core"));    // 5% rare core
-}
-else if (enemy.Type == "Eagle") {
-    lootDrops.Add(new LootDrop(enemy.Position, "Feather"));
-    if (rareRoll <= 30) lootDrops.Add(new LootDrop(enemy.Position, "Feather"));      // 30% extra feather
-    if (rareRoll <= 7)  lootDrops.Add(new LootDrop(enemy.Position, "Eagle Talon"));  // 7% rare talon
-}
-else if (enemy.Type == "Mountain Goat") {
-    lootDrops.Add(new LootDrop(enemy.Position, "Horn"));
-    if (rareRoll <= 25) lootDrops.Add(new LootDrop(enemy.Position, "Fur"));          // 25% fur
-    if (rareRoll <= 8)  lootDrops.Add(new LootDrop(enemy.Position, "Goat Hoof"));    // 8% rare hoof
-                        }
-                    }
+        {    
+            HandleEnemyDeath(enemy);   
+        }
+        
             }
         }
     }
@@ -20116,6 +22928,9 @@ else if (enemy.Type == "Mountain Goat") {
     }
 
     UpdateSpellProjectiles(dt);
+    UpdateEnemyProjectiles(dt);
+    SyncEnemiesIfHost(dt);
+    SyncWorldClockIfHost(dt); 
     UpdateWorldBoss(worldBoss, dt);    
      UpdateWorldBoss(superBoss, dt);
 
@@ -20203,14 +23018,14 @@ foreach (Vehicle vehicle in vehicles)
             break;
         }
     }
-    vehicle.OnRoad = IsOnRoad(vehicle.Position);
+    vehicle.OnRoad = IsOnRoad(vehicle.Center);
 
     if (vehicle.Driving && vehicle.Fuel > 0)
         player.AddDrivingXP(1);
 
     if (vehicle.Driving)
     {
-        player.Position = vehicle.Position;
+        player.Position = vehicle.Center - new Vector2(player.Bounds.Width / 2f, player.Bounds.Height / 2f);
         player.Hidden = true;
 
         if (Raylib.IsKeyPressed(KeyboardKey.F))
@@ -20466,6 +23281,10 @@ foreach (GasStation station in gasStations)
         {
             npc.Update(dt);
         }
+
+if (currentBuilding?.BuildingName == "FamilyHub"){
+    foreach (var o in FamilyHubNPCs) o.Update(dt);
+}
 
     foreach (var f in friendNPCs)
 {
@@ -20874,6 +23693,27 @@ foreach (var tree in fruitTrees)
     }
 }
 
+foreach (var pen in livestockPens.Where(p => Vector2.Distance(player.Center, p.Position) < 70))
+{
+    if (pen.ReadyToHarvest && Raylib.IsKeyPressed(KeyboardKey.Space))
+    {
+        AddOneItemToToolbar(pen.Produce);
+        player.AddFarmingXP(25);
+        pen.ReadyToHarvest = false;
+        ShowNotification($"Collected {pen.Produce}! +25 Farming XP");
+    }
+    else if (!pen.Fed && !pen.ReadyToHarvest && Raylib.IsKeyPressed(KeyboardKey.F))
+    {
+        if (GetItemCount(pen.Feed) > 0 || ToolInToolbar(pen.Feed))
+        {
+            BackpackRemoveOne(pen.Feed);   // see note below
+            pen.Fed = true;
+            ShowNotification($"Fed the {pen.Animal}. It'll produce {pen.Produce} soon.");
+        }
+        else ShowNotification($"Need {pen.Feed} to feed this {pen.Animal}.");
+    }
+}
+
 foreach (Lake lake in lakes)
 {
     lake.Update(dt);
@@ -21130,6 +23970,8 @@ foreach (var stable in stables)
                     }
 
 
+if (Vector2.Distance(player.Center, bossArenaEntrance) < 80 && Raylib.IsKeyPressed(KeyboardKey.E)) EnterBossArena();
+
 
                     // Dungeon entrances
 foreach (var entrance in dungeonEntrances)
@@ -21153,8 +23995,10 @@ foreach (var entrance in dungeonEntrances)
                     break;
         case SceneState.Dungeon:
         UpdateDungeon(dt);
+        if (!multiplayer.Connected || multiplayer.IsHost){
         timeOfDay += daySpeed * dt;
         if (timeOfDay > 1f) { timeOfDay = 0f; dayOfWeek = (dayOfWeek + 1) % 7; }
+        }
         totalPlayTime += dt;
         break;
 
@@ -21172,6 +24016,14 @@ foreach (var entrance in dungeonEntrances)
 
         case SceneState.Space:
         UpdateSpace(dt);
+        break;
+
+        case SceneState.BossArena: 
+        UpdateBossArena(dt); 
+        break;
+
+        case SceneState.ClassTest:
+        UpdateClassTest(dt);
         break;
 
         case SceneState.CardGame:
@@ -21210,7 +24062,7 @@ foreach (var entrance in dungeonEntrances)
                 if (dayOfMonth > 14) { dayOfMonth = 1; currentMonth = (currentMonth + 1) % 12; }
                 shopMessage = "You slept for 6 hours. Fully rested!";
                 shopMessageTimer = 3f;
-                ChangeScene(SceneState.Building);
+                currentScene = SceneState.Building;
             }
         }
         break;
@@ -21221,29 +24073,24 @@ foreach (var entrance in dungeonEntrances)
     totalPlayTime += dt;
     if (levelUpTimer > 0) levelUpTimer -= dt; 
 
-    if (testTransitionActive)
-{
-    testTransitionTimer += dt;
-    if (testTransitionFadeIn)
-    {
-        testTransitionAlpha = Math.Min(1f, testTransitionTimer / 0.6f);
-        if (testTransitionAlpha >= 1f) testTransitionFadeIn = false;
-    }
-    else if (testTransitionTimer >= testTransitionDuration)
-    {
-        testTransitionActive = false;
-        testTransitionCallback?.Invoke();
-        testTransitionCallback = null;
-    }
-}
-
     UpdateCollectables($"Building:{currentBuilding.BuildingName}", player.Center);
 
-    List<Rectangle> activeInteriorObjects = (currentBuilding.BuildingName == "SCHOOL" && currentClassroom != "")
-    ? classroomInteriorObjects.GetValueOrDefault(currentClassroom, new List<Rectangle>())
-    : currentBuilding.InteriorObjects;
-    int roomW = (currentBuilding.BuildingName == "SCHOOL" || currentBuilding.BuildingName == "PRISON") ? 2000 : 1400;
-    int roomH = (currentBuilding.BuildingName == "SCHOOL" || currentBuilding.BuildingName == "PRISON") ? 2000 : 1000;
+    List<Rectangle> activeInteriorObjects =
+        (currentBuilding.BuildingName == "SCHOOL" && currentClassroom != "")
+            ? classroomInteriorObjects.GetValueOrDefault(currentClassroom, new List<Rectangle>())
+        : (currentBuilding.BuildingName == "MALL" && currentMiniShop != "")
+            ? miniShopInteriorObjects.GetValueOrDefault(currentMiniShop, new List<Rectangle>())
+        : (currentBuilding.BuildingName == "PRISON" && currentPrisonRoom != "")
+            ? prisonRoomInteriorObjects.GetValueOrDefault(currentPrisonRoom, new List<Rectangle>())
+        : currentBuilding.InteriorObjects;
+
+    int roomW = (currentBuilding.BuildingName == "SCHOOL" || currentBuilding.BuildingName == "PRISON"
+                 || currentBuilding.BuildingName == "CASTLE" || currentBuilding.BuildingName == "MALL"
+                 || currentBuilding.BuildingName == "ZOO") ? 2000 : 1400;
+    int roomH = (currentBuilding.BuildingName == "SCHOOL" || currentBuilding.BuildingName == "PRISON"
+                 || currentBuilding.BuildingName == "CASTLE" || currentBuilding.BuildingName == "MALL"
+                 || currentBuilding.BuildingName == "ZOO") ? 2000 
+                 : (currentBuilding.BuildingName == "FamilyHub") ? 1900 : 1000;
     player.UpdateInterior(dt, activeInteriorObjects, roomW, roomH);
   
     string mpBuildingSceneTag = currentBuilding != null
@@ -21269,6 +24116,85 @@ foreach (var entrance in dungeonEntrances)
         }
     }
 }
+
+// ── COMPANION: adopt at reception, bond when together ──
+        if (currentBuilding.BuildingName == "FamilyHub" || currentBuilding.BuildingName == "BEST START")
+        {
+            Vector2 deskPos = new Vector2(700, 200);
+            if (Vector2.Distance(player.Center, deskPos) < 130
+                && Raylib.IsKeyPressed(KeyboardKey.E) && !chatInputOpen)
+            {
+                if (activePet != null)
+                    ShowNotification("Store your current pet before adopting.");
+                else
+                {
+                    bool kitten = Raylib.GetRandomValue(0, 1) == 0;
+                    activePet = kitten
+                        ? Pet.NewBaby(player.Center, "Kitten", "Cat", PetColorFor("Cat Egg"), 120f)
+                        : Pet.NewBaby(player.Center, "Puppy",  "Dog", PetColorFor("Dog Egg"), 120f);
+                    activePet.Adopted = true;
+                    ShowNotification($"You adopted a {activePet.Type}!");
+                }
+            }
+        }
+
+        // bond interactions when your adopted companion is beside you
+        if (activePet != null && activePet.Adopted
+            && Vector2.Distance(player.Center, activePet.Position) < 90f && !chatInputOpen)
+        {
+            if (Raylib.IsKeyPressed(KeyboardKey.One))
+            {
+                activePet.Bond = Math.Min(100, activePet.Bond + 2);
+                activePet.SocialXP += 2;
+                ShowNotification($"You played together. Bond {activePet.Bond}.");
+            }
+            if (Raylib.IsKeyPressed(KeyboardKey.Two))
+            {
+                activePet.Bond = Math.Min(100, activePet.Bond + 1);
+                activePet.StrengthXP += 2;
+                ShowNotification($"Training done. Bond {activePet.Bond}.");
+            }
+            if (Raylib.IsKeyPressed(KeyboardKey.Three))
+            {
+                activePet.Bond = Math.Min(100, activePet.Bond + 1);
+                activePet.MagicXP += 2;
+                ShowNotification($"Study session. Bond {activePet.Bond}.");
+            }
+        }
+
+if (currentBuilding.BuildingName == "MALL" && currentMiniShop == "")
+{
+    foreach (var (name, doorPos, _) in mallShops)
+    {
+        if (Vector2.Distance(player.Center, doorPos) < 70 && Raylib.IsKeyPressed(KeyboardKey.E) && !chatInputOpen)
+        {
+            StartTestTransition(() => {
+                currentMiniShop = name;
+                player.Position = new Vector2(700, 850);
+            }, $"Entering {name}");
+        }
+    }
+}
+
+if (currentBuilding.BuildingName == "PRISON" && currentPrisonRoom == "" && !inPrison)
+{
+    foreach (var (name, doorPos, _) in prisonRooms)
+    {
+        if (Vector2.Distance(player.Center, doorPos) < 70 && Raylib.IsKeyPressed(KeyboardKey.E) && !chatInputOpen)
+        {
+            StartTestTransition(() => {
+                currentPrisonRoom = name;
+                player.Position = new Vector2(700, 850);
+            }, $"Entering {name}");
+        }
+    }
+}
+
+if (activeSideTask?.ReadyToDeliver == true
+    && activeSideTask.DeliverTo == "Building:" + currentBuilding.BuildingName
+    && Vector2.Distance(player.Center, currentBuilding.InteriorNPC.Position) < 160
+    && Raylib.IsKeyPressed(KeyboardKey.H) && !chatInputOpen)
+    CompleteSideTask(currentBuilding.InteriorNPC.Name);
 
 Vector2 gymDoorPos = new Vector2(970, 1650);
 if (currentBuilding.BuildingName == "SCHOOL" && currentClassroom == ""
@@ -21312,6 +24238,34 @@ if (currentBuilding.BuildingName == "SCHOOL" && currentClassroom != "")
         player.Position = new Vector2(exitDoor.X, exitDoor.Y + 150);
     }, $"Exiting {leavingSubject} class");
 }
+}
+
+if (currentBuilding.BuildingName == "MALL" && currentMiniShop != "")
+{
+    Vector2 shopDoorOut = new Vector2(700, 950);
+    if (Vector2.Distance(player.Center, shopDoorOut) < 70 && Raylib.IsKeyPressed(KeyboardKey.Q) && !chatInputOpen)
+    {
+        string leaving = currentMiniShop;
+        StartTestTransition(() => {
+            currentMiniShop = "";
+            var door = mallShops.First(s => s.name == leaving).doorPos;
+            player.Position = new Vector2(door.X, door.Y + 120);
+        }, $"Leaving {leaving}");
+    }
+}
+
+if (currentBuilding.BuildingName == "PRISON" && currentPrisonRoom != "")
+{
+    Vector2 roomDoorOut = new Vector2(700, 950);
+    if (Vector2.Distance(player.Center, roomDoorOut) < 70 && Raylib.IsKeyPressed(KeyboardKey.Q) && !chatInputOpen)
+    {
+        string leaving = currentPrisonRoom;
+        StartTestTransition(() => {
+            currentPrisonRoom = "";
+            var door = prisonRooms.First(r => r.name == leaving).doorPos;
+            player.Position = new Vector2(door.X, door.Y + 60);
+        }, $"Leaving {leaving}");
+    }
 }
 
     if (currentBuilding.BuildingName == "MY HOUSE")
@@ -21659,6 +24613,8 @@ if (currentBuilding.BuildingName == "DropZone")
             else { shopMessage = "Need $3 to bowl a game!"; shopMessageTimer = 1.5f; }
         }
     }
+
+    if (Raylib.IsKeyPressed(KeyboardKey.P) && !chatInputOpen) plushLogOpen = !plushLogOpen;
 
     // ... existing code (inside DropZone update block) ...
     Vector2 counterPos = new Vector2(600, 600);
@@ -22880,12 +25836,22 @@ if (currentBuilding.BuildingName == "POLICE STATION")
                 DrawSpace();
                 break;
 
+                case SceneState.BossArena: 
+                DrawBossArena(); 
+                break;
+
+                case SceneState.ClassTest:
+                DrawClassTest();
+                break;
+
                 case SceneState.CardGame: 
                 DrawCardGame(); 
                 break;
             }
             
             DrawCookingMenu();
+            DrawTestTransitionOverlay();
+            DrawNotificationBanner();
             UpdateSkillsUI();
             DrawQuickCookBar();
             Vector2 mouse = Raylib.GetMousePosition();
@@ -23293,6 +26259,8 @@ Program.DrawTextUI("ROTOAIRA", Math.Clamp(cx+(int)(-16500*scale),mapX,mapX+mapW)
     Raylib.DrawRectangle(ringLeftX,  mapY, Math.Max(2, (int)(180 * scale)), mapH, new Color((byte)80,(byte)80,(byte)80,(byte)255));
     Raylib.DrawRectangle(ringRightX, mapY, Math.Max(2, (int)(180 * scale)), mapH, new Color((byte)80,(byte)80,(byte)80,(byte)255));
 
+    RoadManager.DrawOnWorldMap(cx, cy, scale, mapX, mapY, mapW, mapH);
+
     // Snow/Desert connectors
     int[] connX = { -20000, -10000, 15000, 25000 };
     foreach (int wx in connX)
@@ -23552,7 +26520,7 @@ static void DrawOptionsMenu()
     {
         daySpeedNorm = (mouse.X - (ScreenWidth / 2 + 240)) / 300f;
         daySpeedNorm = Math.Clamp(daySpeedNorm, 0f, 1f);
-        daySpeed = 0.005f + daySpeedNorm * (0.1f - 0.005f);
+        daySpeed = 0.001f + daySpeedNorm * (0.1f - 0.001f);
     }
     Program.DrawTextUI($"{daySpeed:F3}", ScreenWidth / 2 + 555, ScreenHeight / 2 - 153, 18, Color.LightGray);
 
@@ -23851,50 +26819,8 @@ DrawBiomeTextures();
 // forecourt road surface
 Raylib.DrawRectangle(300, -1000, 700, 580, Color.DarkGray);
 
-// =====================
-// SIDEWALKS
-// =====================
-
-// main horizontal road
-Raylib.DrawRectangle(-55000, 540, 95000, 15, new Color((byte)180,(byte)180,(byte)180,(byte)255));
-Raylib.DrawRectangle(-55000, 728, 95000, 15, new Color((byte)180,(byte)180,(byte)180,(byte)255));
-
-// north highway
-Raylib.DrawRectangle(188, -55000, 15, 55000, new Color((byte)180,(byte)180,(byte)180,(byte)255));
-Raylib.DrawRectangle(318, -55000, 15, 55000, new Color((byte)180,(byte)180,(byte)180,(byte)255));
-
-// south highway
-Raylib.DrawRectangle(188, 730, 15, 54270, new Color((byte)180,(byte)180,(byte)180,(byte)255));
-Raylib.DrawRectangle(318, 730, 15, 54270, new Color((byte)180,(byte)180,(byte)180,(byte)255));
-
-// desert side road
-Raylib.DrawRectangle(4000, 188, 51000, 15, new Color((byte)180,(byte)180,(byte)180,(byte)255));
-Raylib.DrawRectangle(4000, 318, 51000, 15, new Color((byte)180,(byte)180,(byte)180,(byte)255));
-
-// snow side road
-Raylib.DrawRectangle(-55000, 188, 52000, 15, new Color((byte)180,(byte)180,(byte)180,(byte)255));
-Raylib.DrawRectangle(-55000, 318, 52000, 15, new Color((byte)180,(byte)180,(byte)180,(byte)255));
-
-// volcano access road (horizontal, top right)
-Raylib.DrawRectangle(26000, -10188, 14000, 15, new Color((byte)180,(byte)180,(byte)180,(byte)255));
-Raylib.DrawRectangle(26000, -10318, 14000, 15, new Color((byte)180,(byte)180,(byte)180,(byte)255));
-
-// mountain access road (horizontal, top left)
-Raylib.DrawRectangle(-55000, -10188, 29000, 15, new Color((byte)180,(byte)180,(byte)180,(byte)255));
-Raylib.DrawRectangle(-55000, -10318, 29000, 15, new Color((byte)180,(byte)180,(byte)180,(byte)255));
-
-// =====================
-// ROADS
-// =====================
-
-// main horizontal road (extended to cover all biomes)
-Raylib.DrawRectangle(-55000, 550, 95000, 180, Color.DarkGray);
-
-// north highway (extended to mountains/volcano top)
-Raylib.DrawRectangle(200, -55000, 120, 55000, Color.DarkGray);
-
-// south highway (extended to map bottom)
-Raylib.DrawRectangle(200, 730, 120, 54270, Color.DarkGray);
+// Roads draw
+RoadManager.DrawAll(camera.Target, ScreenWidth, ScreenHeight, camera.Zoom);
 
 // desert/ocean side road (extended to ocean edge)
 Raylib.DrawRectangle(4000, 200, 51000, 120, Color.DarkGray);
@@ -23919,18 +26845,6 @@ Raylib.DrawRectangle(-50000, -10200, 120, 10920, Color.DarkGray);
 Raylib.DrawRectangle(28000, -10200, 120, 10920, Color.DarkGray);
 Raylib.DrawRectangle(35000, -10200, 120, 10920, Color.DarkGray);
 
-// vertical road to bank
-Raylib.DrawRectangle(1020, -200, 120, 760, Color.DarkGray);
-
-// vertical road to store
-Raylib.DrawRectangle(-1260, -200, 120, 760, Color.DarkGray);
-
-// vertical road to hospital
-Raylib.DrawRectangle(200, -200, 120, 760, Color.DarkGray);
-
-// vertical road to weapons shop
-Raylib.DrawRectangle(500, -200, 120, 760, Color.DarkGray);
-
 // ── CITY OF HAMILTRON (X 12000-18000, Y 3000-8000) ──────────────────────────
 
 // Main boulevard (horizontal spine)
@@ -23951,31 +26865,6 @@ Raylib.DrawRectangle(11800, 3000, 6200, 120, Color.DarkGray); // north ring
 Raylib.DrawRectangle(11800, 8100, 6200, 120, Color.DarkGray); // south ring
 Raylib.DrawRectangle(11800, 3000, 120, 5220, Color.DarkGray); // west ring
 Raylib.DrawRectangle(17880, 3000, 120, 5220, Color.DarkGray); // east ring
-
-// Sidewalks — city
-Raylib.DrawRectangle(11800, 5496, 6400, 10, new Color((byte)180,(byte)180,(byte)180,(byte)255));
-Raylib.DrawRectangle(11800, 5654, 6400, 10, new Color((byte)180,(byte)180,(byte)180,(byte)255));
-Raylib.DrawRectangle(14796, 3000, 10, 5200, new Color((byte)180,(byte)180,(byte)180,(byte)255));
-Raylib.DrawRectangle(14954, 3000, 10, 5200, new Color((byte)180,(byte)180,(byte)180,(byte)255));
-
-// Road markings — city boulevard
-for (int i = 11800; i < 18200; i += 200)
-    Raylib.DrawRectangle(i, 5572, 100, 12, Color.Yellow);
-// Road markings — north avenue
-for (int i = 3000; i < 8200; i += 200)
-    Raylib.DrawRectangle(14872, i, 12, 100, Color.Yellow);
-// Cross street markings
-for (int i = 11800; i < 18200; i += 200)
-{
-    Raylib.DrawRectangle(i, 3952, 100, 12, Color.Yellow);
-    Raylib.DrawRectangle(i, 7252, 100, 12, Color.Yellow);
-}
-// North-south cross markings
-for (int i = 3000; i < 8200; i += 200)
-{
-    Raylib.DrawRectangle(12852, i, 12, 100, Color.Yellow);
-    Raylib.DrawRectangle(16652, i, 12, 100, Color.Yellow);
-}
 
 // ── INTERSECTIONS — city (painted boxes + stop lines) ────────────────────────
 // Intersection: boulevard x north avenue
@@ -24021,20 +26910,6 @@ Raylib.DrawRectangle(-13920, 3200, 120, 3020, Color.DarkGray); // east loop
 // Connector from snow side road (Y 260) down to town
 Raylib.DrawRectangle(-16200, 260, 120, 3060, Color.DarkGray);
 
-// Sidewalks — town
-Raylib.DrawRectangle(-18000, 4396, 4200, 8, new Color((byte)180,(byte)180,(byte)180,(byte)255));
-Raylib.DrawRectangle(-18000, 4534, 4200, 8, new Color((byte)180,(byte)180,(byte)180,(byte)255));
-
-// Road markings — main street
-for (int i = -18000; i < -13800; i += 200)
-    Raylib.DrawRectangle(i, 4463, 100, 12, Color.Yellow);
-// Side street markings
-for (int i = 3200; i < 6200; i += 200)
-{
-    Raylib.DrawRectangle(-17148, i, 12, 100, Color.Yellow);
-    Raylib.DrawRectangle(-15348, i, 12, 100, Color.Yellow);
-}
-
 // Town intersection: main street x left side street
 Raylib.DrawRectangle(-17200, 4400, 120, 140, Color.DarkGray);
 Raylib.DrawRectangle(-17210, 4392, 140, 10, new Color((byte)220,(byte)220,(byte)60,(byte)255));
@@ -24047,52 +26922,6 @@ for (int z = 0; z < 4; z++)
 Raylib.DrawRectangle(-15400, 4400, 120, 140, Color.DarkGray);
 Raylib.DrawRectangle(-15410, 4392, 140, 10, new Color((byte)220,(byte)220,(byte)60,(byte)255));
 Raylib.DrawRectangle(-15410, 4534, 140, 10, new Color((byte)220,(byte)220,(byte)60,(byte)255));
-
-// =====================
-// ROAD MARKINGS
-// =====================
-
-// main horizontal road markings (extended)
-for (int i = -55000; i < 40000; i += 200)
-    Raylib.DrawRectangle(i, 630, 100, 12, Color.Yellow);
-
-// north highway markings
-for (int i = -55000; i < 730; i += 200)
-    Raylib.DrawRectangle(248, i, 12, 100, Color.Yellow);
-
-// south highway markings
-for (int i = 730; i < 55000; i += 200)
-    Raylib.DrawRectangle(248, i, 12, 100, Color.Yellow);
-
-// desert/ocean side road markings
-for (int i = 4000; i < 55000; i += 200)
-    Raylib.DrawRectangle(i, 248, 12, 100, Color.Yellow);
-
-// snow/swamp side road markings
-for (int i = -55000; i < -3000; i += 200)
-    Raylib.DrawRectangle(i, 248, 12, 100, Color.Yellow);
-
-// volcano access road markings
-for (int i = 26000; i < 40000; i += 200)
-    Raylib.DrawRectangle(i, -10140, 100, 12, Color.Yellow);
-
-// mountain access road markings
-for (int i = -55000; i < -26000; i += 200)
-    Raylib.DrawRectangle(i, -10140, 100, 12, Color.Yellow);
-
-// swamp vertical connector markings
-for (int i = -10200; i < 730; i += 200)
-{
-    Raylib.DrawRectangle(-39920, i, 12, 100, Color.Yellow);
-    Raylib.DrawRectangle(-49920, i, 12, 100, Color.Yellow);
-}
-
-// ocean vertical connector markings
-for (int i = -10200; i < 730; i += 200)
-{
-    Raylib.DrawRectangle(28080, i, 12, 100, Color.Yellow);
-    Raylib.DrawRectangle(35080, i, 12, 100, Color.Yellow);
-}
 
 // =====================
 // OUTER RING ROAD
@@ -24120,39 +26949,6 @@ Raylib.DrawRectangle(-50000, -53000, 120, 106180, Color.DarkGray);
 Raylib.DrawRectangle(15000, -53000, 120, 106180, Color.DarkGray);
 Raylib.DrawRectangle(25000, -53000, 120, 106180, Color.DarkGray);
 Raylib.DrawRectangle(35000, -53000, 120, 106180, Color.DarkGray);
-
-// ring road markings top
-for (int i = -55000; i < 40000; i += 200)
-    Raylib.DrawRectangle(i, -52920, 100, 12, Color.Yellow);
-
-// ring road markings bottom
-for (int i = -55000; i < 40000; i += 200)
-    Raylib.DrawRectangle(i, 53080, 100, 12, Color.Yellow);
-
-// ring road markings left
-for (int i = -53000; i < 53000; i += 200)
-    Raylib.DrawRectangle(-54920, i, 12, 100, Color.Yellow);
-
-// ring road markings right
-for (int i = -53000; i < 53000; i += 200)
-    Raylib.DrawRectangle(39900, i, 12, 100, Color.Yellow);
-
-// snow/swamp connector markings
-for (int i = -53000; i < 53000; i += 200)
-{
-    Raylib.DrawRectangle(-19920, i, 12, 100, Color.Yellow);
-    Raylib.DrawRectangle(-9920,  i, 12, 100, Color.Yellow);
-    Raylib.DrawRectangle(-39920, i, 12, 100, Color.Yellow);
-    Raylib.DrawRectangle(-49920, i, 12, 100, Color.Yellow);
-}
-
-// desert/ocean connector markings
-for (int i = -53000; i < 53000; i += 200)
-{
-    Raylib.DrawRectangle(15080, i, 12, 100, Color.Yellow);
-    Raylib.DrawRectangle(25080, i, 12, 100, Color.Yellow);
-    Raylib.DrawRectangle(35080, i, 12, 100, Color.Yellow);
-}
             
 DrawSplats();
 DrawDeathFx();
@@ -24276,6 +27072,8 @@ DrawDeathFx();
 
             foreach (var a in decorativeAssets)
             a.Draw();
+
+            DrawShrines();
 
 // ─── DRAW ALL BUILDING EXTERIORS ────────────────────────────────────────────
 foreach (Building building in buildings)
@@ -24571,6 +27369,26 @@ if (building.BuildingName == "BASKETBALL COURT")
         DrawSchoolExterior(building.Bounds.X, building.Bounds.Y);
         continue;
     }
+    if (building.BuildingName == "FamilyHub")  
+    {
+        DrawFamilyHubExterior(building.Bounds.X, building.Bounds.Y); 
+        continue;
+    }
+    if (building.BuildingName == "BEST START") 
+    {
+        DrawDaycareExterior(building.Bounds.X, building.Bounds.Y);
+        continue;
+    } 
+     if (building.BuildingName == "CASTLE")
+    {
+        DrawCastleExterior(building.Bounds.X, building.Bounds.Y);
+        continue;
+    }
+    if (building.BuildingName == "MALL")
+    {
+        DrawMallExterior(building.Bounds.X, building.Bounds.Y);
+        continue;
+    }
     if (building.BuildingName == "HOBBIES STORE")
     {
         DrawHobbiesStoreExterior(building.Bounds.X, building.Bounds.Y);
@@ -24579,6 +27397,26 @@ if (building.BuildingName == "BASKETBALL COURT")
     if (building.BuildingName == "BOAT LICENCE OFFICE")
     {
         DrawBoatLicenceExterior(building.Bounds.X, building.Bounds.Y);
+        continue;
+    }
+    if (building.BuildingName == "LIBRARY")
+    {
+        DrawLibraryExterior(building.Bounds.X, building.Bounds.Y);
+        continue;
+    }
+    if (building.BuildingName == "FARMING SHOP")
+    {
+        DrawFarmingShopExterior(building.Bounds.X, building.Bounds.Y);
+        continue;
+    }
+    if (building.BuildingName == "BARN")
+    {
+        DrawBarnExterior(building.Bounds.X, building.Bounds.Y);
+        continue;
+    }
+    if (building.BuildingName == "ZOO")
+    {
+        DrawZooExterior(building.Bounds.X, building.Bounds.Y);
         continue;
     }
 
@@ -25611,7 +28449,34 @@ foreach (var entrance in dungeonEntrances)
                 }
             }
 
-            // world draw pass — ADD the farm plots themselves, showing soil/planted/watered/ready states
+// Livestock
+foreach (var pen in livestockPens)
+{
+    int px = (int)pen.Position.X, py = (int)pen.Position.Y;
+    // fenced pen
+    Raylib.DrawRectangle(px - 60, py - 50, 120, 100, new Color((byte)180,(byte)160,(byte)110,(byte)255));
+    Raylib.DrawRectangleLines(px - 60, py - 50, 120, 100, new Color((byte)110,(byte)80,(byte)45,(byte)255));
+    // animal blob (colour per type)
+    Color ac = pen.Animal switch {
+        "Chicken" => new Color((byte)240,(byte)230,(byte)210,(byte)255),
+        "Cow"     => new Color((byte)60,(byte)50,(byte)45,(byte)255),
+        "Sheep"   => new Color((byte)235,(byte)235,(byte)235,(byte)255),
+        "Pig"     => new Color((byte)230,(byte)150,(byte)160,(byte)255),
+        _          => new Color((byte)200,(byte)190,(byte)170,(byte)255),
+    };
+    Raylib.DrawCircle(px, py, 20, ac);
+    Raylib.DrawCircle(px + 14, py - 8, 8, ac);
+    Program.DrawTextUI(pen.Animal, px - 28, py - 74, 16, new Color((byte)80,(byte)55,(byte)30,(byte)255));
+
+    if (Vector2.Distance(player.Center, pen.Position) < 70)
+    {
+        if (pen.ReadyToHarvest) Program.DrawTextUI($"SPACE = Collect {pen.Produce}", px - 70, py + 56, 16, Color.Gold);
+        else if (pen.Fed)       Program.DrawTextUI($"Producing... {(int)(pen.Cycle - pen.Timer)}s", px - 60, py + 56, 16, Color.White);
+        else                    Program.DrawTextUI($"F = Feed ({pen.Feed})", px - 60, py + 56, 16, Color.LightGray);
+    }
+}
+
+// Farm plots           
 foreach (var plot in farmPlots)
 {
     int px = (int)plot.Position.X, py = (int)plot.Position.Y;
@@ -25757,6 +28622,7 @@ foreach (var tree in fruitTrees)
 
             foreach (NPC npc in npcs)
             {
+                if (npc.Hidden) continue;
                 npc.Draw();
                 if (Vector2.Distance(player.Center, npc.Position) < 150)
                     DrawSpeechBubble(npc.Position, npc.Dialogue,
@@ -25777,6 +28643,19 @@ foreach (var tree in fruitTrees)
                 if (Vector2.Distance(player.Center, f.Npc.Position) < 60)
                     DrawSpeechBubble(f.Npc.Position, $"E = Talk  |  G = Gift ({f.FavoriteGift})", Color.Gold);
             }
+
+rangerNpc.Draw();
+foreach (var q in storyQuests)
+{
+    if (q.Completed) continue;
+    if (!q.Started && q.GiverName == "Ranger")
+        Program.DrawTextUI("!", (int)rangerNpc.Position.X + 14, (int)rangerNpc.Position.Y - 46, 30, Color.Gold);
+    if (q.Started && q.Current?.Progress == null && q.GiverName == "Ranger")
+        Program.DrawTextUI("?", (int)rangerNpc.Position.X + 14, (int)rangerNpc.Position.Y - 46, 30, Color.SkyBlue);
+    if (!q.Started && q.TriggerSpot != Vector2.Zero)
+        Raylib.DrawCircleLines((int)q.TriggerSpot.X, (int)q.TriggerSpot.Y,
+            30 + MathF.Sin((float)Raylib.GetTime() * 3f) * 6f, Color.Gold);
+}
 
             foreach (Vehicle vehicle in vehicles)
             {
@@ -25902,6 +28781,26 @@ if (nearPlaceable && !chestOpen)
             new Color((byte)40,(byte)0,(byte)60,(byte)60));
     }
 }
+
+foreach (var p in enemyProjectiles)
+            {
+                if (p.Kind == "Arrow")
+                {
+                    Color c = new Color((byte)190,(byte)120,(byte)60,(byte)255);
+                    Vector2 tail = p.Pos - Vector2.Normalize(p.Vel) * 14f;
+                    Raylib.DrawLineEx(tail, p.Pos, 3f, c);
+                    Raylib.DrawCircle((int)p.Pos.X, (int)p.Pos.Y, 3, c);
+                }
+                else // Spell
+                {
+                    Raylib.DrawCircle((int)p.Pos.X, (int)p.Pos.Y, 9,
+                        new Color((byte)140,(byte)60,(byte)200,(byte)120));
+                    Raylib.DrawCircle((int)p.Pos.X, (int)p.Pos.Y, 5,
+                        new Color((byte)180,(byte)90,(byte)230,(byte)255));
+                    Raylib.DrawCircle((int)p.Pos.X, (int)p.Pos.Y, 2, Color.White);
+                }
+            }
+
 
 // ── REMOTE PLAYER ARROWS & SPELLS (visual only, no damage) ────────────────
 foreach (var p in remoteVisualProjectiles)
@@ -26341,6 +29240,7 @@ if (!tutorialChestOpened)
             DrawDroppedItems();
             DrawPlacedProps();
             DrawCoastguardStations();
+            DrawBillboard();
             DrawCollectables("World");
             worldBoss?.Draw();
             superBoss?.Draw();
@@ -26465,6 +29365,7 @@ if (!tutorialChestOpened)
             DrawPlaceablePrompts();
             DrawArmorUI();
             DrawLandForSaleUI();
+            DrawBillboardUI();
 
             // ── HOUSE BUILDING ANIMATION ──────────────────────────────────────────────
     if (houseBuildingActive)
@@ -26533,20 +29434,7 @@ if (!tutorialChestOpened)
                 ScreenWidth / 2 - tw2 / 2, hy - 100, 36,
                 new Color((byte)220,(byte)180,(byte)40,(byte)255));
         }
-    }
-
-    if (testTransitionActive)
-{
-    byte alpha = (byte)(255 * testTransitionAlpha);
-    Raylib.DrawRectangle(0, 0, ScreenWidth, ScreenHeight, new Color((byte)0,(byte)0,(byte)0,(byte)alpha));
-    if (testTransitionAlpha >= 1f)
-    {
-        string msg = testTransitionMessage;   
-        int tw = Program.MeasureTextUI(msg, 28);
-        Program.DrawTextUI(msg, ScreenWidth/2 - tw/2, ScreenHeight/2 - 14, 28, Color.Gold);
-    }
-}
-            
+    }          
 
             // ── LOCAL SPEECH BUBBLE ───────────────────────────────────────────────────
 if (playerChatTimer > 0f && playerChatMessage.Length > 0)
@@ -27555,17 +30443,22 @@ if (currentBuilding.BuildingName == "MARAE")
 }
 
 if (currentBuilding.BuildingName == "LIBRARY")
-    {
-        // photo booth — fixed room object (world/camera space)
-        Raylib.DrawRectangle(560, 300, 160, 200, new Color((byte)40,(byte)40,(byte)55,(byte)255));
-        Raylib.DrawRectangleLines(560, 300, 160, 200, Color.Gold);
-        Program.DrawTextUI("PHOTO BOOTH", 575, 270, 20, Color.Gold);
-
-        // Entrance mat
-        Raylib.DrawRectangle(600, 827, 200, 120, new Color((byte)60,(byte)60,(byte)70,(byte)255));
-        Raylib.DrawRectangle(610, 837, 180, 100, new Color((byte)30,(byte)140,(byte)60,(byte)255));
-    }
-
+{
+    DrawLibraryInterior();
+}
+if (currentBuilding.BuildingName == "BARN"){
+     DrawBarnInterior();
+}
+if (currentBuilding.BuildingName == "ZOO") {
+DrawZooInterior();
+}
+if (currentBuilding.BuildingName == "FARMING SHOP")
+{
+    DrawFarmingShopInterior();
+}
+if (currentBuilding.BuildingName == "CASTLE") {
+    DrawCastleInterior();
+}
 if (currentBuilding.BuildingName == "SUPERMARKET")
 {
     DrawSupermarketInterior();
@@ -27597,6 +30490,10 @@ if (currentBuilding.BuildingName != "DBar" &&
     currentBuilding.BuildingName != "JOB CENTRE" &&
     currentBuilding.BuildingName != "FARMING SHOP" &&
     currentBuilding.BuildingName != "SCHOOL" &&
+    currentBuilding.BuildingName != "CASTLE" &&
+    currentBuilding.BuildingName != "MALL" &&
+    currentBuilding.BuildingName != "BARN" &&
+    currentBuilding.BuildingName != "ZOO" &&
     currentBuilding.BuildingName != "BOAT LICENCE OFFICE" &&
     currentBuilding.BuildingName != "PRISON" )
 {
@@ -28002,6 +30899,12 @@ if (currentBuilding.BuildingName == "MAGIC SHOP")
     Raylib.DrawRectangleLines(540, 870, 200, 28, new Color((byte)120,(byte)40,(byte)200,(byte)255));
     Program.DrawTextUI("MAGIC SHOP", 566, 878, 16, new Color((byte)200,(byte)120,(byte)255,(byte)255));
 }
+
+if (currentBuilding.BuildingName == "MALL" && currentMiniShop != "")
+    DrawMiniShopInterior(currentMiniShop);
+if (currentBuilding.BuildingName == "MALL" && currentMiniShop == "")
+    DrawMallConcourse();
+
 if (currentBuilding.BuildingName == "SCHOOL" && currentClassroom != "")
 {
     DrawClassroomInterior(currentClassroom);
@@ -28012,7 +30915,11 @@ else
 }
 
 // DrawInterior() — ADD a dispatch call inside the appropriate branch
-if (currentBuilding.BuildingName == "PRISON") DrawPrisonInterior();
+if (currentBuilding.BuildingName == "PRISON" && currentPrisonRoom != "")
+    DrawPrisonRoomInterior(currentPrisonRoom);
+if (currentBuilding.BuildingName == "PRISON" && currentPrisonRoom == "")
+    DrawPrisonInterior();
+
 if (currentBuilding.BuildingName == "SCHOOL" && currentClassroom == "") DrawSchoolHallInterior();
 
 if (currentBuilding.BuildingName == "HOBBIES STORE")
@@ -28025,6 +30932,15 @@ if (currentBuilding.BuildingName == "BOAT LICENCE OFFICE")
     DrawBoatLicenceInterior();
 }
 
+if (currentBuilding.BuildingName == "FamilyHub") 
+{
+     DrawFamilyHubInterior();
+}
+
+if (currentBuilding.BuildingName == "BEST START") 
+{
+    DrawDaycareInterior();
+}
 
     if (currentBuilding.BuildingName == "DBar")
     {
@@ -30702,6 +33618,22 @@ if (currentBuilding.BuildingName == "FARMING SHOP"
         farmingShopOpen = !farmingShopOpen;
 }
 
+if (currentBuilding.BuildingName == "ZOO"
+    && Vector2.Distance(player.Center, new Vector2(1000, 90)) < 160)
+{
+    Raylib.DrawRectangle(0, 620, 1280, 100, new Color((byte)0,(byte)0,(byte)0,(byte)180));
+    Program.DrawTextUI("ZOO ENTRY — $20", 20, 636, 26, new Color((byte)210,(byte)130,(byte)50,(byte)255));
+    Program.DrawTextUI("E = Pay entry (once per visit)", 20, 672, 22, Color.White);
+    if (Raylib.IsKeyPressed(KeyboardKey.E) && !chatInputOpen && player.Money >= 20 && !zooPaid)
+    { player.Money -= 20; zooPaid = true; player.AddFarmingXP(5); ShowNotification("Enjoy the zoo!"); }
+}
+
+if (currentBuilding.BuildingName == "BARN"
+    && Vector2.Distance(player.Center, currentBuilding.InteriorNPC.Position) < 180)
+{
+    if (Raylib.IsKeyPressed(KeyboardKey.E) && !chatInputOpen)
+        barnShopOpen = !barnShopOpen;
+}
 
     if (currentBuilding.BuildingName == "LIBRARY")
     {
@@ -31542,6 +34474,9 @@ if (currentBuilding.BuildingName == "Casino" && rouletteOpen)
     Program.DrawTextUI("What are you having bro?", panelX + 80, panelY + 55, 20, Color.LightGray);
     Program.DrawTextUI($"Wallet: ${player.Money}", panelX + 170, panelY + 80, 20, Color.Gold);
 
+    if (FriendDiscount(currentBuilding.BuildingName) > 0)
+    Program.DrawTextUI($"Friend discount: -{(int)(FriendDiscount(currentBuilding.BuildingName)*100)}%", 20, 700, 18, Color.Green);
+
     if (player.DrunkLevel > 0)
     {
         string drunkText = player.DrunkLevel switch
@@ -31560,19 +34495,20 @@ if (currentBuilding.BuildingName == "Casino" && rouletteOpen)
     {
         Rectangle btn = new Rectangle(panelX + 40, panelY + 140 + i * 48, 420, 40);
         bool hover = Raylib.CheckCollisionPointRec(mouse, btn);
+        int price = 5;
 
         Raylib.DrawRectangleRec(btn, new Color((byte)40, (byte)40, (byte)40, (byte)255));
         Raylib.DrawRectangleLinesEx(btn, 2, hover ? Color.Gold : Color.White);
         Program.DrawTextUI(drinks[i], panelX + 60, panelY + 152 + i * 48, 22, hover ? Color.Gold : Color.White);
-        Program.DrawTextUI("$5", panelX + 380, panelY + 152 + i * 48, 22, Color.Gold);
+        Program.DrawTextUI("${price}", panelX + 380, panelY + 152 + i * 48, 22, Color.Gold);
 
        if (hover && Raylib.IsMouseButtonPressed(MouseButton.Left))
 {
     if (Vector2.Distance(player.Center, barCounterPos) < 120)
     {
-        if (player.Money >= 5)
-        {
-            player.Money -= 5;
+        int finalPrice = DiscountedPrice(price);
+        if (player.Money >= finalPrice) { 
+            player.Money -= finalPrice;
             player.DrunkLevel++;
             player.DrunkTimer = 1440f;
             shopMessage = $"Cheers! You cracked a {drinks[i]}.";
@@ -31801,6 +34737,7 @@ if (nearCashier && (player.HasTrolley || player.HasBasket))
     var cartInv = player.HasTrolley ? trolleyInventory : basketInventory;
     int itemCount = cartInv.Count(s => s != null);
     int totalCost = GetTotalCartCost();
+    int finalCost = DiscountedPrice(totalCost);
 
     Raylib.DrawRectangle(0, 620, 1280, 100, new Color((byte)0,(byte)0,(byte)0,(byte)180));
     Program.DrawTextUI("CHECKOUT", 20, 630, 28, new Color((byte)80,(byte)200,(byte)80,(byte)255));
@@ -31848,12 +34785,12 @@ if (nearCashier && (player.HasTrolley || player.HasBasket))
                 playerGroceryBags = 0; // no longer needed as bag
 
                 string msg = bagsFailed > 0
-                    ? $"Paid ${totalCost}. {bagsFailed} items couldn't fit in toolbar!"
-                    : $"Paid ${totalCost}. Items added to toolbar!";
+                    ? $"Paid ${finalCost}. {bagsFailed} items couldn't fit in toolbar!"
+                    : $"Paid ${finalCost}. Items added to toolbar!";
                 shopMessage = msg;
                 shopMessageTimer = 2.5f;
 
-                shopMessage = $"Paid ${totalCost}. Shopping bag added to toolbar!";
+                shopMessage = $"Paid ${finalCost}. Shopping bag added to toolbar!";
                 shopMessageTimer = 2.5f;
                 groceryShopOpen = false;
             }
@@ -31876,10 +34813,12 @@ if (currentBuilding.BuildingName == "McDONALD'S" &&
     DrawAAMenu();
     DrawAATheoryTest();
     DrawSupermarketInventoryUI();
+    DrawPlushieLog();
     DrawJobBoard();
     DrawHouseMenuUI();
     DrawMagicShopUI();
     DrawFarmingShopUI();
+    DrawBarnShopUI();
     DrawBoatMenu();
     DrawBoatTheoryTest();       
     DrawHobbiesStoreUI();
@@ -31899,25 +34838,6 @@ if (currentBuilding.BuildingName == "McDONALD'S" &&
     DrawCashHUD();
     DrawInventoryUI();
     
-    // DrawInterior() — add near the end, alongside other overlay draws (chest UI, pause menu etc.)
-if (testTransitionActive)
-{
-    byte alpha = (byte)(255 * testTransitionAlpha);
-    Raylib.DrawRectangle(0, 0, ScreenWidth, ScreenHeight, new Color((byte)0,(byte)0,(byte)0,(byte)alpha));
-    if (testTransitionAlpha >= 1f)
-    {
-        string msg = testTransitionMessage;
-        int tw = Program.MeasureTextUI(msg, 28);
-        Program.DrawTextUI(msg, ScreenWidth/2 - tw/2, ScreenHeight/2 - 14, 28, Color.Gold);
-    }
-}
-// DrawInterior() — add near the end, alongside other overlay draws
-if (levelUpTimer > 0)
-{
-    byte alpha = (byte)(255 * Math.Min(1f, levelUpTimer));
-    int textWidth = Program.MeasureTextUI(levelUpMessage, 40);
-    Program.DrawTextUI(levelUpMessage, ScreenWidth / 2 - textWidth / 2, 280, 40, new Color((byte)255, (byte)215, (byte)0, alpha));
-}
 }
 
         static void DrawHUD()
@@ -32076,7 +34996,7 @@ if (mount != null && mount.Type != Rideable.RideableType.MountainBike && mount.T
     Raylib.DrawRectangle(hbX, 68, hbWidth, 12, new Color((byte)40,(byte)40,(byte)40,(byte)220));
     Raylib.DrawRectangle(hbX, 68, (int)(hbWidth * mount.Stamina / mount.MaxStamina), 12, Color.Yellow);
     Raylib.DrawRectangleLines(hbX, 68, hbWidth, 12, Color.White);
-    Program.DrawTextUI($"{mount.Type} STAMINA — feed with R", hbX + 4, 82, 12, Color.LightGray);
+    Program.DrawTextUI($"{mount.Type} STAMINA — feed with R", hbX + 4, 82, 18, Color.LightGray);
 }
 
             if (currentScene == SceneState.World)
@@ -32104,18 +35024,18 @@ if (showControlsHud)
         _ => new Color((byte)255,(byte)255,(byte)255,alpha)
     };
 
-    int textWidth = Program.MeasureTextUI($"ENTERING {currentBiome}", 36);
-    Program.DrawTextUI($"ENTERING {currentBiome}", ScreenWidth / 2 - textWidth / 2, 280, 36, biomeColor);
+    string biomeMsg = $"ENTERING {currentBiome}";
+    int textWidth = Program.MeasureTextUI(biomeMsg, 36);
+    int bx = ScreenWidth / 2 - textWidth / 2;
+    
+    byte boxA = (byte)(200 * Math.Min(1f, biomeMessageTimer));
+    Raylib.DrawRectangle(bx - 20, 274, textWidth + 40, 52, new Color((byte)0,(byte)0,(byte)0,boxA));
+    Raylib.DrawRectangleLines(bx - 20, 274, textWidth + 40, 52, biomeColor);
+    Program.DrawTextUI(biomeMsg, bx, 280, 36, biomeColor);
+
 }
            
- DrawInventoryUI();
-
-if (levelUpTimer > 0)
-{
-    byte alpha = (byte)(255 * Math.Min(1f, levelUpTimer));
-    int textWidth = Program.MeasureTextUI(levelUpMessage, 40);
-    Program.DrawTextUI(levelUpMessage, ScreenWidth / 2 - textWidth / 2, 280, 40, new Color((byte)255, (byte)215, (byte)0, alpha));
-}  
+ DrawInventoryUI();  
 
 if (player.DrunkLevel > 0)
 {
@@ -32149,6 +35069,7 @@ if (player.DrunkLevel > 0)
             DrawCashHUD();
             DrawMinimap();
             DrawPlayerMenu();
+
         }
 
         static void DrawCalendarHUD()
@@ -32167,6 +35088,7 @@ if (player.DrunkLevel > 0)
             Program.DrawTextUI(line1, boxX + 8, boxY + 8,  20, Color.Gold);
             Program.DrawTextUI(line2, boxX + 8, boxY + 28, 18, Color.LightGray);
         }
+
 
         static void GenerateWorld()
         {
@@ -32266,7 +35188,7 @@ lakes.Add(new Lake(new Vector2(-900, -600)));
 
 rivers.Add(new River(new Vector2(-5000, 2000), 400));
 rivers.Add(new River(new Vector2(-1950, -8221), 300, true));
-rivers.Add(new River(new Vector2(-2250, -8221), 300));
+rivers.Add(new River(new Vector2(-2250, -8221), 300));        
 
 dungeonEntrances.Add((new Vector2(-1200, -800),  "Crypt",   "The Dark Crypt"));
 dungeonEntrances.Add((new Vector2(-600,  -3200),  "Forest",  "Forest Tomb"));
@@ -32308,7 +35230,7 @@ AddLamppost(350, -1100);
 AddPostbox(-1100, 430);
 
 // farm area
-AddBarn(-1075, -9700);
+AddBarnHouse(-1075, -9700);
 AddShed(-2800, -9250);
 AddWindmill(-1520, -9200);
 AddTractor(-550, -9800);
@@ -32344,7 +35266,7 @@ coastguardStations.Add(new Vector2(27850,  -2000));
 coastguardStations.Add(new Vector2(27850,   8000));
 
 //Library
-AddLibrary(-500, -1000);
+AddLibrary(-500, -1416);
 
 //Farming shop
 AddFarmingShop(-1400, -9500);
@@ -32364,8 +35286,28 @@ AddBoatLicenceOffice(27700, 6000);
 //Airports
 AddAirport(5000, -500);
 
+//Barn 
+AddBarn(-1700, -9500);
+
+//Zoo
+AddZoo(-2420, -1070);
+
 //Schools
-AddSchool(2400, -800);
+AddSchool(2400, -1400);
+
+// Pet adoption
+AddFamilyHub(-2274, 1855); 
+
+// Daycare
+AddDaycare(3000, -300);
+AddDaycareFamilies(new Vector2(3230, 40), new Vector2(2700, 400));
+AddSchoolFamilies(new Vector2(2650, -460), new Vector2(2700, 700));
+
+//Castle
+AddCastle(3200, -1400);
+
+//Mall
+AddMall(4000, -900);
 
 //Prison
 AddPrison(6500, 2000);
@@ -32418,7 +35360,7 @@ AddGasStation(-9000, 540);
 AddMarae(-6900, -230);
 AddMarae(-2050, -300);
 
-AddGym(2700, 410);
+AddGym(2250, 850);
 
 AddSupermarket(3600, 410);
 
@@ -32788,6 +35730,16 @@ npcs.Add(new NPC(new Vector2(-15000, 4800), "Elder",  "This land has stories old
             enemies.Add(new Enemy(new Vector2(-38000, -5500), "Mountain Goat", 13, new Color((byte)200, (byte)195, (byte)185, (byte)255)));
             enemies.Add(new Enemy(new Vector2(-46000, -8000), "Mountain Goat", 13, new Color((byte)200, (byte)195, (byte)185, (byte)255)));
 
+            // Humanoids
+            enemies.Add(new Enemy(new Vector2(2200, 4200),  "Warrior",   6, new Color((byte)150,(byte)150,(byte)165,(byte)255)));
+            enemies.Add(new Enemy(new Vector2(2320, 4200),  "Wizard",    5, new Color((byte)90,(byte)60,(byte)150,(byte)255)));
+            enemies.Add(new Enemy(new Vector2(2440, 4200),  "Archer",    5, new Color((byte)120,(byte)85,(byte)45,(byte)255)));
+            enemies.Add(new Enemy(new Vector2(2200, 4340),  "Goblin",    4, new Color((byte)90,(byte)150,(byte)70,(byte)255)));
+            enemies.Add(new Enemy(new Vector2(2320, 4340),  "Thug",      7, new Color((byte)70,(byte)70,(byte)80,(byte)255)));
+            enemies.Add(new Enemy(new Vector2(2440, 4340),  "Robber",    6, new Color((byte)45,(byte)45,(byte)55,(byte)255)));
+            enemies.Add(new Enemy(new Vector2(2560, 4340),  "Gangster",  8, new Color((byte)30,(byte)30,(byte)35,(byte)255)));
+            enemies.Add(new Enemy(new Vector2(2680, 4340),  "Giant Bug", 9, new Color((byte)60,(byte)90,(byte)45,(byte)255)));
+
             // WORLD BOSS
             worldBoss = new WorldBoss(
             new Vector2(5000, -2000),   // spawn location — pick an open area
@@ -32811,16 +35763,19 @@ npcs.Add(new NPC(new Vector2(-15000, 4800), "Elder",  "This land has stories old
             multiplayer.BossHitReceived = null;   // clear any previous subscription first
             multiplayer.BossStateReceived = null;
 
-            multiplayer.BossHitReceived += (isSuper, dmg) =>
+            multiplayer.BossHitReceived += (isSuper, dmg, killerId) =>
             {
                 var boss = isSuper ? superBoss : worldBoss;
                 if (boss == null || boss.Dead) return;
 
+                boss.LastDamagerId = killerId;
                 boss.Health -= dmg;
                 if (boss.Health <= 0)
                 {
                     boss.Health = 0;
                     boss.Dead = true;
+                    AwardBossKill(boss, isSuper);
+                    DropSpiritEssence(worldBoss.Position, 20);
                 }
 
                 multiplayer.BroadcastBossState(isSuper, boss.Health, boss.MaxHealth, boss.Dead,
@@ -32835,6 +35790,93 @@ npcs.Add(new NPC(new Vector2(-15000, 4800), "Elder",  "This land has stories old
                 boss.MaxHealth = maxHealth;
                 boss.Dead = dead;
                 boss.Position = new Vector2(posX, posY); 
+            };
+
+            // ── MULTIPLAYER: host-authoritative enemy sync ──
+            multiplayer.EnemyStateReceived = null;
+            multiplayer.EnemyHitReceived   = null;
+
+            // CLIENT: overwrite local enemy with host truth
+            multiplayer.EnemyStateReceived += (id, posX, posY, health, dead, aggro) =>
+            {
+                if (id < 0 || id >= enemies.Count) return;
+                var e = enemies[id];
+                bool wasAlive = !e.Dead;
+                e.Position = new Vector2(posX, posY);
+                e.Health   = health;
+                e.Aggro    = aggro;
+                e.Dead     = dead;
+                if (wasAlive && dead)                       // host says it just died → local death FX only
+                    SpawnDeathFx(e.Center, e.EnemyColor, e.Type);
+            };
+
+            // HOST: a client reported a hit → apply damage + resolve kill authoritatively
+            multiplayer.EnemyHitReceived += (id, dmg, killerId) =>
+            {
+                if (id < 0 || id >= enemies.Count) return;
+                var e = enemies[id];
+                if (e.Dead) return;
+                e.LastDamagerId = killerId;
+                e.Health -= dmg;
+                if (e.Health <= 0)
+                    HandleEnemyDeath(e);                    // drops loot into shared world (Option A)
+            };
+
+multiplayer.EnemyKillReceived = null;
+            multiplayer.EnemyKillReceived += (enemyType) =>
+            {
+                player.AddCombatXP(CombatXpFor(enemyType));
+            };
+
+multiplayer.BossKillRewardReceived = null;
+            multiplayer.BossKillRewardReceived += (isSuper) =>
+            {
+                player.AddCombatXP(isSuper ? 1500 : 500);
+                player.Money += isSuper ? 3000 : 1000;
+                ShowLevelUp("Boss defeated!", 0);
+            };
+
+multiplayer.LootDropReceived   = null;
+            multiplayer.LootPickupReceived = null;
+
+            multiplayer.LootDropReceived += (x, y, itemType, ownerId) =>
+            {
+                if (ownerId == -2 && itemType.StartsWith("__REMOVE__"))   // NEW: host despawn signal
+                {
+                    string real = itemType.Substring("__REMOVE__".Length);
+                    var pos = new Vector2(x, y);
+                    lootDrops.RemoveAll(d => d.ItemType == real
+                                           && Vector2.DistanceSquared(d.Position, pos) < 4f);
+                    return;
+                }
+                lootDrops.Add(new LootDrop(new Vector2(x, y), itemType, ownerId));
+            };
+
+            // HOST: a client collected a drop → remove the matching one for everyone
+            multiplayer.LootPickupReceived += (x, y, itemType) =>
+            {
+                var pos = new Vector2(x, y);
+                var match = lootDrops.Find(d => !d.Collected && d.ItemType == itemType
+                                              && Vector2.DistanceSquared(d.Position, pos) < 4f);
+                if (match != null)
+                {
+                    match.Collected = true;
+                    lootDrops.Remove(match);
+                    multiplayer.SendLootDrop(x, y, "__REMOVE__" + itemType, -2);   // tell other clients to despawn
+                }
+            };
+
+multiplayer.WorldClockReceived = null;
+            multiplayer.WorldClockReceived += (tod, dow, dom, mon, raining) =>
+            {
+                timeOfDay = tod; dayOfWeek = dow; dayOfMonth = dom; currentMonth = mon;
+                if (raining != isRaining)   // flip weather to match host; let UpdateWeather handle particles
+                {
+                    isRaining = raining;
+                    rainTimer = 0f;
+                    if (isRaining) { raindrops.Clear(); musicBeforeRain = currentMusic; SwitchMusic(musicRain); }
+                    else { lastZoneMusic = default; CheckZoneMusic(); }
+                }
             };
 
 multiplayer.CardStateReceived = null;
@@ -33122,11 +36164,12 @@ foreach (var v in vehicles.Take(4))
     public Vector2 Position;
     public string ItemType;
     public bool Collected = false;
-
-    public LootDrop(Vector2 pos, string itemType)
+    public int OwnerId = -1;
+    public LootDrop(Vector2 pos, string itemType, int ownerId = -1)
     {
         Position = pos;
         ItemType = itemType;
+        OwnerId = ownerId;
     }
 
     public Rectangle Bounds =>
@@ -33224,10 +36267,23 @@ foreach (var v in vehicles.Take(4))
     float chaseSpeed = 90f;
     public Color EnemyColor;
     public bool Dead = false;
+    public int LastDamagerId = -1;
     float respawnTimer = 0f;
     Vector2 wanderTarget;
     float wanderTimer = 0f;
     float speed = 40f;
+
+    // ── COMBAT (humanoid enemies) ──
+    public float AttackCooldown = 0f;      // counts down between attacks
+    public bool IsRanged => Type is "Wizard" or "Archer";
+    float attackRange => IsRanged ? 420f : 46f;   // ranged fire distance vs melee reach
+    float attackInterval => Type switch
+    {
+        "Wizard"  => 1.6f,
+        "Archer"  => 1.2f,
+        "Warrior" => 1.0f,
+        _         => 1.1f
+    };
    
     public Vector2 SpawnPosition;
 
@@ -33277,13 +36333,19 @@ foreach (var v in vehicles.Take(4))
         if (!Aggro && distToPlayer < aggroRange) Aggro = true;
         if (Aggro && distToPlayer > deAggroRange) Aggro = false;
 
+        if (AttackCooldown > 0f) AttackCooldown -= dt;   // NEW: tick attack timer
+
         if (Aggro)
         {
-            // chase the player
             Vector2 dir = playerPos - Center;
-            if (dir.Length() > 5f)
+            float dist = dir.Length();
+
+            // Ranged enemies stop at range and hold position to fire; melee close in.
+            bool inFiringRange = IsRanged && dist <= attackRange;
+            if (dir.Length() > 5f && !inFiringRange)
                 Position += Vector2.Normalize(dir) * chaseSpeed * dt;
         }
+
         else
         {
             // normal wander
@@ -33328,6 +36390,14 @@ foreach (var v in vehicles.Take(4))
         case "Magma Beetle":  DrawMagmaBeetle(x, y);  break;
         case "Eagle":         DrawEagle(x, y);        break;
         case "Mountain Goat": DrawMountainGoat(x, y); break;
+        case "Warrior":       DrawWarrior(x, y);      break;
+        case "Wizard":        DrawWizard(x, y);       break;
+        case "Archer":        DrawArcher(x, y);       break;
+        case "Goblin":        DrawGoblin(x, y);       break;
+        case "Thug":          DrawThug(x, y);         break;
+        case "Robber":        DrawRobber(x, y);       break;
+        case "Gangster":      DrawGangster(x, y);     break;
+        case "Giant Bug":     DrawGiantBug(x, y);     break;
             }
      if (IsFlashing)
     {
@@ -33947,6 +37017,99 @@ private void DrawMountainGoat(int x, int y)
     Raylib.DrawRectangle(x + 23, y + 43, 6, 3, Color.Black);
     Raylib.DrawRectangle(x + 31, y + 43, 6, 3, Color.Black);
 }
+private void DrawHumanoidBase(int x, int y, Color body, Color skin)
+{
+    Raylib.DrawRectangle(x + 12, y + 18, 16, 18, body);   // torso
+    Raylib.DrawCircle(x + 20, y + 12, 7, skin);           // head
+    Raylib.DrawRectangle(x + 12, y + 36, 6, 8, body);     // left leg
+    Raylib.DrawRectangle(x + 22, y + 36, 6, 8, body);     // right leg
+}
+private void DrawWarrior(int x, int y)
+{
+    Color armor = new Color((byte)150,(byte)150,(byte)165,(byte)255);
+    DrawHumanoidBase(x, y, armor, new Color((byte)225,(byte)185,(byte)150,(byte)255));
+    // sword
+    Raylib.DrawLineEx(new Vector2(x + 30, y + 30), new Vector2(x + 40, y + 8), 3, Color.LightGray);
+    Raylib.DrawLineEx(new Vector2(x + 27, y + 24), new Vector2(x + 33, y + 24), 3, new Color((byte)90,(byte)70,(byte)40,(byte)255));
+    // shield
+    Raylib.DrawCircle(x + 9, y + 26, 6, new Color((byte)120,(byte)90,(byte)50,(byte)255));
+}
+
+private void DrawWizard(int x, int y)
+{
+    Color robe = new Color((byte)90,(byte)60,(byte)150,(byte)255);
+    DrawHumanoidBase(x, y, robe, new Color((byte)225,(byte)185,(byte)150,(byte)255));
+    // pointed hat
+    Raylib.DrawTriangle(new Vector2(x + 12, y + 8), new Vector2(x + 28, y + 8), new Vector2(x + 20, y - 8), robe);
+    // staff + glowing orb
+    Raylib.DrawLineEx(new Vector2(x + 32, y + 34), new Vector2(x + 34, y + 6), 3, new Color((byte)110,(byte)80,(byte)45,(byte)255));
+    Raylib.DrawCircle(x + 34, y + 5, 4, new Color((byte)180,(byte)90,(byte)230,(byte)255));
+}
+
+private void DrawArcher(int x, int y)
+{
+    Color leather = new Color((byte)120,(byte)85,(byte)45,(byte)255);
+    DrawHumanoidBase(x, y, leather, new Color((byte)225,(byte)185,(byte)150,(byte)255));
+    // bow arc
+    Raylib.DrawLineEx(new Vector2(x + 32, y + 8), new Vector2(x + 32, y + 30), 2, new Color((byte)90,(byte)60,(byte)30,(byte)255));
+    Raylib.DrawLineEx(new Vector2(x + 32, y + 8), new Vector2(x + 30, y + 19), 1, Color.White);
+    Raylib.DrawLineEx(new Vector2(x + 32, y + 30), new Vector2(x + 30, y + 19), 1, Color.White);
+}
+
+private void DrawGoblin(int x, int y)
+{
+    Color green = new Color((byte)90,(byte)150,(byte)70,(byte)255);
+    DrawHumanoidBase(x, y, new Color((byte)80,(byte)70,(byte)55,(byte)255), green);
+    // pointy ears
+    Raylib.DrawTriangle(new Vector2(x + 13, y + 12), new Vector2(x + 16, y + 8), new Vector2(x + 16, y + 14), green);
+    Raylib.DrawTriangle(new Vector2(x + 27, y + 12), new Vector2(x + 24, y + 8), new Vector2(x + 24, y + 14), green);
+    Raylib.DrawCircle(x + 17, y + 12, 1, Color.Red);
+    Raylib.DrawCircle(x + 23, y + 12, 1, Color.Red);
+}
+
+private void DrawThug(int x, int y)
+{
+    DrawHumanoidBase(x, y, new Color((byte)70,(byte)70,(byte)80,(byte)255), new Color((byte)210,(byte)170,(byte)140,(byte)255));
+    // club
+    Raylib.DrawLineEx(new Vector2(x + 30, y + 32), new Vector2(x + 36, y + 14), 4, new Color((byte)90,(byte)60,(byte)30,(byte)255));
+    Raylib.DrawCircle(x + 36, y + 13, 4, new Color((byte)70,(byte)45,(byte)20,(byte)255));
+}
+
+private void DrawRobber(int x, int y)
+{
+    DrawHumanoidBase(x, y, new Color((byte)45,(byte)45,(byte)55,(byte)255), new Color((byte)210,(byte)170,(byte)140,(byte)255));
+    // eye mask
+    Raylib.DrawRectangle(x + 13, y + 10, 14, 3, Color.Black);
+}
+
+private void DrawGangster(int x, int y)
+{
+    DrawHumanoidBase(x, y, new Color((byte)30,(byte)30,(byte)35,(byte)255), new Color((byte)210,(byte)170,(byte)140,(byte)255));
+    // fedora
+    Raylib.DrawRectangle(x + 11, y + 7, 18, 3, Color.Black);
+    Raylib.DrawRectangle(x + 15, y + 2, 10, 5, Color.Black);
+    // red tie
+    Raylib.DrawTriangle(new Vector2(x + 20, y + 18), new Vector2(x + 18, y + 24), new Vector2(x + 22, y + 24), Color.Red);
+}
+
+private void DrawGiantBug(int x, int y)
+{
+    Color chitin = new Color((byte)60,(byte)90,(byte)45,(byte)255);
+    Raylib.DrawEllipse(x + 20, y + 26, 15, 11, chitin);          // abdomen
+    Raylib.DrawCircle(x + 20, y + 14, 8, chitin);                // head
+    Raylib.DrawCircle(x + 16, y + 12, 2, Color.Red);             // eyes
+    Raylib.DrawCircle(x + 24, y + 12, 2, Color.Red);
+    // legs
+    for (int i = -1; i <= 1; i++)
+    {
+        Raylib.DrawLineEx(new Vector2(x + 8, y + 22 + i * 5), new Vector2(x + 2, y + 18 + i * 6), 2, chitin);
+        Raylib.DrawLineEx(new Vector2(x + 32, y + 22 + i * 5), new Vector2(x + 38, y + 18 + i * 6), 2, chitin);
+    }
+    // antennae
+    Raylib.DrawLineEx(new Vector2(x + 16, y + 8), new Vector2(x + 12, y + 2), 1, chitin);
+    Raylib.DrawLineEx(new Vector2(x + 24, y + 8), new Vector2(x + 28, y + 2), 1, chitin);
+}
+
 }
     class Quest
 {
@@ -34054,7 +37217,7 @@ private void DrawMountainGoat(int x, int y)
         public int Bolts = 0;
         public bool HasBow = false;
         public bool HasCrossbow = false;
-
+        public int MathsRating = 200;
         public int WoodcuttingLevel = 1;
         public int FishingLevel = 1;
 
@@ -34068,8 +37231,8 @@ private void DrawMountainGoat(int x, int y)
         public int BlacksmithXP = 0;
         public int EnchantingLevel = 1;
         public int EnchantingXP = 0;
-        public float Food = 100f;
-        public float Thirst = 100f;
+        public float Food = 400f;
+        public float Thirst = 400f;
         public float Stamina = 100f;
         public int StoneOre = 0;
         public int CopperOre = 0;
@@ -34140,6 +37303,19 @@ private void DrawMountainGoat(int x, int y)
         public int RangedXP = 0;
         public int FarmingLevel = 1;
         public int FarmingXP = 0;
+        public int FaithLevel = 1;    public int FaithXP = 0;
+        public int MysticalLevel = 1; public int MysticalXP = 0;
+        public int DarkArtsLevel = 1; public int DarkArtsXP = 0;
+        public void AddFaithXP(int xp)    => AddNewSkillXP(ref FaithXP, ref FaithLevel, xp, "Faith");
+        public void AddMysticalXP(int xp) => AddNewSkillXP(ref MysticalXP, ref MysticalLevel, xp, "Mystical");
+        public void AddDarkArtsXP(int xp) => AddNewSkillXP(ref DarkArtsXP, ref DarkArtsLevel, xp, "Dark Arts");
+        void AddNewSkillXP(ref int xpField, ref int lvField, int xp, string name)
+        {
+            if (lvField >= 100) return;
+            xpField += xp;
+            int required = lvField * lvField * 50;   // same curve as Crafting
+            if (xpField >= required) { xpField = 0; lvField++; Program.ShowLevelUp(name, lvField); }
+        }
         public int SportsLevel = 1;
         public int SportsXP = 0;
         public int SpiritualLevel = 1;
@@ -34150,12 +37326,8 @@ private void DrawMountainGoat(int x, int y)
         public int ElementalXP = 0;
         public int AlchemistLevel = 1;
         public int AlchemistXP = 0;
-        public int DarkArtsLevel = 1;
-        public int DarkArtsXP = 0;
         public int EnchantmentLevel = 1;
-        public int EnchanmenttXP = 0;
-        public int MysticalLevel = 1;
-        public int MysticalXP = 0;   
+        public int EnchanmenttXP = 0; 
         public int StrengthLevel = 1;
         public int StrengthXP = 0;
         public int GamblingLevel = 1;
@@ -38161,6 +41333,24 @@ else
     Vector2 wanderTarget;
     float wanderTimer = 0f;
     float speed = 60f;
+    public bool HasSchedule = false;
+    public Vector2 HomeAnchor;        // where they are at night
+    public Vector2 DayAnchor;         // where they go during the day (e.g. daycare)
+    public float DayStartHour = 8f;   // travels to DayAnchor after this
+    public float DayEndHour = 17f;    // returns to HomeAnchor after this
+    public float ScheduleSpeed = 90f;
+    public bool AtDayAnchor = false;
+    public bool Hidden = false;
+    public bool IndoorsDuringDay = false;
+    public bool IsParent = false;          // parent: drops off, leaves, returns to collect
+    public float DropoffHour     = 8f;      // 8:00  everyone outside at the building
+    public float ParentLeaveHour = 8.5f;    // 8:30  parents home; kids go indoors
+    public float PickupHour      = 16.5f;   // 4:30  parents arrive & enter building
+    public float ExitHour        = 16.833f; // 4:50  parents + kids exit, all outside
+    public float GoHomeHour      = 17f;     // 5:00  everyone hidden (heading home)
+    public bool DrawInsideNow = false;
+    public string HomeBuilding = "DAYCARE";
+    bool wasHidden = false;
 
     public NPC(Vector2 pos, string name, string dialogue)
     {
@@ -38170,6 +41360,66 @@ else
     }
 public void Update(float dt)
 {
+    if (HasSchedule)
+    {
+        float hour = Program.GetCurrentHour();
+        DrawInsideNow = false;
+
+        bool atBuilding = hour >= DropoffHour && hour < GoHomeHour;
+        if (!atBuilding)
+        {
+            if (!wasHidden) Position = HomeAnchor;   // snap home when the day ends
+            Hidden = true; AtDayAnchor = false; wasHidden = true;
+            return;
+        }
+
+        if (wasHidden) Position = HomeAnchor;        // snap home before the morning walk-in
+        wasHidden = false;
+
+        bool dropoff  = hour < ParentLeaveHour;                       // 8:00–8:30  all outside
+        bool midday   = hour >= ParentLeaveHour && hour < PickupHour; // 8:30–4:30  kids indoors
+        bool collect  = hour >= PickupHour && hour < ExitHour;        // 4:30–4:50  parents inside
+        bool exiting  = hour >= ExitHour;                             // 4:50–5:00  all outside
+
+        if (IsParent)
+        {
+            if (midday) { Hidden = true; AtDayAnchor = false; return; } // home 8:30–4:30
+            if (collect)                                                // inside collecting
+            {
+                Hidden = true; AtDayAnchor = true; DrawInsideNow = true; return;
+            }
+            Hidden = false;                                             // dropoff + exiting: outside
+        }
+        else // kids / babies
+        {
+            if ((midday || collect) && IndoorsDuringDay)                // indoors 8:30–4:50
+            {
+                Hidden = true; AtDayAnchor = true; DrawInsideNow = true; return;
+            }
+            Hidden = false;                                             // dropoff + exiting: outside
+        }
+
+        Vector2 goal = DayAnchor;
+
+        wanderTimer -= dt;
+        if (wanderTimer <= 0)
+        {
+            wanderTarget = goal + new Vector2(
+                Raylib.GetRandomValue(-30, 30),
+                Raylib.GetRandomValue(-30, 30));
+            wanderTimer = Raylib.GetRandomValue(2, 4);
+        }
+
+        float distToGoal = Vector2.Distance(Position, goal);
+        if (distToGoal > 60f)
+            Position += Vector2.Normalize(goal - Position) * ScheduleSpeed * dt;
+        else
+            Position = Vector2.Lerp(Position, wanderTarget, dt * 1.5f);
+
+        AtDayAnchor = distToGoal <= 60f;
+        return;
+    }
+
     wanderTimer -= dt;
 
     if (wanderTimer <= 0)
@@ -38253,6 +41503,10 @@ public NPC(Vector2 pos)
 
     public enum FacingDirection { Down, Up, Left, Right }
     public FacingDirection Facing = FacingDirection.Right;
+    public Vector2 Center
+    {
+        get { Rectangle b = Bounds; return new Vector2(b.X + b.Width / 2f, b.Y + b.Height / 2f); }
+    }
 
     float animTimer = 0f;
     bool animFrame = false;
@@ -41448,11 +44702,10 @@ class ClawMachine
     public bool Grabbed = false;
     public int GrabbedPrize = -1;
     public float ClawSpeed = 160f;
-
-    public Vector2[] PrizePos = new Vector2[6];
-    public Color[] PrizeColor = new Color[6];
-    public string[] PrizeName = new string[6];
-    public bool[] PrizeTaken = new bool[6];
+    public Vector2[] PrizePos = new Vector2[10];
+    public Color[] PrizeColor = new Color[10];
+    public string[] PrizeName = new string[10];
+    public bool[] PrizeTaken = new bool[10];
 
     public int Plays = 0;
     public string Message = "";
@@ -41479,7 +44732,7 @@ class ClawMachine
         Message = "Insert $2 - SPACE to start the claw";
         MessageTimer = 3f;
         ResetClaw();
-        ScatterPrizes();
+        LoadDailyPrizes(); 
     }
 
     public void Close() { IsOpen = false; MachineIndex = -1; }
@@ -41493,21 +44746,20 @@ class ClawMachine
         GrabbedPrize = -1; ReturningHome = false;
     }
 
-    void ScatterPrizes()
+    void LoadDailyPrizes()
     {
-        for (int i = 0; i < 6; i++)
+        for (int i = 0; i < 10; i++)
         {
-            PrizeTaken[i] = false;
-            var pick = PrizePool[Raylib.GetRandomValue(0, PrizePool.Length - 1)];
-            PrizeName[i] = pick.name;
-            PrizeColor[i] = pick.col;
-            float px = CabLeft + 50 + i * ((CabWidth - 100) / 5f);
-            float py = CabTop + CabHeight - 50 + Raylib.GetRandomValue(-12, 12);
+            PrizeTaken[i] = Program.dailyPlushTaken[i];
+            PrizeName[i]  = Program.dailyPlushStock[i];
+            PrizeColor[i] = Program.PlushColor(PrizeName[i]);
+            float px = CabLeft + 40 + i * ((CabWidth - 80) / 9f);
+            float py = CabTop + CabHeight - 50 + (i % 2 == 0 ? -10 : 8);
             PrizePos[i] = new Vector2(px, py);
         }
     }
 
-    public void Update(float dt, Player player)
+       public void Update(float dt, Player player)
     {
         if (MessageTimer > 0) MessageTimer -= dt;
 
@@ -41520,7 +44772,12 @@ class ClawMachine
 
             if (Raylib.IsKeyPressed(KeyboardKey.Space))
             {
-                if (player.Money >= 2)
+                if (Program.dailyPlushTaken.All(t => t)) 
+                { 
+                    Message = "Sold out! New plushies tomorrow."; 
+                    MessageTimer = 2.5f; 
+                }
+                else if (player.Money >= 2)
                 {
                     player.Money -= 2;
                     Plays++;
@@ -41546,18 +44803,36 @@ class ClawMachine
                 Dropping = false;
                 Rising = true;
 
-                // check grab — must be close to a prize, with a success chance
-                int closest = -1; float best = 9999f;
-                for (int i = 0; i < 6; i++)
+                // 1. Initialize logic trackers to find the closest item
+                int closest = -1; 
+                float best = 9999f;
+
+                // 2. Loop through all 10 prize tracking fields
+                for (int i = 0; i < 10; i++)
                 {
                     if (PrizeTaken[i]) continue;
+
                     float dx = Math.Abs(PrizePos[i].X - ClawX);
-                    if (dx < best) { best = dx; closest = i; }
+                    if (dx < best) 
+                    { 
+                        best = dx; 
+                        closest = i; 
+                    }
                 }
-                if (closest != -1 && best < 28f && Raylib.GetRandomValue(0, 100) < 45)
+
+                // 3. Evaluate your success criteria safely based on the closest plush
+                if (closest != -1 && best < 28f)
                 {
-                    Grabbed = true;
-                    GrabbedPrize = closest;
+                    // Calculate weight values cleanly using the target index
+                    int chance = Program.IsSuperRarePlush(PrizeName[closest]) ? 18
+                               : Program.IsRarePlush(PrizeName[closest]) ? 30 : 45;
+
+                    // Roll to verify catch
+                    if (Raylib.GetRandomValue(0, 100) < chance)
+                    {
+                        Grabbed = true;
+                        GrabbedPrize = closest;
+                    }
                 }
             }
             return;
@@ -41593,8 +44868,7 @@ class ClawMachine
                 if (Grabbed && GrabbedPrize != -1)
                 {
                     PrizeTaken[GrabbedPrize] = true;
-                    player.PlushPrizes++;     // <-- see note below
-                    Message = $"You won a {PrizeName[GrabbedPrize]}!  Added to your collection!";
+                    Message = Program.RegisterPlushWin(GrabbedPrize, PrizeName[GrabbedPrize]);   
                     MessageTimer = 3.5f;
                 }
                 else
@@ -41606,6 +44880,7 @@ class ClawMachine
             }
         }
     }
+
 
     public void Draw(Player player)
     {
@@ -41621,12 +44896,15 @@ class ClawMachine
         Program.DrawTextUI("CHUTE", CabLeft + 18, CabTop + 68, 10, Color.Gold);
 
         // prizes
-        for (int i = 0; i < 6; i++)
+        for (int i = 0; i < 10; i++)   
         {
             if (PrizeTaken[i]) continue;
+            if (Program.IsSuperRarePlush(PrizeName[i]))
+                Raylib.DrawCircleLines((int)PrizePos[i].X, (int)PrizePos[i].Y, 16, Color.Gold);
+            else if (Program.IsRarePlush(PrizeName[i]))
+                Raylib.DrawCircleLines((int)PrizePos[i].X, (int)PrizePos[i].Y, 16, Color.LightGray);
             DrawPlush(PrizePos[i], PrizeColor[i], PrizeName[i]);
         }
-
         // claw rail
         Raylib.DrawLine(CabLeft, CabTop + 30, CabLeft + CabWidth, CabTop + 30, Color.LightGray);
         // claw cable
@@ -41644,6 +44922,7 @@ class ClawMachine
         Program.DrawTextUI($"Wallet: ${player.Money}", 60, 100, 22, Color.Gold);
         Program.DrawTextUI($"Plays: {Plays}", 60, 130, 22, Color.White);
         Program.DrawTextUI($"Prizes won: {player.PlushPrizes}", 60, 160, 20, Color.Pink);
+        Program.DrawTextUI($"Set: {Program.plushiesOwned.Count}/50   Left today: {Program.dailyPlushTaken.Count(t => !t)}/10", 60, 190, 18, Color.Gold);
 
         if (MessageTimer > 0)
         {
@@ -43187,10 +46466,30 @@ class Dungeon
 class Pet
 {
     public Vector2 Position;
-    public string Type;          // e.g. "Dragon" (the boss it came from)
+    public string Type;          
     public Color BodyColor;
+    public bool Adopted = false;          
+    public int Bond = 0;                   
+    public int StrengthXP = 0;             
+    public int MagicXP = 0;
+    public int SocialXP = 0;
+    public bool AtSanctuary = false;       
+    public string AdultRole = ""; 
+    public bool IsBaby = false;          
+    public string AdultType = "";        // what this evolves into ("Cat"/"Dog")
+    public float AgeTimer = 0f;          // accumulates real dt while following
+    public float MatureAfter = 120f;     // seconds of game time to grow up
+    public bool Matured = false;
     float bobTimer = 0f;
     Vector2 velocity = Vector2.Zero;
+    public static Pet NewBaby(Vector2 pos, string babyType, string adultType, Color color, float matureAfter = 120f)
+    {
+        var p = new Pet(pos, babyType, color);
+        p.IsBaby = true;
+        p.AdultType = adultType;
+        p.MatureAfter = matureAfter;
+        return p;
+    }
 
     public Pet(Vector2 pos, string type, Color color)
     {
@@ -43206,6 +46505,21 @@ class Pet
             Position = playerPos - new Vector2(40f, 0f);
             return;
         }
+        if (IsBaby && !Matured)
+        {
+            AgeTimer += dt;
+            if (AgeTimer >= MatureAfter)
+            {
+                Matured = true;
+                IsBaby = false;
+                Type = AdultType; 
+                if (StrengthXP >= MagicXP && StrengthXP >= SocialXP) AdultRole = "Guard";
+                else if (MagicXP >= SocialXP)                        AdultRole = "Mage";
+                else                                                 AdultRole = "Friend";
+                Program.ShowNotification($"Your {AdultType} grew up as a {AdultRole}! (Bond {Bond})");                // "Kitten" -> "Cat", "Puppy" -> "Dog"
+                Program.ShowNotification($"Your pet grew into a {AdultType}!");
+            }
+        }
         bobTimer += dt * 4f;
         Vector2 toPlayer = playerPos - Position;
         float dist = toPlayer.Length();
@@ -43220,6 +46534,7 @@ class Pet
         int x = (int)Position.X;
         int y = (int)Position.Y + (int)(MathF.Sin(bobTimer) * 3f);   // gentle hover bob
         // body
+        float sc = IsBaby ? 0.65f : 1f;   
         Raylib.DrawCircle(x, y, 12, BodyColor);
         Raylib.DrawCircle(x, y, 12, new Color((byte)0,(byte)0,(byte)0,(byte)60)); // soft outline
         Raylib.DrawCircle(x, y, 9, new Color(
@@ -43242,6 +46557,7 @@ class WorldBoss
     public bool Aggro = false;
     public string Name;
     public Color BodyColor;
+    public int LastDamagerId = -1;
 
     public Vector2 SpawnPosition;
     public float RoamRadius;       // how far it wanders from spawn
