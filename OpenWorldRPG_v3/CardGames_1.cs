@@ -150,7 +150,7 @@ partial class Program
         teamScore[0] = teamScore[1] = 0;
         dealer = cardRng.Next(4);
         targetScore = type == CardGameType.Euchre ? 10 : 500;
-        currentScene = SceneState.CardGame;
+        ChangeScene(SceneState.CardGame);
         StartNewHand();
     }
 
@@ -458,7 +458,7 @@ partial class Program
         if (Raylib.IsKeyPressed(KeyboardKey.Q))
         {
             player.Position = returnFromCardsPos;
-            currentScene = SceneState.Building;
+            ChangeScene(SceneState.Building);
             return;
         }
 
@@ -468,7 +468,7 @@ partial class Program
             if (Raylib.IsKeyPressed(KeyboardKey.Space))
             {
                 player.Position = returnFromCardsPos;
-                currentScene = SceneState.Building;
+                ChangeScene(SceneState.Building);
             }
             return;
         }
@@ -978,14 +978,14 @@ static void AwardSeat(int seat, int xp, bool won)
 
         // title + scores
         string title = cardGameType == CardGameType.Euchre ? "EUCHRE" : "500";
-        Raylib.DrawText(title, 20, 16, 30, Color.Gold);
-        Raylib.DrawText($"{TeamLabel(0)}: {teamScore[0]}", 20, 56, 22, new Color((byte)120,(byte)200,(byte)255,(byte)255));
-        Raylib.DrawText($"{TeamLabel(1)}: {teamScore[1]}", 20, 82, 22, new Color((byte)255,(byte)140,(byte)140,(byte)255));
-        Raylib.DrawText($"Playing Cards Lv {player.PlayingCardsLevel}", 20, 112, 18, Color.LightGray);
+        Program.DrawTextUI(title, 20, 16, 30, Color.Gold);
+        Program.DrawTextUI($"{TeamLabel(0)}: {teamScore[0]}", 20, 56, 22, new Color((byte)120,(byte)200,(byte)255,(byte)255));
+        Program.DrawTextUI($"{TeamLabel(1)}: {teamScore[1]}", 20, 82, 22, new Color((byte)255,(byte)140,(byte)140,(byte)255));
+        Program.DrawTextUI($"Playing Cards Lv {player.PlayingCardsLevel}", 20, 112, 18, Color.LightGray);
         if (trumpSuit >= 0)
-            Raylib.DrawText($"Trump: {SuitNames[trumpSuit]}", 20, 138, 20, SuitColor(trumpSuit));
-        Raylib.DrawText($"Tricks  You: {tricksWon[0]}  Them: {tricksWon[1]}", 20, 164, 18, Color.White);
-        Raylib.DrawText("Q = Leave", ScreenWidth - 130, 16, 20, Color.LightGray);
+            Program.DrawTextUI($"Trump: {SuitNames[trumpSuit]}", 20, 138, 20, SuitColor(trumpSuit));
+        Program.DrawTextUI($"Tricks  You: {tricksWon[0]}  Them: {tricksWon[1]}", 20, 164, 18, Color.White);
+        Program.DrawTextUI("Q = Leave", ScreenWidth - 130, 16, 20, Color.LightGray);
 
         // dealer chip indicator near each seat
         DrawSeatLabels();
@@ -1006,28 +1006,28 @@ static void AwardSeat(int seat, int xp, bool won)
         // messages
         if (cardMessageTimer > 0 && cardMessage.Length > 0)
         {
-            int w = Raylib.MeasureText(cardMessage, 26);
+            int w = Program.MeasureTextUI(cardMessage, 26);
             Raylib.DrawRectangle(ScreenWidth/2 - w/2 - 14, 200, w + 28, 42, new Color((byte)0,(byte)0,(byte)0,(byte)180));
-            Raylib.DrawText(cardMessage, ScreenWidth/2 - w/2, 208, 26, Color.Gold);
+            Program.DrawTextUI(cardMessage, ScreenWidth/2 - w/2, 208, 26, Color.Gold);
         }
 
         if (cardPhase == CardPhase.HandOver)
-            Raylib.DrawText("SPACE = next hand", ScreenWidth/2 - 110, ScreenHeight - 40, 24, Color.White);
+            Program.DrawTextUI("SPACE = next hand", ScreenWidth/2 - 110, ScreenHeight - 40, 24, Color.White);
 
         if (cardPhase == CardPhase.GameOver)
         {
             int winTeam = teamScore[0] > teamScore[1] ? 0 : 1;
             string msg = TeamLabel(winTeam) + " WIN!";
-            int w = Raylib.MeasureText(msg, 40);
+            int w = Program.MeasureTextUI(msg, 40);
             Raylib.DrawRectangle(ScreenWidth/2 - w/2 - 20, ScreenHeight/2 - 40, w + 40, 80, new Color((byte)0,(byte)0,(byte)0,(byte)220));
-            Raylib.DrawText(msg, ScreenWidth/2 - w/2, ScreenHeight/2 - 24, 40, Color.Gold);
-            Raylib.DrawText("SPACE = exit", ScreenWidth/2 - 70, ScreenHeight/2 + 30, 22, Color.White);
+            Program.DrawTextUI(msg, ScreenWidth/2 - w/2, ScreenHeight/2 - 24, 40, Color.Gold);
+            Program.DrawTextUI("SPACE = exit", ScreenWidth/2 - 70, ScreenHeight/2 + 30, 22, Color.White);
         }
     // ── DEALER HUD (constant, bottom-left) ──
         Raylib.DrawRectangle(10, ScreenHeight - 70, 230, 56, new Color((byte)0,(byte)0,(byte)0,(byte)200));
         Raylib.DrawRectangleLines(10, ScreenHeight - 70, 230, 56, Color.Gold);
-        Raylib.DrawText("DEALER THIS HAND", 20, ScreenHeight - 64, 16, Color.LightGray);
-        Raylib.DrawText(PlayerName(dealer), 20, ScreenHeight - 42, 24, Color.Gold);
+        Program.DrawTextUI("DEALER THIS HAND", 20, ScreenHeight - 64, 16, Color.LightGray);
+        Program.DrawTextUI(PlayerName(dealer), 20, ScreenHeight - 42, 24, Color.Gold);
 
         // ── CALLER HUD (just above dealer box) ──
         if (maker >= 0 && cardPhase == CardPhase.Playing)
@@ -1036,12 +1036,12 @@ static void AwardSeat(int seat, int xp, bool won)
                 ? SuitNames[trumpSuit]
                 : $"{fiveHundredBid} {(trumpSuit < 0 ? "No Trump" : SuitNames[trumpSuit])}";
             string callerLine2 = $"{PlayerName(maker)} called {calledWhat}";
-            int cw = Raylib.MeasureText(callerLine2, 18);
+            int cw = Program.MeasureTextUI(callerLine2, 18);
             int boxW = Math.Max(cw + 20, 230);
             Raylib.DrawRectangle(10, ScreenHeight - 136, boxW, 60, new Color((byte)0,(byte)0,(byte)0,(byte)200));
             Raylib.DrawRectangleLines(10, ScreenHeight - 136, boxW, 60, SuitColor(trumpSuit < 0 ? 0 : trumpSuit));
-            Raylib.DrawText("CALLED THIS HAND", 20, ScreenHeight - 130, 16, Color.LightGray);
-            Raylib.DrawText(callerLine2, 20, ScreenHeight - 108, 18, SuitColor(trumpSuit < 0 ? 0 : trumpSuit));
+            Program.DrawTextUI("CALLED THIS HAND", 20, ScreenHeight - 130, 16, Color.LightGray);
+            Program.DrawTextUI(callerLine2, 20, ScreenHeight - 108, 18, SuitColor(trumpSuit < 0 ? 0 : trumpSuit));
         }
     }
 
@@ -1107,7 +1107,7 @@ static void AwardSeat(int seat, int xp, bool won)
             Color c = TeamOf(p) == 0 ? new Color((byte)120,(byte)200,(byte)255,(byte)255)
                                      : new Color((byte)255,(byte)140,(byte)140,(byte)255);
              string nm = PlayerName(p);
-            int w = Raylib.MeasureText(nm, 18);
+            int w = Program.MeasureTextUI(nm, 18);
             int nx = seats[p].x - w/2;
             int ny = seats[p].y + (p==0?70:p==2?-90:-50);
             bool isTurn = p == currentPlayer && cardPhase != CardPhase.HandOver && cardPhase != CardPhase.GameOver;
@@ -1118,9 +1118,9 @@ static void AwardSeat(int seat, int xp, bool won)
                 Raylib.DrawRectangle(nx - 8, ny - 4, w + 16, 26, new Color((byte)60,(byte)50,(byte)10,(byte)200));
                 Raylib.DrawRectangleLinesEx(new Rectangle(nx - 8, ny - 4, w + 16, 26), 3, Color.Gold);
             }
-            Raylib.DrawText(nm, nx, ny, 18, isTurn ? Color.Gold : c);
+            Program.DrawTextUI(nm, nx, ny, 18, isTurn ? Color.Gold : c);
             if (p == dealer)
-                Raylib.DrawText("[DEALER]", seats[p].x - 38, seats[p].y + (p==0?92:p==2?-68:-28), 14, Color.Gold);
+                Program.DrawTextUI("[DEALER]", seats[p].x - 38, seats[p].y + (p==0?92:p==2?-68:-28), 14, Color.Gold);
             
             int portraitY = p == 0 ? seats[p].y + 110
                           : p == 2 ? seats[p].y - 130
@@ -1242,14 +1242,14 @@ static void AwardSeat(int seat, int xp, bool won)
 
         if (c.IsJoker)
         {
-            Raylib.DrawText("JOKER", x + 6, y + h/2 - 8, 14, new Color((byte)150,(byte)20,(byte)150,(byte)255));
+            Program.DrawTextUI("JOKER", x + 6, y + h/2 - 8, 14, new Color((byte)150,(byte)20,(byte)150,(byte)255));
             return;
         }
         Color col = SuitColor(c.Suit);
-        Raylib.DrawText(RankName(c.Rank), x + 3, y + 3, large ? 22 : 14, col);
+        Program.DrawTextUI(RankName(c.Rank), x + 3, y + 3, large ? 22 : 14, col);
         DrawSuitSymbol(c.Suit, x + w/2, y + (large ? 48 : 28), large ? 12 : 10, col);
         // bottom mirrored
-        Raylib.DrawText(RankName(c.Rank), x + w - 18, y + h - 24, large ? 18 : 14, col);
+        Program.DrawTextUI(RankName(c.Rank), x + w - 18, y + h - 24, large ? 18 : 14, col);
     }
 
     static void DrawBiddingUI()
@@ -1263,7 +1263,7 @@ static void AwardSeat(int seat, int xp, bool won)
             if (euchreBidRound == 1)
             {
                 // show up-card + Order Up / Pass / Alone
-                Raylib.DrawText("Up-card:", bx, by - 30, 18, Color.White);
+                Program.DrawTextUI("Up-card:", bx, by - 30, 18, Color.White);
                 DrawCardFace(upCard, bx + 80, by - 50, false);
                 if (CardButton("Order Up", bx + 150, by, 130, mouse))
                     RequestBidAction($"ORDERUP|{seat}|0", () => EuchreOrderUp(seat, false));
@@ -1274,7 +1274,7 @@ static void AwardSeat(int seat, int xp, bool won)
             }
             else
             {
-                Raylib.DrawText("Name a suit:", bx, by - 30, 18, Color.White);
+                Program.DrawTextUI("Name a suit:", bx, by - 30, 18, Color.White);
                 int drawn = 0;
                 for (int s = 0; s < 4; s++)
                 {
@@ -1290,11 +1290,11 @@ static void AwardSeat(int seat, int xp, bool won)
         }
         else // 500 bidding
         {
-            Raylib.DrawText($"Current high bid: " +
+            Program.DrawTextUI($"Current high bid: " +
                 (fiveHundredHighBidder < 0 ? "none" :
                  $"{fiveHundredBid} {(fiveHundredBidSuit<0?"NT":SuitNames[fiveHundredBidSuit])} ({PlayerName(fiveHundredHighBidder)})"),
                 bx, by - 56, 18, Color.White);
-            Raylib.DrawText("Bid tricks + suit, or pass:", bx, by - 32, 16, Color.LightGray);
+            Program.DrawTextUI("Bid tricks + suit, or pass:", bx, by - 32, 16, Color.LightGray);
 
             // simple grid: pick a suit then tricks; here we expose a few common bids
             int col = 0;
@@ -1322,8 +1322,8 @@ static void AwardSeat(int seat, int xp, bool won)
         bool hover = Raylib.CheckCollisionPointRec(mouse, r);
         Raylib.DrawRectangleRec(r, new Color((byte)30,(byte)30,(byte)45,(byte)255));
         Raylib.DrawRectangleLinesEx(r, 2, hover ? Color.Gold : Color.White);
-        int tw = Raylib.MeasureText(label, 16);
-        Raylib.DrawText(label, x + w/2 - tw/2, y + 9, 16, hover ? Color.Gold : Color.White);
+        int tw = Program.MeasureTextUI(label, 16);
+        Program.DrawTextUI(label, x + w/2 - tw/2, y + 9, 16, hover ? Color.Gold : Color.White);
         return hover && Raylib.IsMouseButtonPressed(MouseButton.Left);
     }
 }

@@ -25,8 +25,8 @@
 //        !wardrobeOpen && !chestOpen && !cookingMenuOpen)
 //    {
 //        Raylib.DrawRectangle(0, 620, 1280, 100, new Color((byte)0,(byte)0,(byte)0,(byte)180));
-//        Raylib.DrawText("SEQUENCE TABLE", 20, 630, 28, new Color((byte)80,(byte)180,(byte)255,(byte)255));
-//        Raylib.DrawText("E = Play Sequence (2v2)", 20, 668, 22, Color.White);
+//        Program.DrawTextUI("SEQUENCE TABLE", 20, 630, 28, new Color((byte)80,(byte)180,(byte)255,(byte)255));
+//        Program.DrawTextUI("E = Play Sequence (2v2)", 20, 668, 22, Color.White);
 //    }
 // ============================================================================
 
@@ -187,7 +187,7 @@ partial class Program
                 seqHands[p] = new List<Card>();
         }
 
-        currentScene = SceneState.CardGame;
+        ChangeScene(SceneState.CardGame);
     }
 
     static void SeqBuildAndDeal()
@@ -234,12 +234,12 @@ partial class Program
             if (hubActive)
             {
                 hubScreen = HubScreen.GameSelect;
-                currentScene = SceneState.CardGame;
+                ChangeScene(SceneState.CardGame);
             }
             else
             {
                 hubActive = false;
-                currentScene = SceneState.Building;
+                ChangeScene(SceneState.Building);
             }
             return;
         }
@@ -803,7 +803,7 @@ partial class Program
         for (int p = 0; p < 4; p++)
             if (seqHands[p] == null)
             {
-                Raylib.DrawText("Waiting for host...", ScreenWidth/2 - 100, ScreenHeight/2, 24, Color.White);
+                Program.DrawTextUI("Waiting for host...", ScreenWidth/2 - 100, ScreenHeight/2, 24, Color.White);
                 return;
             }
 
@@ -850,7 +850,7 @@ partial class Program
                 // card label on cell
                 if (isCorner)
                 {
-                    Raylib.DrawText("FREE", px+8, py+18, 13, Color.Gold);
+                    Program.DrawTextUI("FREE", px+8, py+18, 13, Color.Gold);
                 }
                 else
                 {
@@ -887,7 +887,7 @@ partial class Program
         Raylib.DrawRectangle(leftX, midY - 160, 170, 60, new Color((byte)20,(byte)20,(byte)40,(byte)200));
         Raylib.DrawRectangleLinesEx(new Rectangle(leftX, midY - 160, 170, 60), turn0 ? 4 : 2,
             turn0 ? Color.Gold : SeqTeamColor(0));
-        Raylib.DrawText(SeqDisplayName(0), leftX + 8, midY - 152, 20, Color.White);
+        Program.DrawTextUI(SeqDisplayName(0), leftX + 8, midY - 152, 20, Color.White);
         SeqDrawPlayerPortrait(0, leftX + 140, midY - 130);
 
         // Jake (player 2)
@@ -895,13 +895,13 @@ partial class Program
         Raylib.DrawRectangle(leftX, midY - 80, 170, 60, new Color((byte)20,(byte)20,(byte)40,(byte)200));
         Raylib.DrawRectangleLinesEx(new Rectangle(leftX, midY - 80, 170, 60), turn2 ? 4 : 2,
             turn2 ? Color.Gold : SeqTeamColor(0));
-        Raylib.DrawText(SeqDisplayName(2), leftX + 8, midY - 72, 20, Color.White);
+        Program.DrawTextUI(SeqDisplayName(2), leftX + 8, midY - 72, 20, Color.White);
         SeqDrawPlayerPortrait(2, leftX + 140, midY - 50);
 
         // Tricks (team 0 sequences)
         Raylib.DrawRectangle(leftX, midY + 10, 170, 50, new Color((byte)20,(byte)20,(byte)40,(byte)200));
         Raylib.DrawRectangleLines(leftX, midY + 10, 170, 50, SeqTeamColor(0));
-        Raylib.DrawText("Tricks", leftX + 8, midY + 18, 18, SeqTeamColor(0));
+        Program.DrawTextUI("Tricks", leftX + 8, midY + 18, 18, SeqTeamColor(0));
         for (int s = 0; s < 2; s++)
         {
             Color filled = s < seqSequences[0] ? SeqTeamColor(0) : new Color((byte)50,(byte)50,(byte)50,(byte)255);
@@ -913,12 +913,12 @@ partial class Program
         Raylib.DrawRectangle(leftX, midY + 76, 170, 140, new Color((byte)15,(byte)15,(byte)30,(byte)200));
         Raylib.DrawRectangleLines(leftX, midY + 76, 170, 140, Color.DarkGray);
         int cy2 = midY + 84;
-        Raylib.DrawText("Controls", leftX + 8, cy2, 15, Color.LightGray); cy2 += 18;
-        Raylib.DrawText("1-7 Select", leftX + 8, cy2, 13, Color.Gray); cy2 += 15;
-        Raylib.DrawText("Click Place", leftX + 8, cy2, 13, Color.Gray); cy2 += 15;
-        Raylib.DrawText("ESC Deselect", leftX + 8, cy2, 13, Color.Gray); cy2 += 15;
-        Raylib.DrawText("D Dead card", leftX + 8, cy2, 13, Color.Gray);
-        Raylib.DrawText("Q Quit", leftX + 8, cy2 + 15, 13, Color.Gray);
+        Program.DrawTextUI("Controls", leftX + 8, cy2, 15, Color.LightGray); cy2 += 18;
+        Program.DrawTextUI("1-7 Select", leftX + 8, cy2, 13, Color.Gray); cy2 += 15;
+        Program.DrawTextUI("Click Place", leftX + 8, cy2, 13, Color.Gray); cy2 += 15;
+        Program.DrawTextUI("ESC Deselect", leftX + 8, cy2, 13, Color.Gray); cy2 += 15;
+        Program.DrawTextUI("D Dead card", leftX + 8, cy2, 13, Color.Gray);
+        Program.DrawTextUI("Q Quit", leftX + 8, cy2 + 15, 13, Color.Gray);
 
         // ── RIGHT PANEL: C Ride + Shack ──
         int rightX = boardOffX + boardW + 8;
@@ -928,7 +928,7 @@ partial class Program
         Raylib.DrawRectangle(rightX + 160, midY - 160, 170, 60, new Color((byte)40,(byte)20,(byte)20,(byte)200));
         Raylib.DrawRectangleLinesEx(new Rectangle(rightX + 160, midY - 160, 170, 60), turn3 ? 4 : 2,
             turn3 ? Color.Gold : SeqTeamColor(1));
-        Raylib.DrawText(SeqDisplayName(3), rightX + 168, midY - 152, 20, Color.White);
+        Program.DrawTextUI(SeqDisplayName(3), rightX + 168, midY - 152, 20, Color.White);
         SeqDrawPlayerPortrait(3, rightX + 300, midY - 130);
 
         // Shack (player 1)
@@ -936,13 +936,13 @@ partial class Program
         Raylib.DrawRectangle(rightX + 160, midY - 80, 170, 60, new Color((byte)40,(byte)20,(byte)20,(byte)200));
         Raylib.DrawRectangleLinesEx(new Rectangle(rightX + 160, midY - 80, 170, 60), turn1 ? 4 : 2,
             turn1 ? Color.Gold : SeqTeamColor(1));
-        Raylib.DrawText(SeqDisplayName(1), rightX + 168, midY - 72, 20, Color.White);
+        Program.DrawTextUI(SeqDisplayName(1), rightX + 168, midY - 72, 20, Color.White);
         SeqDrawPlayerPortrait(1, rightX + 300, midY - 50);
 
         // Tricks (team 1 sequences)
         Raylib.DrawRectangle(rightX + 160, midY + 10, 170, 50, new Color((byte)40,(byte)20,(byte)20,(byte)200));
         Raylib.DrawRectangleLines(rightX + 160, midY + 10, 170, 50, SeqTeamColor(1));
-        Raylib.DrawText("Tricks", rightX + 168, midY + 18, 18, SeqTeamColor(1));
+        Program.DrawTextUI("Tricks", rightX + 168, midY + 18, 18, SeqTeamColor(1));
         for (int s = 0; s < 2; s++)
         {
             Color filled = s < seqSequences[1] ? SeqTeamColor(1) : new Color((byte)50,(byte)50,(byte)50,(byte)255);
@@ -954,22 +954,22 @@ partial class Program
         Raylib.DrawRectangle(rightX, midY + 76, 170, 140, new Color((byte)15,(byte)15,(byte)30,(byte)200));
         Raylib.DrawRectangleLines(rightX, midY + 76, 170, 140, Color.DarkGray);
         int ry = midY + 84;
-        Raylib.DrawText("Card amounts", rightX + 8, ry, 14, Color.LightGray); ry += 20;
+        Program.DrawTextUI("Card amounts", rightX + 8, ry, 14, Color.LightGray); ry += 20;
         for (int p = 1; p < 4; p++)
         {
             Color pc = SeqTeamColor(SeqTeamOf(p));
-            Raylib.DrawText($"{SeqPlayerName(p)}: {seqHands[p].Count}", rightX + 8, ry, 14, pc);
+            Program.DrawTextUI($"{SeqPlayerName(p)}: {seqHands[p].Count}", rightX + 8, ry, 14, pc);
             ry += 18;
         }
         int remaining = seqDeck.Count - seqDeckIdx;
-        Raylib.DrawText($"Deck: {remaining}", rightX + 8, ry, 13, Color.Gray);
+        Program.DrawTextUI($"Deck: {remaining}", rightX + 8, ry, 13, Color.Gray);
 
         // Turn + title top centre
         string turnStr = $"Turn: {SeqPlayerName(seqCurrentPlayer)}";
-        int tw = Raylib.MeasureText(turnStr, 20);
+        int tw = Program.MeasureTextUI(turnStr, 20);
         Color turnCol = SeqTeamColor(SeqTeamOf(seqCurrentPlayer));
-   Raylib.DrawText("SEQUENCE", leftX + 8, 6, 22, Color.Gold);
-        Raylib.DrawText(turnStr, leftX + 8, 30, 18, turnCol);
+   Program.DrawTextUI("SEQUENCE", leftX + 8, 6, 22, Color.Gold);
+        Program.DrawTextUI(turnStr, leftX + 8, 30, 18, turnCol);
 
         // ── human hand ──
         Raylib.DrawRectangle(0, ScreenHeight - 115, ScreenWidth, 115, new Color((byte)10,(byte)10,(byte)25,(byte)220));
@@ -978,10 +978,10 @@ partial class Program
         // ── message banner ──
         if (seqMessageTimer > 0 && seqMessage.Length > 0)
         {
-            int mw = Raylib.MeasureText(seqMessage, 22);
+            int mw = Program.MeasureTextUI(seqMessage, 22);
             int mx = ScreenWidth/2 - mw/2 - 12;
             Raylib.DrawRectangle(mx, ScreenHeight - 145, mw + 24, 36, new Color((byte)0,(byte)0,(byte)0,(byte)200));
-            Raylib.DrawText(seqMessage, mx + 12, ScreenHeight - 139, 22, Color.Gold);
+            Program.DrawTextUI(seqMessage, mx + 12, ScreenHeight - 139, 22, Color.Gold);
         }
 
         // ── dead card D key ──
@@ -1012,12 +1012,12 @@ partial class Program
         {
             Raylib.DrawRectangle(0, 0, ScreenWidth, ScreenHeight, new Color((byte)0,(byte)0,(byte)0,(byte)160));
             string winMsg = SeqTeamLabel(seqWinTeam) + " WIN!";
-            int wmw = Raylib.MeasureText(winMsg, 48);
+            int wmw = Program.MeasureTextUI(winMsg, 48);
             Raylib.DrawRectangle(ScreenWidth/2 - wmw/2 - 24, ScreenHeight/2 - 60, wmw + 48, 100,
                 new Color((byte)0,(byte)0,(byte)0,(byte)230));
-            Raylib.DrawText(winMsg, ScreenWidth/2 - wmw/2, ScreenHeight/2 - 46, 48,
+            Program.DrawTextUI(winMsg, ScreenWidth/2 - wmw/2, ScreenHeight/2 - 46, 48,
                 SeqTeamColor(seqWinTeam));
-            Raylib.DrawText("Q = Exit", ScreenWidth/2 - 46, ScreenHeight/2 + 24, 22, Color.White);
+            Program.DrawTextUI("Q = Exit", ScreenWidth/2 - 46, ScreenHeight/2 + 24, 22, Color.White);
         }
     }
 
@@ -1057,12 +1057,12 @@ partial class Program
         {
             string jlabel = IsOneEyedJack(c) ? "REMOVE" : "WILD";
             Color jcol   = IsOneEyedJack(c) ? Color.Red : Color.Green;
-            int lw = Raylib.MeasureText(jlabel, 11);
-            Raylib.DrawText(jlabel, x + cw / 2 - lw / 2, y - lift + 88, 11, jcol);
+            int lw = Program.MeasureTextUI(jlabel, 11);
+            Program.DrawTextUI(jlabel, x + cw / 2 - lw / 2, y - lift + 88, 11, jcol);
         }
 
         // number hint
-        Raylib.DrawText((i + 1).ToString(), x + cw / 2 - 4, y - lift + 70, 12,
+        Program.DrawTextUI((i + 1).ToString(), x + cw / 2 - 4, y - lift + 70, 12,
             sel ? Color.Gold : Color.LightGray);
     }
 }
@@ -1092,10 +1092,10 @@ partial class Program
                 Raylib.DrawCircle(cx, cy, 30, new Color((byte)60,(byte)60,(byte)20,(byte)180));
             SeqDrawPlayerPortrait(p, cx, cy);
             Color nc = SeqTeamColor(SeqTeamOf(p));
-            int nw = Raylib.MeasureText(SeqPlayerName(p), 13);
-            Raylib.DrawText(SeqPlayerName(p), cx - nw/2, cy + 24, 13, nc);
+            int nw = Program.MeasureTextUI(SeqPlayerName(p), 13);
+            Program.DrawTextUI(SeqPlayerName(p), cx - nw/2, cy + 24, 13, nc);
             if (isActive)
-                Raylib.DrawText("▲", cx - 5, cy - 40, 14, Color.Yellow);
+                Program.DrawTextUI("▲", cx - 5, cy - 40, 14, Color.Yellow);
         }
     }
 

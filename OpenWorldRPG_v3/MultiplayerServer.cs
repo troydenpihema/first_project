@@ -247,10 +247,10 @@ namespace OpenWorldRPG
             int px = (int)X;
             int py = (int)Y;
 
-            int nameW = Raylib.MeasureText(Name, 14);
+            int nameW = Program.MeasureTextUI(Name, 14);
             Raylib.DrawRectangle(px + 20 - nameW / 2 - 4, py - 22, nameW + 8, 18,
                 new Color((byte)0,(byte)0,(byte)0,(byte)160));
-            Raylib.DrawText(Name, px + 20 - nameW / 2, py - 21, 14,
+            Program.DrawTextUI(Name, px + 20 - nameW / 2, py - 21, 14,
                 new Color((byte)80,(byte)240,(byte)220,(byte)255));
 
             if (ChatTimer   > 0f) ChatTimer   -= Raylib.GetFrameTime();
@@ -278,7 +278,7 @@ namespace OpenWorldRPG
                 byte alpha    = (byte)(230 * bubbleAlpha);
                 byte txtAlpha = (byte)(255 * bubbleAlpha);
                 int  fontSize = 13;
-                int  tw2      = Raylib.MeasureText(bubbleText, fontSize);
+                int  tw2      = Program.MeasureTextUI(bubbleText, fontSize);
                 int  bw       = Math.Min(tw2 + 16, 260);
                 int  bh       = fontSize + 14;
                 int  bx2      = px + 20 - bw / 2;
@@ -299,7 +299,7 @@ namespace OpenWorldRPG
                 Color dotCol = IsTyping
                     ? new Color((byte)100,(byte)100,(byte)100,(byte)txtAlpha)
                     : new Color((byte)20,(byte)20,(byte)20,(byte)txtAlpha);
-                Raylib.DrawText(display, bx2 + 8, by2 + 7, fontSize, dotCol);
+                Program.DrawTextUI(display, bx2 + 8, by2 + 7, fontSize, dotCol);
             }
 
             float hpPct = Math.Clamp(HP / 100f, 0f, 1f);
@@ -692,18 +692,18 @@ public void SendProjectile(float startX, float startY, float velX, float velY, f
                 ? new Color((byte)40,  (byte)200, (byte)100, (byte)200)
                 : new Color((byte)200, (byte)80,  (byte)40,  (byte)200);
 
-            int w = Raylib.MeasureText(StatusText, 14) + 16;
+            int w = Program.MeasureTextUI(StatusText, 14) + 16;
             Raylib.DrawRectangle(1280 - w - 4, 4, w, 22, new Color((byte)0, (byte)0, (byte)0, (byte)160));
             Raylib.DrawRectangleLines(1280 - w - 4, 4, w, 22, col);
-            Raylib.DrawText(StatusText, 1280 - w + 4, 8, 14, col);
+            Program.DrawTextUI(StatusText, 1280 - w + 4, 8, 14, col);
 
             if (Connected)
             {
                 int count;
                 lock (_clientLock) count = IsHost ? _clients.Count + 1 : RemotePlayers.Count + 1;
                 string players = $"{count}/{MAX_PLAYERS} players";
-                int pw = Raylib.MeasureText(players, 12);
-                Raylib.DrawText(players, 1280 - pw - 8, 28, 12,
+                int pw = Program.MeasureTextUI(players, 12);
+                Program.DrawTextUI(players, 1280 - pw - 8, 28, 12,
                     new Color((byte)180, (byte)180, (byte)180, (byte)200));
             }
         }
@@ -720,9 +720,9 @@ public void SendProjectile(float startX, float startY, float velX, float velY, f
                 float fade = Math.Min(1f, cm.Timer);
                 byte alpha = (byte)(200 * fade);
                 string line = $"{cm.Name}: {cm.Text}";
-                int w = Raylib.MeasureText(line, 15) + 12;
+                int w = Program.MeasureTextUI(line, 15) + 12;
                 Raylib.DrawRectangle(4, y - 2, w, 19, new Color((byte)0, (byte)0, (byte)0, (byte)(120 * fade)));
-                Raylib.DrawText(line, 8, y, 15,
+                Program.DrawTextUI(line, 8, y, 15,
                     new Color(cm.Col.R, cm.Col.G, cm.Col.B, alpha));
                 y -= 22;
             }

@@ -49,16 +49,16 @@
 //    Color cardsColor = hoverCards ? Color.Gold : Color.White;
 //    Raylib.DrawRectangleRec(cardsSkillBtn, new Color((byte)0,(byte)0,(byte)0,(byte)200));
 //    Raylib.DrawRectangleLinesEx(cardsSkillBtn, 2, cardsColor);
-//    Raylib.DrawText($"Cards Lv {player.PlayingCardsLevel}", ScreenWidth - 315, ScreenHeight - 368, 20, cardsColor);
+//    Program.DrawTextUI($"Cards Lv {player.PlayingCardsLevel}", ScreenWidth - 315, ScreenHeight - 368, 20, cardsColor);
 //    if (!hoverCards) {
 //        int req = player.PlayingCardsLevel * player.PlayingCardsLevel * 40;
 //        float prog = (float)player.PlayingCardsXP / req;
 //        Raylib.DrawRectangle(ScreenWidth - 320, ScreenHeight - 343, 140, 8, new Color((byte)40,(byte)40,(byte)40,(byte)255));
 //        Raylib.DrawRectangle(ScreenWidth - 320, ScreenHeight - 343, (int)(140 * prog), 8, Color.Gold);
 //    } else {
-//        Raylib.DrawText($"Euchre:  {player.EuchreRating}", ScreenWidth - 315, ScreenHeight - 368, 14, Color.LightGray);
-//        Raylib.DrawText($"500:     {player.FiveHundredRating}", ScreenWidth - 315, ScreenHeight - 352, 14, Color.LightGray);
-//        Raylib.DrawText($"Seq:     {player.SequenceRating}", ScreenWidth - 315, ScreenHeight - 336, 14, Color.LightGray);
+//        Program.DrawTextUI($"Euchre:  {player.EuchreRating}", ScreenWidth - 315, ScreenHeight - 368, 14, Color.LightGray);
+//        Program.DrawTextUI($"500:     {player.FiveHundredRating}", ScreenWidth - 315, ScreenHeight - 352, 14, Color.LightGray);
+//        Program.DrawTextUI($"Seq:     {player.SequenceRating}", ScreenWidth - 315, ScreenHeight - 336, 14, Color.LightGray);
 //    }
 //
 //  ── H. Also update the skillsOpen panel height guard in UpdateSkillsUI: ──
@@ -146,8 +146,8 @@ static void DrawHubSeatSelect()
         CardGameType.Sequence    => "SEQUENCE",
         _ => ""
     };
-    Raylib.DrawText($"{gameName} — CHOOSE YOUR SEAT", ScreenWidth/2 - 220, 80, 32, Color.Gold);
-    Raylib.DrawText("Empty seats are filled by AI.", ScreenWidth/2 - 130, 124, 18, Color.LightGray);
+    Program.DrawTextUI($"{gameName} — CHOOSE YOUR SEAT", ScreenWidth/2 - 220, 80, 32, Color.Gold);
+    Program.DrawTextUI("Empty seats are filled by AI.", ScreenWidth/2 - 130, 124, 18, Color.LightGray);
 
     Vector2 mouse = Raylib.GetMousePosition();
 
@@ -177,12 +177,12 @@ static void DrawHubSeatSelect()
             : hover ? Color.SkyBlue
             : new Color((byte)80,(byte)120,(byte)80,(byte)255));
 
-        Raylib.DrawText(seatLabels[seat], bx + 20, by + 12, 22, Color.White);
+        Program.DrawTextUI(seatLabels[seat], bx + 20, by + 12, 22, Color.White);
 
         string status = isThisLocalChoice ? "YOU"
             : taken ? $"Taken (Player {cardSeatOwner[seat]})"
             : "Open — AI or click to claim";
-        Raylib.DrawText(status, bx + 20, by + 42, 16,
+        Program.DrawTextUI(status, bx + 20, by + 42, 16,
             isThisLocalChoice ? Color.Gold : taken ? Color.Red : Color.LightGray);
 
         // host cannot click a taken seat; non-host players can't claim host's seat 0
@@ -211,7 +211,7 @@ static void DrawHubSeatSelect()
         bool hoverStart = Raylib.CheckCollisionPointRec(mouse, startBtn);
         Raylib.DrawRectangleRec(startBtn, hoverStart ? new Color((byte)50,(byte)100,(byte)50,(byte)255) : new Color((byte)30,(byte)60,(byte)30,(byte)255));
         Raylib.DrawRectangleLinesEx(startBtn, 2, hoverStart ? Color.Gold : Color.White);
-        Raylib.DrawText("START GAME", (int)startBtn.X + 30, (int)startBtn.Y + 14, 22, hoverStart ? Color.Gold : Color.White);
+        Program.DrawTextUI("START GAME", (int)startBtn.X + 30, (int)startBtn.Y + 14, 22, hoverStart ? Color.Gold : Color.White);
 
         if (hoverStart && Raylib.IsMouseButtonPressed(MouseButton.Left))
         {
@@ -230,10 +230,10 @@ static void DrawHubSeatSelect()
     }
     else
     {
-        Raylib.DrawText("Waiting for host to start...", ScreenWidth/2 - 130, 560, 20, Color.LightGray);
+        Program.DrawTextUI("Waiting for host to start...", ScreenWidth/2 - 130, 560, 20, Color.LightGray);
     }
 
-    Raylib.DrawText("ESC = Back", ScreenWidth/2 - 40, ScreenHeight - 60, 20, Color.LightGray);
+    Program.DrawTextUI("ESC = Back", ScreenWidth/2 - 40, ScreenHeight - 60, 20, Color.LightGray);
     if (Raylib.IsKeyPressed(KeyboardKey.Escape))
     {
         if (seatSelectPickedSeat >= 0) cardSeatOwner[seatSelectPickedSeat] = -1;
@@ -259,7 +259,7 @@ static void DrawHubSeatSelect()
         hubScreen  = HubScreen.GameSelect;
         tutPage    = 0;
         tutHelperStep = 0;
-        currentScene = SceneState.CardGame;
+        ChangeScene(SceneState.CardGame);
     }
 
     // ─────────────────────────────────────────────────────────────────────
@@ -337,8 +337,8 @@ static void DrawHubSeatSelect()
     // ─────────────────────────────────────────────────────────────────────
     static void DrawHubGameSelect()
     {
-        Raylib.DrawText("CARD GAMES", ScreenWidth/2 - 100, 80, 36, Color.Gold);
-        Raylib.DrawText($"Cards Level {player.PlayingCardsLevel}", ScreenWidth/2 - 70, 124, 20, Color.LightGray);
+        Program.DrawTextUI("CARD GAMES", ScreenWidth/2 - 100, 80, 36, Color.Gold);
+        Program.DrawTextUI($"Cards Level {player.PlayingCardsLevel}", ScreenWidth/2 - 70, 124, 20, Color.LightGray);
 
         Vector2 mouse = Raylib.GetMousePosition();
 
@@ -371,14 +371,14 @@ static void DrawHubSeatSelect()
                 : new Color((byte)25,(byte)45,(byte)25,(byte)255));
             Raylib.DrawRectangleLinesEx(btn, 2, hover ? Color.Gold : new Color((byte)80,(byte)120,(byte)80,(byte)255));
 
-            Raylib.DrawText(g.label, bx + 20, by + 14, 26, hover ? Color.Gold : Color.White);
-            Raylib.DrawText(g.desc,  bx + 20, by + 46, 17, Color.LightGray);
+            Program.DrawTextUI(g.label, bx + 20, by + 14, 26, hover ? Color.Gold : Color.White);
+            Program.DrawTextUI(g.desc,  bx + 20, by + 46, 17, Color.LightGray);
 
             // rating bar
             float ratingT = (g.rating - 200f) / 800f;
             Raylib.DrawRectangle(bx + 20, by + 74, 300, 10, new Color((byte)40,(byte)40,(byte)40,(byte)255));
             Raylib.DrawRectangle(bx + 20, by + 74, (int)(300 * ratingT), 10, RatingColor(g.rating));
-            Raylib.DrawText($"Rating: {g.rating}  |  Wins: {g.wins}", bx + 330, by + 72, 16, Color.LightGray);
+            Program.DrawTextUI($"Rating: {g.rating}  |  Wins: {g.wins}", bx + 330, by + 72, 16, Color.LightGray);
 
             if (hover && Raylib.IsMouseButtonPressed(MouseButton.Left))
             {
@@ -390,11 +390,11 @@ static void DrawHubSeatSelect()
         }
 
         // Q to exit back to building
-        Raylib.DrawText("Q = Exit", ScreenWidth/2 - 30, ScreenHeight - 60, 20, Color.LightGray);
+        Program.DrawTextUI("Q = Exit", ScreenWidth/2 - 30, ScreenHeight - 60, 20, Color.LightGray);
         if (Raylib.IsKeyPressed(KeyboardKey.Q))
         {
             hubActive = false;
-            currentScene = SceneState.Building;
+            ChangeScene(SceneState.Building);
         }
     }
 
@@ -418,8 +418,8 @@ static void DrawHubSeatSelect()
             CardGameType.Sequence    => "SEQUENCE",
             _ => ""
         };
-        Raylib.DrawText(gameName, ScreenWidth/2 - Raylib.MeasureText(gameName,36)/2, 80, 36, Color.Gold);
-        Raylib.DrawText($"Your rating: {GetRating(hubGame)}",
+        Program.DrawTextUI(gameName, ScreenWidth/2 - Program.MeasureTextUI(gameName,36)/2, 80, 36, Color.Gold);
+        Program.DrawTextUI($"Your rating: {GetRating(hubGame)}",
             ScreenWidth/2 - 70, 128, 20,  RatingColor(GetRating(hubGame)));
 
         Vector2 mouse = Raylib.GetMousePosition();
@@ -460,14 +460,14 @@ static void DrawHubSeatSelect()
                 ? new Color((byte)50,(byte)80,(byte)50,(byte)255)
                 : new Color((byte)25,(byte)45,(byte)25,(byte)255));
             Raylib.DrawRectangleLinesEx(btn, 2, hover ? Color.Gold : new Color((byte)80,(byte)120,(byte)80,(byte)255));
-            Raylib.DrawText(options[i].label,    bx + 20, by + 18, 28, hover ? Color.Gold : Color.White);
-            Raylib.DrawText(options[i].sublabel, bx + 20, by + 56, 16, Color.LightGray);
+            Program.DrawTextUI(options[i].label,    bx + 20, by + 18, 28, hover ? Color.Gold : Color.White);
+            Program.DrawTextUI(options[i].sublabel, bx + 20, by + 56, 16, Color.LightGray);
 
             if (hover && Raylib.IsMouseButtonPressed(MouseButton.Left))
                 options[i].action();
         }
 
-        Raylib.DrawText("ESC = Back", ScreenWidth/2 - 40, ScreenHeight - 60, 20, Color.LightGray);
+        Program.DrawTextUI("ESC = Back", ScreenWidth/2 - 40, ScreenHeight - 60, 20, Color.LightGray);
         if (Raylib.IsKeyPressed(KeyboardKey.Escape))
             hubScreen = HubScreen.GameSelect;
     }
@@ -501,7 +501,7 @@ static void DrawHubSeatSelect()
         var pages = TutorialPages(hubGame);
         tutPage = Math.Clamp(tutPage, 0, pages.Length - 1);
 
-        Raylib.DrawText($"HOW TO PLAY — {hubGame.ToString().ToUpper()}",
+        Program.DrawTextUI($"HOW TO PLAY — {hubGame.ToString().ToUpper()}",
             ScreenWidth/2 - 200, 70, 28, Color.Gold);
 
         // page content
@@ -512,17 +512,17 @@ static void DrawHubSeatSelect()
             string text = isHeading ? line.Substring(2).Trim() : line;
             int size = isHeading ? 22 : 17;
             Color col = isHeading ? Color.Gold : Color.White;
-            Raylib.DrawText(text, 120, ty, size, col);
+            Program.DrawTextUI(text, 120, ty, size, col);
             ty += isHeading ? 32 : 24;
         }
 
         // pager
-        Raylib.DrawText($"Page {tutPage+1} / {pages.Length}", ScreenWidth/2 - 40, ScreenHeight - 80, 18, Color.LightGray);
+        Program.DrawTextUI($"Page {tutPage+1} / {pages.Length}", ScreenWidth/2 - 40, ScreenHeight - 80, 18, Color.LightGray);
         if (tutPage > 0)
-            Raylib.DrawText("← A/Left", 120, ScreenHeight - 80, 18, Color.LightGray);
+            Program.DrawTextUI("← A/Left", 120, ScreenHeight - 80, 18, Color.LightGray);
         if (tutPage < pages.Length - 1)
-            Raylib.DrawText("D/Right →", ScreenWidth - 200, ScreenHeight - 80, 18, Color.LightGray);
-        Raylib.DrawText("Q = Back", ScreenWidth/2 - 30, ScreenHeight - 55, 18, Color.LightGray);
+            Program.DrawTextUI("D/Right →", ScreenWidth - 200, ScreenHeight - 80, 18, Color.LightGray);
+        Program.DrawTextUI("Q = Back", ScreenWidth/2 - 30, ScreenHeight - 55, 18, Color.LightGray);
     }
 
     static string[][] TutorialPages(CardGameType g)
@@ -624,12 +624,12 @@ static void DrawHubSeatSelect()
         tutHelperStep = Math.Clamp(tutHelperStep, 0, steps.Length - 1);
         var step = steps[tutHelperStep];
 
-        Raylib.DrawText("TUTORIAL HELPER", ScreenWidth/2 - 130, 72, 30, Color.Gold);
-        Raylib.DrawText($"Step {tutHelperStep+1} of {steps.Length}", ScreenWidth/2 - 50, 110, 18, Color.LightGray);
+        Program.DrawTextUI("TUTORIAL HELPER", ScreenWidth/2 - 130, 72, 30, Color.Gold);
+        Program.DrawTextUI($"Step {tutHelperStep+1} of {steps.Length}", ScreenWidth/2 - 50, 110, 18, Color.LightGray);
 
         // big step title
-        int tw = Raylib.MeasureText(step.title, 26);
-        Raylib.DrawText(step.title, ScreenWidth/2 - tw/2, 148, 26, Color.White);
+        int tw = Program.MeasureTextUI(step.title, 26);
+        Program.DrawTextUI(step.title, ScreenWidth/2 - tw/2, 148, 26, Color.White);
 
         // visual demo panel
         Raylib.DrawRectangle(120, 188, ScreenWidth - 240, 280,
@@ -643,7 +643,7 @@ static void DrawHubSeatSelect()
         int ey = 488;
         foreach (string line in step.lines)
         {
-            Raylib.DrawText(line, 130, ey, 17, Color.White);
+            Program.DrawTextUI(line, 130, ey, 17, Color.White);
             ey += 24;
         }
 
@@ -654,7 +654,7 @@ static void DrawHubSeatSelect()
             bool hp = Raylib.CheckCollisionPointRec(Raylib.GetMousePosition(), prevBtn);
             Raylib.DrawRectangleRec(prevBtn, new Color((byte)30,(byte)50,(byte)30,(byte)255));
             Raylib.DrawRectangleLinesEx(prevBtn, 2, hp ? Color.Gold : Color.White);
-            Raylib.DrawText("← PREV", 145, ScreenHeight - 58, 18, hp ? Color.Gold : Color.White);
+            Program.DrawTextUI("← PREV", 145, ScreenHeight - 58, 18, hp ? Color.Gold : Color.White);
             if (hp && Raylib.IsMouseButtonPressed(MouseButton.Left)) tutHelperStep--;
         }
 
@@ -664,11 +664,11 @@ static void DrawHubSeatSelect()
             bool hn = Raylib.CheckCollisionPointRec(Raylib.GetMousePosition(), nextBtn);
             Raylib.DrawRectangleRec(nextBtn, new Color((byte)30,(byte)50,(byte)30,(byte)255));
             Raylib.DrawRectangleLinesEx(nextBtn, 2, hn ? Color.Gold : Color.White);
-            Raylib.DrawText("NEXT →", ScreenWidth - 238, ScreenHeight - 58, 18, hn ? Color.Gold : Color.White);
+            Program.DrawTextUI("NEXT →", ScreenWidth - 238, ScreenHeight - 58, 18, hn ? Color.Gold : Color.White);
             if (hn && Raylib.IsMouseButtonPressed(MouseButton.Left)) tutHelperStep++;
         }
 
-        Raylib.DrawText("ESC = Back", ScreenWidth/2 - 40, ScreenHeight - 58, 18, Color.LightGray);
+        Program.DrawTextUI("ESC = Back", ScreenWidth/2 - 40, ScreenHeight - 58, 18, Color.LightGray);
         if (Raylib.IsKeyPressed(KeyboardKey.Escape)) hubScreen = HubScreen.ModeSelect;
     }
 
@@ -693,9 +693,9 @@ static void DrawHubSeatSelect()
                                    : new Color((byte)30,(byte)55,(byte)30,(byte)255));
                         Raylib.DrawRectangleLines(bx+20+c*cs, by+20+r*cs, cs-1, cs-1,
                             new Color((byte)60,(byte)100,(byte)60,(byte)255));
-                        if (corner) Raylib.DrawText("F", bx+20+c*cs+6, by+20+r*cs+4, 12, Color.Gold);
+                        if (corner) Program.DrawTextUI("F", bx+20+c*cs+6, by+20+r*cs+4, 12, Color.Gold);
                     }
-                    Raylib.DrawText("← FREE corner", bx+160, by+24, 15, Color.Gold);
+                    Program.DrawTextUI("← FREE corner", bx+160, by+24, 15, Color.Gold);
                 }),
 
             new TutStep("Placing a Chip",
@@ -705,12 +705,12 @@ static void DrawHubSeatSelect()
                 (bx,by,bw,bh) => {
                     // show a card + matching board cell + chip
                     DrawCardFace(new Card(2, 9), bx+40, by+80, true);
-                    Raylib.DrawText("→", bx+120, by+112, 28, Color.Gold);
+                    Program.DrawTextUI("→", bx+120, by+112, 28, Color.Gold);
                     Raylib.DrawRectangle(bx+160, by+82, 54, 76, new Color((byte)60,(byte)90,(byte)20,(byte)255));
                     Raylib.DrawRectangleLines(bx+160, by+82, 54, 76, Color.Yellow);
                     DrawCardFace(new Card(2, 9), bx+161, by+83, true);
                     Raylib.DrawCircle(bx+187, by+120, 18, new Color((byte)60,(byte)130,(byte)255,(byte)220));
-                    Raylib.DrawText("Chip placed!", bx+230, by+112, 16, Color.White);
+                    Program.DrawTextUI("Chip placed!", bx+230, by+112, 16, Color.White);
                 }),
 
             new TutStep("Two-Eyed Jack — Wild",
@@ -719,13 +719,13 @@ static void DrawHubSeatSelect()
                        "Great for completing or extending a sequence." },
                 (bx,by,bw,bh) => {
                     DrawCardFace(new Card(0, 11), bx+40, by+80, true);
-                    Raylib.DrawText("♣J = WILD", bx+40, by+175, 16, Color.Green);
-                    Raylib.DrawText("→ Place anywhere", bx+140, by+112, 17, Color.White);
+                    Program.DrawTextUI("♣J = WILD", bx+40, by+175, 16, Color.Green);
+                    Program.DrawTextUI("→ Place anywhere", bx+140, by+112, 17, Color.White);
                     // show several cells highlighted
                     for (int i = 0; i < 4; i++)
                         Raylib.DrawRectangle(bx+280+i*60, by+88, 52, 74,
                             new Color((byte)60,(byte)90,(byte)20,(byte)200));
-                    Raylib.DrawText("Any empty square", bx+280, by+172, 15, Color.LightGray);
+                    Program.DrawTextUI("Any empty square", bx+280, by+172, 15, Color.LightGray);
                 }),
 
             new TutStep("One-Eyed Jack — Remove",
@@ -734,11 +734,11 @@ static void DrawHubSeatSelect()
                        "Cannot remove chips that form part of a completed sequence." },
                 (bx,by,bw,bh) => {
                     DrawCardFace(new Card(2, 11), bx+40, by+80, true);
-                    Raylib.DrawText("♥J = REMOVE", bx+40, by+175, 16, Color.Red);
+                    Program.DrawTextUI("♥J = REMOVE", bx+40, by+175, 16, Color.Red);
                     // show an opponent chip being removed
                     Raylib.DrawCircle(bx+260, by+120, 22, new Color((byte)255,(byte)70,(byte)70,(byte)220));
-                    Raylib.DrawText("✗", bx+250, by+105, 32, Color.Red);
-                    Raylib.DrawText("Opponent chip removed", bx+210, by+155, 14, Color.LightGray);
+                    Program.DrawTextUI("✗", bx+250, by+105, 32, Color.Red);
+                    Program.DrawTextUI("Opponent chip removed", bx+210, by+155, 14, Color.LightGray);
                 }),
 
             new TutStep("Building a Sequence",
@@ -755,8 +755,8 @@ static void DrawHubSeatSelect()
                         Raylib.DrawCircle(bx+60+c*cs+17, by+118, 14,
                             new Color((byte)60,(byte)130,(byte)255,(byte)220));
                     }
-                    Raylib.DrawText("← 5 in a row = ONE SEQUENCE", bx+60, by+148, 16, Color.Gold);
-                    Raylib.DrawText("Need 2 sequences to WIN", bx+60, by+172, 16, Color.White);
+                    Program.DrawTextUI("← 5 in a row = ONE SEQUENCE", bx+60, by+148, 16, Color.Gold);
+                    Program.DrawTextUI("Need 2 sequences to WIN", bx+60, by+172, 16, Color.White);
                 }),
         };
 
@@ -769,7 +769,7 @@ static void DrawHubSeatSelect()
                 (bx,by,bw,bh) => {
                     Card[] hand = { new Card(3,11), new Card(3,14), new Card(3,10), new Card(0,11), new Card(1,12) };
                     for (int i = 0; i < hand.Length; i++) DrawCardFace(hand[i], bx+30+i*66, by+80, true);
-                    Raylib.DrawText("Spades trump: J♠=Right Bower  J♣=Left Bower", bx+30, by+176, 15, Color.Gold);
+                    Program.DrawTextUI("Spades trump: J♠=Right Bower  J♣=Left Bower", bx+30, by+176, 15, Color.Gold);
                 }),
             new TutStep("Bidding",
                 new[]{ "Starting left of dealer, each player decides to Order Up or Pass.",
@@ -779,11 +779,11 @@ static void DrawHubSeatSelect()
                     Raylib.DrawRectangle(bx+bw/2-80, by+60, 160, 50,
                         new Color((byte)30,(byte)30,(byte)45,(byte)255));
                     Raylib.DrawRectangleLinesEx(new Rectangle(bx+bw/2-80, by+60, 160, 50), 2, Color.Gold);
-                    Raylib.DrawText("ORDER UP", bx+bw/2-50, by+77, 20, Color.Gold);
+                    Program.DrawTextUI("ORDER UP", bx+bw/2-50, by+77, 20, Color.Gold);
                     Raylib.DrawRectangle(bx+bw/2-80, by+122, 160, 50,
                         new Color((byte)30,(byte)30,(byte)45,(byte)255));
                     Raylib.DrawRectangleLinesEx(new Rectangle(bx+bw/2-80, by+122, 160, 50), 2, Color.White);
-                    Raylib.DrawText("PASS", bx+bw/2-26, by+139, 20, Color.White);
+                    Program.DrawTextUI("PASS", bx+bw/2-26, by+139, 20, Color.White);
                 }),
             new TutStep("Winning Tricks",
                 new[]{ "Must follow the led suit if you can. Trump beats everything.",
@@ -794,7 +794,7 @@ static void DrawHubSeatSelect()
                     (int,int)[] spots = { (bw/2-25, bh-80), (80, bh/2), (bw/2-25, 30), (bw-130, bh/2) };
                     Card[] played = { new Card(3,14), new Card(2,10), new Card(3,11), new Card(0,9) };
                     for (int i = 0; i < 4; i++) DrawCardFace(played[i], bx+spots[i].Item1, by+spots[i].Item2, false);
-                    Raylib.DrawText("J♠ wins! (Right Bower)", bx+bw/2-70, by+bh/2-10, 15, Color.Gold);
+                    Program.DrawTextUI("J♠ wins! (Right Bower)", bx+bw/2-70, by+bh/2-10, 15, Color.Gold);
                 }),
         };
 
@@ -814,8 +814,8 @@ static void DrawHubSeatSelect()
                             new Color((byte)30,(byte)30,(byte)45,(byte)255));
                         Raylib.DrawRectangleLinesEx(new Rectangle(bx+60+i*120,by+80,100,50), 2,
                             last ? Color.White : Color.Gold);
-                        int tw2 = Raylib.MeasureText(bids[i], 22);
-                        Raylib.DrawText(bids[i], bx+60+i*120+50-tw2/2, by+93, 22,
+                        int tw2 = Program.MeasureTextUI(bids[i], 22);
+                        Program.DrawTextUI(bids[i], bx+60+i*120+50-tw2/2, by+93, 22,
                             last ? Color.LightGray : Color.Gold);
                     }
                 }),
@@ -825,16 +825,16 @@ static void DrawHubSeatSelect()
                        "In No Trump, the player who leads the Joker calls its suit." },
                 (bx,by,bw,bh) => {
                     DrawCardFace(new Card(-1,15), bx+bw/2-30, by+60, true);
-                    Raylib.DrawText("Always wins!", bx+bw/2-42, by+160, 17, Color.Gold);
+                    Program.DrawTextUI("Always wins!", bx+bw/2-42, by+160, 17, Color.Gold);
                 }),
             new TutStep("Scoring",
                 new[]{ "Make your bid = score the bid value.",
                        "Fail your bid = subtract the bid value (can go negative).",
                        "Defending team always scores 10 per trick they win." },
                 (bx,by,bw,bh) => {
-                    Raylib.DrawText("Made 7♥ (bid value 160): +160", bx+40, by+80, 17, Color.Green);
-                    Raylib.DrawText("Failed 8♦ (bid value 220): -220", bx+40, by+112, 17, Color.Red);
-                    Raylib.DrawText("Defenders won 4 tricks: +40",    bx+40, by+144, 17, Color.LightGray);
+                    Program.DrawTextUI("Made 7♥ (bid value 160): +160", bx+40, by+80, 17, Color.Green);
+                    Program.DrawTextUI("Failed 8♦ (bid value 220): -220", bx+40, by+112, 17, Color.Red);
+                    Program.DrawTextUI("Defenders won 4 tricks: +40",    bx+40, by+144, 17, Color.LightGray);
                 }),
         };
     }
@@ -863,44 +863,44 @@ static void DrawHubSeatSelect()
         Raylib.DrawCircle(ScreenWidth/2, ScreenHeight/2, 280, new Color((byte)20,(byte)80,(byte)45,(byte)255));
         Raylib.DrawCircleLines(ScreenWidth/2, ScreenHeight/2, 280, new Color((byte)120,(byte)90,(byte)40,(byte)255));
         string title = cardGameType == CardGameType.Euchre ? "EUCHRE" : "500";
-        Raylib.DrawText(title, 20, 16, 30, Color.Gold);
-        Raylib.DrawText($"{TeamLabel(0)}: {teamScore[0]}", 20, 56, 22, new Color((byte)120,(byte)200,(byte)255,(byte)255));
-        Raylib.DrawText($"{TeamLabel(1)}: {teamScore[1]}", 20, 82, 22, new Color((byte)255,(byte)140,(byte)140,(byte)255));
-        Raylib.DrawText($"Playing Cards Lv {player.PlayingCardsLevel}", 20, 112, 18, Color.LightGray);
+        Program.DrawTextUI(title, 20, 16, 30, Color.Gold);
+        Program.DrawTextUI($"{TeamLabel(0)}: {teamScore[0]}", 20, 56, 22, new Color((byte)120,(byte)200,(byte)255,(byte)255));
+        Program.DrawTextUI($"{TeamLabel(1)}: {teamScore[1]}", 20, 82, 22, new Color((byte)255,(byte)140,(byte)140,(byte)255));
+        Program.DrawTextUI($"Playing Cards Lv {player.PlayingCardsLevel}", 20, 112, 18, Color.LightGray);
         if (trumpSuit >= 0)
-            Raylib.DrawText($"Trump: {SuitNames[trumpSuit]}", 20, 138, 20, SuitColor(trumpSuit));
-        Raylib.DrawText($"Tricks  You: {tricksWon[0]}  Them: {tricksWon[1]}", 20, 164, 18, Color.White);
-        Raylib.DrawText("Q = Leave", ScreenWidth - 130, 16, 20, Color.LightGray);
+            Program.DrawTextUI($"Trump: {SuitNames[trumpSuit]}", 20, 138, 20, SuitColor(trumpSuit));
+        Program.DrawTextUI($"Tricks  You: {tricksWon[0]}  Them: {tricksWon[1]}", 20, 164, 18, Color.White);
+        Program.DrawTextUI("Q = Leave", ScreenWidth - 130, 16, 20, Color.LightGray);
         DrawSeatLabels();
         DrawOpponentHands();
         DrawCurrentTrick();
         DrawHumanHand();
-        Raylib.DrawText($"MyId={multiplayer.MyId} host={multiplayer.IsHost} cur={currentPlayer} " +
+        Program.DrawTextUI($"MyId={multiplayer.MyId} host={multiplayer.IsHost} cur={currentPlayer} " +
             $"myView={MyViewSeat()} owners=[{cardSeatOwner[0]},{cardSeatOwner[1]},{cardSeatOwner[2]},{cardSeatOwner[3]}]",
             20, ScreenHeight - 160, 18, Color.Yellow);
         if (cardPhase == CardPhase.Bidding && currentPlayer == MyViewSeat())
             DrawBiddingUI();
         if (cardMessageTimer > 0 && cardMessage.Length > 0)
         {
-            int w = Raylib.MeasureText(cardMessage, 26);
+            int w = Program.MeasureTextUI(cardMessage, 26);
             Raylib.DrawRectangle(ScreenWidth/2 - w/2 - 14, 200, w + 28, 42, new Color((byte)0,(byte)0,(byte)0,(byte)180));
-            Raylib.DrawText(cardMessage, ScreenWidth/2 - w/2, 208, 26, Color.Gold);
+            Program.DrawTextUI(cardMessage, ScreenWidth/2 - w/2, 208, 26, Color.Gold);
         }
         if (cardPhase == CardPhase.HandOver)
-            Raylib.DrawText("SPACE = next hand", ScreenWidth/2 - 110, ScreenHeight - 40, 24, Color.White);
+            Program.DrawTextUI("SPACE = next hand", ScreenWidth/2 - 110, ScreenHeight - 40, 24, Color.White);
         if (cardPhase == CardPhase.GameOver)
         {
             int winTeam = teamScore[0] > teamScore[1] ? 0 : 1;
             string msg = TeamLabel(winTeam) + " WIN!";
-            int w = Raylib.MeasureText(msg, 40);
+            int w = Program.MeasureTextUI(msg, 40);
             Raylib.DrawRectangle(ScreenWidth/2 - w/2 - 20, ScreenHeight/2 - 40, w + 40, 80, new Color((byte)0,(byte)0,(byte)0,(byte)220));
-            Raylib.DrawText(msg, ScreenWidth/2 - w/2, ScreenHeight/2 - 24, 40, Color.Gold);
-            Raylib.DrawText("SPACE = exit", ScreenWidth/2 - 70, ScreenHeight/2 + 30, 22, Color.White);
+            Program.DrawTextUI(msg, ScreenWidth/2 - w/2, ScreenHeight/2 - 24, 40, Color.Gold);
+            Program.DrawTextUI("SPACE = exit", ScreenWidth/2 - 70, ScreenHeight/2 + 30, 22, Color.White);
         }
         Raylib.DrawRectangle(10, ScreenHeight - 70, 230, 56, new Color((byte)0,(byte)0,(byte)0,(byte)200));
         Raylib.DrawRectangleLines(10, ScreenHeight - 70, 230, 56, Color.Gold);
-        Raylib.DrawText("DEALER THIS HAND", 20, ScreenHeight - 64, 16, Color.LightGray);
-        Raylib.DrawText(PlayerName(dealer), 20, ScreenHeight - 42, 24, Color.Gold);
+        Program.DrawTextUI("DEALER THIS HAND", 20, ScreenHeight - 64, 16, Color.LightGray);
+        Program.DrawTextUI(PlayerName(dealer), 20, ScreenHeight - 42, 24, Color.Gold);
     }
 
     static void UpdateCardGame_Inner(float dt)
@@ -927,7 +927,7 @@ static void DrawHubSeatSelect()
             player.Position = returnFromCardsPos;
             hubActive = false;
             hubScreen = HubScreen.GameSelect;
-            currentScene = SceneState.Building;
+            ChangeScene(SceneState.Building);
             return;
         }
         if (cardPhase == CardPhase.GameOver)
@@ -938,7 +938,7 @@ static void DrawHubSeatSelect()
                 player.Position = returnFromCardsPos;
                 hubActive = false;
                 hubScreen = HubScreen.GameSelect;
-                currentScene = SceneState.Building;
+                ChangeScene(SceneState.Building);
             }
             return;
         }
