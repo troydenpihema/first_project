@@ -351,6 +351,132 @@ static void DrawCashHUD()
             }
 }
 
+// ── ACHIEVEMENTS UI ──────────────────────────────────────────
+    static void DrawAchievementsUI()
+    {
+        // achievement popup banner (gold bar at top)
+        if (achievementPopupTimer > 0)
+        {
+            achievementPopupTimer -= Raylib.GetFrameTime();
+            byte alpha = (byte)(255 * Math.Min(1f, achievementPopupTimer));
+            string popText = $"ACHIEVEMENT UNLOCKED: {achievementPopupTitle}";
+            int tw = Program.MeasureTextUI(popText, 24);
+            int bx = ScreenWidth / 2 - tw / 2 - 20;
+            Raylib.DrawRectangle(bx, 30, tw + 40, 50, new Color((byte)20,(byte)15,(byte)5,alpha));
+            Raylib.DrawRectangleLinesEx(new Rectangle(bx, 30, tw + 40, 50), 2, new Color((byte)255,(byte)215,(byte)0,alpha));
+            // trophy icon
+            Raylib.DrawCircle(bx + 20, 55, 10, new Color((byte)255,(byte)215,(byte)0,alpha));
+            Program.DrawTextUI("★", bx + 13, 43, 18, new Color((byte)40,(byte)20,(byte)0,alpha));
+            Program.DrawTextUI(popText, bx + 38, 42, 24, new Color((byte)255,(byte)230,(byte)100,alpha));
+        }
+
+        // toggle button — positioned left of QUESTS button
+        Rectangle achBtn = new Rectangle(ScreenWidth - 490, ScreenHeight - 60, 150, 40);
+        Raylib.DrawRectangleRec(achBtn, new Color((byte)0,(byte)0,(byte)0,(byte)200));
+        Raylib.DrawRectangleLinesEx(achBtn, 2, achievementsOpen ? Color.Gold : Color.White);
+        string achLabel = $"ACHIEVE {achievementsUnlockedCount}/{achievements.Count}";
+        Program.DrawTextUI(achLabel, (int)achBtn.X + 8, ScreenHeight - 48, 18, achievementsOpen ? Color.Gold : Color.White);
+
+        if (Raylib.IsMouseButtonPressed(MouseButton.Left)
+            && Raylib.CheckCollisionPointRec(Raylib.GetMousePosition(), achBtn))
+            achievementsOpen = !achievementsOpen;
+
+        if (!achievementsOpen) return;
+
+        // panel
+        int pw = 420, ph = 460;
+        int px = ScreenWidth - 500;
+        int py = ScreenHeight - ph - 70;
+        Raylib.DrawRectangle(px, py, pw, ph, new Color((byte)0,(byte)0,(byte)0,(byte)230));
+        Raylib.DrawRectangleLines(px, py, pw, ph, Color.Gold);
+
+        // title + completion bar
+        Program.DrawTextUI("ACHIEVEMENTS", px + 12, py + 8, 24, Color.Gold);
+        float pct = achievements.Count > 0 ? (float)achievementsUnlockedCount / achievements.Count : 0f;
+        Raylib.DrawRectangle(px + 180, py + 14, 220, 14, new Color((byte)40,(byte)40,(byte)40,(byte)255));
+        Raylib.DrawRectangle(px + 180, py + 14, (int)(220 * pct), 14, new Color((byte)255,(byte)215,(byte)0,(byte)255));
+        Program.DrawTextUI($"{pct*100:F0}%", px + 405, py + 10, 14, Color.White);
+
+        // category tabs
+        Vector2 mouse = Raylib.GetMousePosition();
+        int tabY = py + 36;
+        int tabX = px + 6;
+        for (int i = 0; i < achievementCategories.Length; i++)
+        {
+            string cat = achievementCategories[i];
+            int catW = Program.MeasureTextUI(cat, 13) + 12;
+            Rectangle tab = new Rectangle(tabX, tabY, catW, 22);
+            bool hover = Raylib.CheckCollisionPointRec(mouse, tab);
+            bool active = achievementCategory == i;
+            Raylib.DrawRectangleRec(tab, active ? new Color((byte)60,(byte)50,(byte)20,(byte)255) : new Color((byte)30,(byte)30,(byte)30,(byte)255));
+            Raylib.DrawRectangleLinesEx(tab, 1, active ? Color.Gold : (hover ? Color.White : new Color((byte)60,(byte)60,(byte)60,(byte)255)));
+            Program.DrawTextUI(cat, tabX + 6, tabY + 4, 13, active ? Color.Gold : (hover ? Color.White : Color.Gray));
+            if (hover && Raylib.IsMouseButtonPressed(MouseButton.Left)) { achievementCategory = i; achievementScrollY = 0f; }
+            tabX += catW + 4;
+            if (tabX > px + pw - 40) { tabX = px + 6; tabY += 26; }
+        }
+
+        // filtered list
+        int contentTop = tabY + 30;
+        int contentH = py + ph - contentTop - 8;
+        string filterCat = achievementCategory == 0 ? null : achievementCategories[achievementCategory];
+        var filtered = filterCat == null ? achievements : achievements.Where(a => a.Category == filterCat).ToList();
+
+        int rowH = 56;
+        int totalH = filtered.Count * rowH;
+        float maxScroll = Math.Max(0, totalH - contentH);
+        if (Raylib.CheckCollisionPointRec(mouse, new Rectangle(px, contentTop, pw, contentH)))
+            achievementScrollY = Math.Clamp(achievementScrollY - Raylib.GetMouseWheelMove() * 40f, 0f, maxScroll);
+        achievementScrollY = Math.Clamp(achievementScrollY, 0f, maxScroll);
+
+        Raylib.BeginScissorMode(px, contentTop, pw, contentH);
+        for (int i = 0; i < filtered.Count; i++)
+        {
+            var a = filtered[i];
+            int ry = contentTop + i * rowH - (int)achievementScrollY;
+            if (ry + rowH < contentTop || ry > contentTop + contentH) continue;
+
+            Color bgCol = a.Unlocked
+                ? new Color((byte)30,(byte)40,(byte)20,(byte)200)
+                : new Color((byte)20,(byte)20,(byte)25,(byte)200);
+            Raylib.DrawRectangle(px + 4, ry, pw - 8, rowH - 4, bgCol);
+            Raylib.DrawRectangleLinesEx(new Rectangle(px + 4, ry, pw - 8, rowH - 4), 1,
+                a.Unlocked ? new Color((byte)120,(byte)180,(byte)60,(byte)255) : new Color((byte)50,(byte)50,(byte)50,(byte)255));
+
+            // icon
+            if (a.Unlocked)
+            {
+                Raylib.DrawCircle(px + 24, ry + rowH / 2 - 2, 12, a.IconColor);
+                Program.DrawTextUI("★", px + 17, ry + rowH / 2 - 12, 18, new Color((byte)255,(byte)255,(byte)255,(byte)230));
+            }
+            else
+            {
+                Raylib.DrawCircle(px + 24, ry + rowH / 2 - 2, 12, new Color((byte)40,(byte)40,(byte)40,(byte)255));
+                Program.DrawTextUI("?", px + 19, ry + rowH / 2 - 10, 16, Color.DarkGray);
+            }
+
+            // title + desc
+            Color titleCol = a.Unlocked ? Color.White : Color.Gray;
+            Color descCol = a.Unlocked ? Color.LightGray : new Color((byte)80,(byte)80,(byte)80,(byte)255);
+            Program.DrawTextUI(a.Title, px + 44, ry + 4, 18, titleCol);
+            Program.DrawTextUI(a.Description, px + 44, ry + 24, 14, descCol);
+
+            // reward
+            if (a.Reward > 0)
+            {
+                string rText = a.Unlocked ? $"+${a.Reward}" : $"${a.Reward}";
+                Color rCol = a.Unlocked ? new Color((byte)100,(byte)200,(byte)80,(byte)255) : new Color((byte)150,(byte)130,(byte)50,(byte)255);
+                Program.DrawTextUI(rText, px + pw - 70, ry + 6, 14, rCol);
+            }
+
+            // status
+            string status = a.Unlocked ? "DONE" : "LOCKED";
+            Color stCol = a.Unlocked ? new Color((byte)100,(byte)220,(byte)60,(byte)255) : new Color((byte)100,(byte)100,(byte)100,(byte)255);
+            Program.DrawTextUI(status, px + pw - 70, ry + 28, 12, stCol);
+        }
+        Raylib.EndScissorMode();
+    }
+
     static void DrawSkillsUI()
 {
     Rectangle skillsBtn = new Rectangle(ScreenWidth - 160, ScreenHeight - 60, 140, 40);
@@ -1142,6 +1268,32 @@ foreach (var s in newSkills)
     int mmHwyX   = cx + (int)((200 - player.Position.X) * minimapScale);
     int mmSideY  = cy + (int)((200 - player.Position.Y) * minimapScale);
 
+    // ── MINIMAP FOG OF WAR ──
+    {
+        Color mmFog = new Color((byte)0,(byte)0,(byte)0,(byte)180);
+        float mmCellW = FogCellSize * minimapScale;
+        if (mmCellW >= 0.5f)
+        {
+            int pcx = (int)((player.Position.X - FogOriginX) / FogCellSize);
+            int pcy = (int)((player.Position.Y - FogOriginY) / FogCellSize);
+            int halfView = (int)(minimapSize / 2f / mmCellW) + 2;
+            int fxMin = Math.Max(0, pcx - halfView);
+            int fxMax = Math.Min(FogCols - 1, pcx + halfView);
+            int fyMin = Math.Max(0, pcy - halfView);
+            int fyMax = Math.Min(FogRows - 1, pcy + halfView);
+            for (int fy = fyMin; fy <= fyMax; fy++)
+                for (int fx = fxMin; fx <= fxMax; fx++)
+                {
+                    if (fogRevealed[fy * FogCols + fx]) continue;
+                    float wx = FogOriginX + fx * FogCellSize;
+                    float wy = FogOriginY + fy * FogCellSize;
+                    int sx = cx + (int)((wx - player.Position.X) * minimapScale);
+                    int sy = cy + (int)((wy - player.Position.Y) * minimapScale);
+                    Raylib.DrawRectangle(sx, sy, Math.Max(1, (int)mmCellW + 1), Math.Max(1, (int)mmCellW + 1), mmFog);
+                }
+        }
+    }
+
     Raylib.DrawRectangleLines(minimapX, minimapY, minimapSize, minimapSize, Color.White);
     Raylib.DrawCircle(cx, cy, 4, Color.White);
     // ── TUTORIAL GUIDE MARKER ──
@@ -1179,6 +1331,7 @@ foreach (var s in newSkills)
         {
             DrawSkillsUI();
             DrawQuestsUI();
+            DrawAchievementsUI();
             DrawFishingUI();
             DrawTutorialHUD();
             DrawDropConfirm();

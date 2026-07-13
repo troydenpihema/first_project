@@ -108,7 +108,7 @@ rivers.Add(new River(new Vector2(-5000, 2000), 400));
 rivers.Add(new River(new Vector2(-1950, -8221), 300, true));
 rivers.Add(new River(new Vector2(-2250, -8221), 300));        
 
-dungeonEntrances.Add((new Vector2(-1200, -800),  "Crypt",   "The Dark Crypt"));
+dungeonEntrances.Add((new Vector2(-2750, -900),  "Crypt",   "The Dark Crypt"));
 dungeonEntrances.Add((new Vector2(-600,  -3200),  "Forest",  "Forest Tomb"));
 dungeonEntrances.Add((new Vector2(-18000, 300),   "Snow",    "Ice Cavern"));
 dungeonEntrances.Add((new Vector2(14000,  400),   "Desert",  "Desert Ruins"));
@@ -137,11 +137,12 @@ kiwiCutsWaitingNPCs.Add(new NPC(new Vector2(602, 215), "Patron", "Short back and
 
 // DECORATIVE ASSETS
 // park area
-AddFountain(1700, -850);
-AddBench(-2150, 420);
-AddBench(-2000, 420);
-AddPicnicTable(-1500, 820);
+AddFountain(2280, -580);
+AddBench(-2150, 220);
+AddBench(-2000, 220);
+AddPicnicTable(-1300, 820);
 AddSwingSet(-460, 1130);
+AddSwingSet(3035, -1170);
 AddSandbox(-370, -50);
 AddLamppost(990, -1100);
 AddLamppost(350, -1100);
@@ -160,21 +161,21 @@ AddWheelbarrow(2180, 1020);
 
 
 // residential street
-AddCottagePeaked(70, -100);
-AddCottagePeaked(70, 190);
-AddTerracedHouse(1500, 800);
-AddTerracedHouse(1200, 800);
+AddCottagePeaked(-70, -100);
+AddCottagePeaked(-70, 190);
+AddTerracedHouse(1550, 800);
+AddTerracedHouse(1100, 1100);
 
 // DECORATIVE BUILDINGS
 // Residential neighbourhood
-AddCottage(-160, 430);
-AddCottage(0, 430);
-AddCottage(-800, 430);
-AddCottage(-600, 430);
-AddTownhouse(1180, 330);
-AddTownhouse(1480, 330);
-AddApartmentBlock(710, 800);
-AddApartmentBlock(960, 800);
+AddCottage(1100, 1700);
+AddCottage(900, 1700);
+AddCottage(-800, 250);
+AddCottage(-600, 250);
+AddTownhouse(1530, 170);
+AddTownhouse(1530, 1400);
+AddApartmentBlock(740, 650);
+AddApartmentBlock(960, 650);
 
 // INTERACTIVE BUILDINGS
 
@@ -184,17 +185,17 @@ coastguardStations.Add(new Vector2(27850,  -2000));
 coastguardStations.Add(new Vector2(27850,   8000));
 
 //Library
-AddLibrary(-500, -1416);
+AddLibrary(-1310, -1150);
 
 //Farming shop
-AddFarmingShop(-1400, -9500);
+AddFarmingShop(420, -11200);
 
 //Dbars
-AddDBar(1700, 410);
+AddDBar(1540, 650);
 AddDBar(-4000, 410);
 
 //AA buildings
-AddAA(-1430, 120);       // safe zone
+AddAA(-1430, 100);       // safe zone
 AddAA(14000, 5600);     // city of Hamiltron
 AddAA(-15800, 4700);    // Rotoaira town
 
@@ -205,21 +206,21 @@ AddBoatLicenceOffice(27700, 6000);
 AddAirport(5000, -500);
 
 //Barn 
-AddBarn(-1700, -9500);
+AddBarn(450, -10450);
 
 //Zoo
-AddZoo(-2420, -1070);
+AddZoo(-2420, -1270);
 
 //Schools
 AddSchool(2400, -1400);
 
 // Pet adoption
-AddFamilyHub(-2274, 1855); 
+AddFamilyHub(-2374, 1745); 
 
 // Daycare
 AddDaycare(3000, -300);
 AddDaycareFamilies(new Vector2(3230, 40), new Vector2(2700, 400));
-AddSchoolFamilies(new Vector2(2650, -460), new Vector2(2700, 700));
+AddSchoolFamilies(new Vector2(2650, -950), new Vector2(2700, 700));
 
 //Castle
 AddCastle(3200, -1400);
@@ -231,43 +232,43 @@ AddMall(4000, -900);
 AddPrison(6500, 2000);
 
 //Casinos
-AddCasino(1500, -200);
+AddCasino(2300, 1650);
 
 //KiwiCuts
-AddKiwiCuts(1700, 100);
+AddKiwiCuts(1910, 220);
 
 //Hallensteins
-AddHallensteins(2000, 100);
+AddHallensteins(2110, 220);
 
 //DropZone
-AddDropZone(-50, 1800);
+AddDropZone(-950, 2200);
 
 //Mini golf
-AddMiniGolf(450, 2000);
+AddMiniGolf(420, 2200);
 
 //Banks
-AddBank(720, 360);
+AddBank(720, 185);
 AddBank(-9850, -700); 
 
 // Add dealers (exterior + interior)
 AddDealerBuilding(340, 800, "BIKE DEALER", DealerType.Bike);
-AddDealerBuilding(-258, -848, "CAR DEALER", DealerType.Car);
+AddDealerBuilding(3200, 655, "CAR DEALER", DealerType.Car);
 AddDealerBuilding(-1380, -445, "BARN DEALER", DealerType.Barn);
 
-AddStore(-1000, 410);
+AddStore(-1000, 220);
 
-AddHospital(340, -200);
+AddHospital(340, -30);
 
 AddMagicShop(-500, -200); 
 
-AddRangingShop(1850, 850);
+AddRangingShop(1850, 650);
 
-AddHobbiesStore(2050, 850);
+AddHobbiesStore(2050, 650);
 InitAllCardSets();
 
-AddWeapons(640, 100);
+AddWeapons(340, 220);
 
-AddMyHouse(-400, 390);
+AddMyHouse(-400, 200);
 AddMyHouse(-2090, -9855);
 AddMailbox(-2050, -9705, -1);
 
@@ -278,25 +279,25 @@ AddGasStation(-9000, 540);
 AddMarae(-6900, -230);
 AddMarae(-2050, -300);
 
-AddGym(2250, 850);
+AddGym(2340, 650);
 
-AddSupermarket(3600, 410);
+AddSupermarket(3600, 200);
 
-AddSwimmingComplex(700, -274);
+AddSwimmingComplex(1480, -1000);
 
-AddTennisCourt(-250, 820);
+AddTennisCourt(1975, 1588);
 
-AddBasketballCourt(-550, 820);
+AddBasketballCourt(3680, -920);
 
-AddMcDonalds(2250, 400);
+AddMcDonalds(2310, 200);
 
-AddKFC(1145, -192);
-AddBurgerKing(-25, -1416);
-AddDominos(-2572, 386);
+AddKFC(1145, 200);
+AddBurgerKing(-225, -1416);
+AddDominos(-2572, 200);
 
 gymCounterNPC = new NPC(new Vector2(780, 130), "Staff", "Grab a protein shake bro, $3 each.");
 
-AddPoliceStation(3200, 410);
+AddPoliceStation(3200, 200);
 
 // ── CITY OF HAMILTRON ────────────────────────────────────────────────────────
 // NW block
@@ -355,9 +356,8 @@ RemoveTreesRocksNearBuildings();
         elevationZones.Add(new ElevationZone(new Rectangle(-500, 300, 300, 200), ElevationType.Hill,       10));
 
 // Town NPCs
-npcs.Add(new NPC(new Vector2(-17400, 5200), "Local", "Quiet little town but we love it bro."));
-npcs.Add(new NPC(new Vector2(-16200, 5200), "Farmer", "Just came in from the farm eh."));
-npcs.Add(new NPC(new Vector2(-15000, 4800), "Elder",  "This land has stories older than roads."));
+npcs.Add(new NPC(new Vector2(-3000, 1500), "Mara", "Mind the wolves.") { SpriteKey = "elder" });
+npcs.Add(new NPC(new Vector2(-2800, 1500), "Doric", "Steel's ready.")  { SpriteKey = "blacksmith" });
 
             npcs.Add(new NPC(
                 new Vector2(500,500),
@@ -372,13 +372,13 @@ npcs.Add(new NPC(new Vector2(-15000, 4800), "Elder",  "This land has stories old
             ));
 
             //Fence safezone
-            fenceManager.SpawnAt(new Vector2(-3000, -1500), 26, horizontal: true, segmentWidth: 12, segmentHeight: 30, spacing: 110);
+            fenceManager.SpawnAt(new Vector2(-3000, -1500), 25, horizontal: true, segmentWidth: 12, segmentHeight: 30, spacing: 110);
             fenceManager.SpawnAt(new Vector2(345, -1500), 30, horizontal: true, segmentWidth: 12, segmentHeight: 30, spacing: 110);
-            fenceManager.SpawnAt(new Vector2(3980, -1500), 15, horizontal: false, segmentWidth: 12, segmentHeight: 30, spacing: 105);
-            fenceManager.SpawnAt(new Vector2(3980, 760), 13, horizontal: false, segmentWidth: 12, segmentHeight: 30, spacing: 104);
-            fenceManager.SpawnAt(new Vector2(-3000, -1500), 15, horizontal: false, segmentWidth: 12, segmentHeight: 30, spacing: 105);
-            fenceManager.SpawnAt(new Vector2(-3000, 760), 13, horizontal: false, segmentWidth: 12, segmentHeight: 30, spacing: 104);
-            fenceManager.SpawnAt(new Vector2(-3000, 2500), 26, horizontal: true, segmentWidth: 12, segmentHeight: 30, spacing: 110);
+            fenceManager.SpawnAt(new Vector2(3980, -1500), 14, horizontal: false, segmentWidth: 12, segmentHeight: 30, spacing: 103);
+            fenceManager.SpawnAt(new Vector2(3980, 630), 14, horizontal: false, segmentWidth: 12, segmentHeight: 30, spacing: 104);
+            fenceManager.SpawnAt(new Vector2(-3000, -1500), 14, horizontal: false, segmentWidth: 12, segmentHeight: 30, spacing: 103);
+            fenceManager.SpawnAt(new Vector2(-3000, 630), 14, horizontal: false, segmentWidth: 12, segmentHeight: 30, spacing: 104);
+            fenceManager.SpawnAt(new Vector2(-3000, 2500), 25, horizontal: true, segmentWidth: 12, segmentHeight: 30, spacing: 110);
             fenceManager.SpawnAt(new Vector2(345, 2500), 30, horizontal: true, segmentWidth: 12, segmentHeight: 30, spacing: 110);
 
             //Fence farmzone
@@ -495,19 +495,19 @@ npcs.Add(new NPC(new Vector2(-15000, 4800), "Elder",  "This land has stories old
             vehicles.Add(new Vehicle(new Vector2(coastX + 260, 10000), new Color((byte)200,(byte)160,(byte)60,(byte)255),  320f, Vehicle.VehicleType.CruiseShip));
             
             //vehicles
-            vehicles.Add(new Vehicle(new Vector2(100,  800), Color.Red,      650, Vehicle.VehicleType.Sedan));
-            vehicles.Add(new Vehicle(new Vector2(1200, 650), Color.Yellow,   900, Vehicle.VehicleType.Truck));
+            vehicles.Add(new Vehicle(new Vector2(50,  800), Color.Red,      650, Vehicle.VehicleType.Sedan));
+            vehicles.Add(new Vehicle(new Vector2(-670, 650), Color.Yellow,   900, Vehicle.VehicleType.Truck));
             vehicles.Add(new Vehicle(new Vector2(-400, 650), Color.DarkBlue, 500, Vehicle.VehicleType.SUV));
-            vehicles.Add(new Vehicle(new Vector2(3082, 458), Color.Black, 500, Vehicle.VehicleType.PoliceCar));
+            vehicles.Add(new Vehicle(new Vector2(3082, 248), Color.Black, 500, Vehicle.VehicleType.PoliceCar));
             vehicles.Add(new Vehicle(new Vector2(3082, 758), Color.Red, 500, Vehicle.VehicleType.FireTruck));
-            vehicles.Add(new Vehicle(new Vector2(510, -189), Color.White, 500, Vehicle.VehicleType.Ambulance));
+            vehicles.Add(new Vehicle(new Vector2(550, -30), Color.White, 500, Vehicle.VehicleType.Ambulance));
 
             //Updated vehciles
-            vehicles.Add(new Vehicle(new Vector2(860, 200),  new Color((byte)180,(byte)140,(byte)60,(byte)255),  450f, Vehicle.VehicleType.Ute));
-            vehicles.Add(new Vehicle(new Vector2(1200, 200), new Color((byte)60,(byte)120,(byte)60,(byte)255),   380f, Vehicle.VehicleType.MonsterTruck));
-            vehicles.Add(new Vehicle(new Vector2(1500, 150), new Color((byte)200,(byte)40,(byte)40,(byte)255),   650f, Vehicle.VehicleType.Convertible));
-            vehicles.Add(new Vehicle(new Vector2(3000, 200), new Color((byte)30,(byte)30,(byte)40,(byte)255),    700f, Vehicle.VehicleType.MuscleCar));
-            vehicles.Add(new Vehicle(new Vector2(2400, 300), new Color((byte)220,(byte)20,(byte)20,(byte)255),   900f, Vehicle.VehicleType.RacingCar));
+            vehicles.Add(new Vehicle(new Vector2(-100, 800),  new Color((byte)180,(byte)140,(byte)60,(byte)255),  450f, Vehicle.VehicleType.Ute));
+            vehicles.Add(new Vehicle(new Vector2(-250, 800), new Color((byte)60,(byte)120,(byte)60,(byte)255),   380f, Vehicle.VehicleType.MonsterTruck));
+            vehicles.Add(new Vehicle(new Vector2(-400, 800), new Color((byte)200,(byte)40,(byte)40,(byte)255),   650f, Vehicle.VehicleType.Convertible));
+            vehicles.Add(new Vehicle(new Vector2(-550, 800), new Color((byte)30,(byte)30,(byte)40,(byte)255),    700f, Vehicle.VehicleType.MuscleCar));
+            vehicles.Add(new Vehicle(new Vector2(-700, 800), new Color((byte)220,(byte)20,(byte)20,(byte)255),   900f, Vehicle.VehicleType.RacingCar));
 
             // City traffic
             vehicles.Add(new Vehicle(new Vector2(12400, 5560), new Color((byte)40,(byte)80,(byte)160,(byte)255), 280f, Vehicle.VehicleType.Sedan));
@@ -522,24 +522,24 @@ npcs.Add(new NPC(new Vector2(-15000, 4800), "Elder",  "This land has stories old
 
 
             // Mountain bikes - safe zone and grasslands
-            rideables.Add(new Rideable(new Vector2(600, 650),  Rideable.RideableType.MountainBike, new Color((byte)180,(byte)80,(byte)20,(byte)255)));
+            rideables.Add(new Rideable(new Vector2(-210, 650),  Rideable.RideableType.MountainBike, new Color((byte)180,(byte)80,(byte)20,(byte)255)));
             rideables.Add(new Rideable(new Vector2(-500, 700), Rideable.RideableType.MountainBike, new Color((byte)20,(byte)100,(byte)180,(byte)255)));
             rideables.Add(new Rideable(new Vector2(5000, 600), Rideable.RideableType.MountainBike, new Color((byte)20,(byte)150,(byte)50,(byte)255)));
 
             // BMX bikes - safe zone
-            rideables.Add(new Rideable(new Vector2(800, 650),  Rideable.RideableType.BMX, new Color((byte)220,(byte)50,(byte)50,(byte)255)));
+            rideables.Add(new Rideable(new Vector2(-80, 650),  Rideable.RideableType.BMX, new Color((byte)220,(byte)50,(byte)50,(byte)255)));
             rideables.Add(new Rideable(new Vector2(-300, 700), Rideable.RideableType.BMX, new Color((byte)200,(byte)150,(byte)0,(byte)255)));
-            rideables.Add(new Rideable(new Vector2(1087, 1207), Rideable.RideableType.BMX, new Color((byte)150,(byte)0,(byte)200,(byte)255)));
+            rideables.Add(new Rideable(new Vector2(900, 1000), Rideable.RideableType.BMX, new Color((byte)150,(byte)0,(byte)200,(byte)255)));
 
             // Donkeys
             rideables.Add(new Rideable(new Vector2(-2807, -10100),  Rideable.RideableType.Donkey, new Color((byte)130,(byte)130,(byte)140,(byte)255)));
             rideables.Add(new Rideable(new Vector2(-4000, -8500),  Rideable.RideableType.Donkey, new Color((byte)130,(byte)130,(byte)140,(byte)255)));
 
             // Horses - grasslands and safe zone outskirts
-            rideables.Add(new Rideable(new Vector2(4500, 400),  Rideable.RideableType.Horse, new Color((byte)139,(byte)90,(byte)43,(byte)255)));
-            rideables.Add(new Rideable(new Vector2(7000, 700),  Rideable.RideableType.Horse, new Color((byte)80,(byte)50,(byte)20,(byte)255)));
-            rideables.Add(new Rideable(new Vector2(-2000, 800), Rideable.RideableType.Horse, new Color((byte)200,(byte)180,(byte)160,(byte)255)));
-            rideables.Add(new Rideable(new Vector2(3000, 500),  Rideable.RideableType.Horse, Color.White));
+           // rideables.Add(new Rideable(new Vector2(4500, 400),  Rideable.RideableType.Horse, new Color((byte)139,(byte)90,(byte)43,(byte)255)));
+           // rideables.Add(new Rideable(new Vector2(7000, 700),  Rideable.RideableType.Horse, new Color((byte)80,(byte)50,(byte)20,(byte)255)));
+           // rideables.Add(new Rideable(new Vector2(-2000, 800), Rideable.RideableType.Horse, new Color((byte)200,(byte)180,(byte)160,(byte)255)));
+           // rideables.Add(new Rideable(new Vector2(3000, 500),  Rideable.RideableType.Horse, Color.White));
             rideables.Add(new Rideable(new Vector2(-450, -6400),  Rideable.RideableType.Horse, Color.White));
             rideables.Add(new Rideable(new Vector2(-2807, -9564),  Rideable.RideableType.Horse, Color.White));
 

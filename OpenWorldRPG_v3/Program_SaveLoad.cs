@@ -414,6 +414,29 @@ for (int i = 0; i < livestockPens.Count; i++)
     S("storedPets.count", storedPets.Count);
     for (int i = 0; i < storedPets.Count; i++) S("storedPet." + i, storedPets[i]);
 
+    // ── Bestiary ──
+    S("bestiary.count", bestiary.Count);
+    foreach (var kv in bestiary)
+    {
+        var e = kv.Value;
+        SB("best." + kv.Key + ".disc", e.Discovered);
+        S("best." + kv.Key + ".kills", e.Kills);
+        S("best." + kv.Key + ".loc", e.Location ?? "");
+    }
+
+    // ── Achievements ──
+    S("ach.count", achievements.Count);
+    for (int i = 0; i < achievements.Count; i++)
+        SB("ach." + achievements[i].Id, achievements[i].Unlocked);
+    S("ach.visitedBiomes", string.Join("|", achievementVisited));
+
+    // ── Fog of War ──
+    byte[] fogBytes = new byte[(FogCols * FogRows + 7) / 8];
+    for (int i = 0; i < FogCols * FogRows; i++)
+        if (fogRevealed[i]) fogBytes[i / 8] |= (byte)(1 << (i % 8));
+    S("fogData", Convert.ToBase64String(fogBytes));
+    S("fogRevealed", fogRevealedCount);
+
     System.IO.File.WriteAllLines(savePath, d);
     ShowNotification("Game Saved!");
 }
@@ -920,6 +943,44 @@ for (int i = 0; i < penCount; i++)
     string ppType = GS("pendingPet.type", "empty");
     pendingPet = ppType == "empty" ? null
         : new Pet(new Vector2(GF("pendingPet.x"), GF("pendingPet.y")), ppType, PetColorFor(ppType + " Egg"));
+    
+    // ── Bestiary ──
+    foreach (var kv in bestiary)
+    {
+        var e = kv.Value;
+        e.Discovered = GB("best." + kv.Key + ".disc");
+        e.Kills = GI("best." + kv.Key + ".kills");
+        string loc = GS("best." + kv.Key + ".loc", "");
+        if (loc.Length > 0) e.Location = loc;
+    }
+
+    // ── Achievements ──
+    achievementsUnlockedCount = 0;
+    foreach (var a in achievements)
+    {
+        a.Unlocked = GB("ach." + a.Id);
+        if (a.Unlocked) achievementsUnlockedCount++;
+    }
+    achievementVisited.Clear();
+    string visitedStr = GS("ach.visitedBiomes", "");
+    if (visitedStr.Length > 0)
+        foreach (string b in visitedStr.Split('|'))
+            if (b.Length > 0) achievementVisited.Add(b);
+
+    // ── Fog of War ──
+    ResetFogOfWar();
+    string fogB64 = GS("fogData", "");
+    if (fogB64.Length > 0)
+    {
+        try
+        {
+            byte[] fogBytes = Convert.FromBase64String(fogB64);
+            for (int i = 0; i < FogCols * FogRows && i / 8 < fogBytes.Length; i++)
+                if ((fogBytes[i / 8] & (1 << (i % 8))) != 0)
+                    { fogRevealed[i] = true; fogRevealedCount++; }
+        }
+        catch { /* corrupt data — start fresh */ }
+    }
 }  
     }
 }

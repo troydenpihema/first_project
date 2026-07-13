@@ -32,7 +32,15 @@ namespace OpenWorldRPG
     public float GoHomeHour      = 17f;     // 5:00  everyone hidden (heading home)
     public bool DrawInsideNow = false;
     public string HomeBuilding = "DAYCARE";
+    public string SpriteKey = "villager";
     bool wasHidden = false;
+    public enum Dir { North, West, South, East }
+    public Dir Facing = Dir.South;
+    int _animFrame;
+    float _animTimer;
+    Vector2 _lastPos;
+    const int LpcCell = 64;
+static readonly int[] WalkRows = { 8, 9, 10, 11 }; // N, W, S, E
 
     public NPC(Vector2 pos, string name, string dialogue)
     {
@@ -42,6 +50,21 @@ namespace OpenWorldRPG
     }
 public void Update(float dt)
 {
+    Vector2 delta = Position - _lastPos;
+bool moving = delta.LengthSquared() > 0.01f;
+if (moving)
+{
+    if (MathF.Abs(delta.X) > MathF.Abs(delta.Y))
+        Facing = delta.X > 0 ? Dir.East : Dir.West;
+    else
+        Facing = delta.Y > 0 ? Dir.South : Dir.North;
+
+    _animTimer += dt;
+    if (_animTimer >= 0.1f) { _animTimer = 0f; _animFrame = _animFrame % 8 + 1; }
+}
+else _animFrame = 0;
+_lastPos = Position;
+
     if (HasSchedule)
     {
         float hour = Program.GetCurrentHour();
@@ -123,6 +146,14 @@ public NPC(Vector2 pos)
 }
     public Rectangle Bounds =>
         new Rectangle(Position.X, Position.Y, 40, 60);
+
+public void DrawSprite(Texture2D sheet, float scale = 1.5f)
+{
+    int row = WalkRows[(int)Facing];
+    Rectangle src = new(_animFrame * LpcCell, row * LpcCell, LpcCell, LpcCell);
+    Rectangle dst = new(Position.X - 12, Position.Y - 4, LpcCell * scale, LpcCell * scale);
+    Raylib.DrawTexturePro(sheet, src, dst, Vector2.Zero, 0f, Color.White);
+}
 
     public void Draw()
     {

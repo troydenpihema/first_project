@@ -58,7 +58,10 @@ namespace OpenWorldRPG
 
                 int killerId = enemy.LastDamagerId >= 0 ? enemy.LastDamagerId : multiplayer.MyId;
                 if (killerId == multiplayer.MyId)
-                player.AddCombatXP(CombatXpFor(enemy.Type));           
+                {
+                    player.AddCombatXP(CombatXpFor(enemy.Type));
+                    RecordBestiaryKill(enemy.Type, GetCurrentBiome());
+                }
                 else
                 multiplayer.SendEnemyKill(killerId, enemy.Type);
 

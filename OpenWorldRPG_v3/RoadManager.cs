@@ -39,7 +39,7 @@ namespace OpenWorldRPG
         }
 
         // Colours (sensible defaults; override per-road if you like)
-        public Color Surface  = new Color((byte)60,  (byte)60,  (byte)65,  (byte)255);
+        public Color Surface  = new Color((byte)52, (byte)52, (byte)56, (byte)255);
         public Color Sidewalk = new Color((byte)155, (byte)155, (byte)140, (byte)255);
         public Color Marking  = new Color((byte)235, (byte)225, (byte)120, (byte)255);
         public Road(Vector2 start, Vector2 end, float laneWidth = 100f, float sidewalkWidth = 40f)
@@ -192,10 +192,12 @@ namespace OpenWorldRPG
             }
 
             foreach (var r in Roads) if (Visible(r)) r.DrawSidewalk();
+            bool night = Program.GetCurrentHour() >= 19f || Program.GetCurrentHour() < 6f; 
+            foreach (var r in Roads) if (Visible(r)) r.DrawStreetlights(night);
             foreach (var r in Roads) if (Visible(r)) r.DrawSurface();
             foreach (var r in Roads) if (Visible(r)) r.DrawMarkings();
-            bool night = Program.GetCurrentHour() >= 19f || Program.GetCurrentHour() < 6f;   
-            foreach (var r in Roads) if (Visible(r)) r.DrawStreetlights(night); 
+              
+             
         }
     }
 }

@@ -610,7 +610,8 @@ static void DrawPlayerMenu()
         case PlayerMenuTab.Identity:      DrawPMIdentity(cx, cy, cw); break;
         case PlayerMenuTab.Stats:         DrawPMStats(cx, cy, cw); break;
         case PlayerMenuTab.Crafting:      DrawPMCrafting(cx, cy, cw); break;
-        case PlayerMenuTab.Achievements:  DrawPMPlaceholder(cx, cy, "Achievements"); break;
+        case PlayerMenuTab.Achievements:  DrawPMAchievements(cx, cy, cw); break;
+        case PlayerMenuTab.Bestiary:      DrawPMBestiary(cx, cy, cw); break;
         case PlayerMenuTab.Unlocks:       DrawPMUnlocks(cx, cy, cw); break;
         case PlayerMenuTab.Relationships: DrawPMRelationships(cx, cy, cw); break;
         case PlayerMenuTab.Collectables:  DrawPMCollectables(cx, cy, cw); break;

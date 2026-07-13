@@ -456,13 +456,17 @@ static void AddPrison(float x, float y)
 
 static void AddHobbiesStore(float x, float y)
 {
+    var shack = new NPC(new Vector2(530, 20), "Shack", "Goodluck on the rips!, my luck has has been terrible");
+    shack.SpriteKey = "Shack";        
+    shack.Facing = NPC.Dir.South; 
+
     var shop = new Building(
         new Rectangle(x, y, 160, 120),
         new Color(220, 60, 60, 255),
         new Color(240, 220, 60, 255),
         new Vector2(x + 80, y + 100),
         "HOBBIES STORE",
-        new NPC(new Vector2(600, 120), "Collector", "Gotta catch 'em all! Booster packs, $5 each. Press E to browse our selection" ),
+        shack,
         entryPos: new Vector2(640, 880)
     );
     shop.InteriorObjects.Clear();
@@ -1689,13 +1693,17 @@ static void DrawFamilyHubExterior(float x, float y)
 
 static void AddDaycare(float x, float y)
 {
+    var Cride = new NPC(new Vector2(700, 200), "Cride", "Welcome to best start!");
+    Cride.SpriteKey = "Cride";        
+    Cride.Facing = NPC.Dir.South;
+
     var daycare = new Building(
         new Rectangle(x, y, 460, 340),
         new Color(255, 200, 90, 255),
         new Color(255, 235, 190, 255),
         new Vector2(x + 230, y + 300),
         "BEST START",
-        new NPC(new Vector2(700, 200), "Cride", "Best Start! Enroll a little one here."),
+        Cride,
         entryPos: new Vector2(700, 900)
     );
     daycare.InteriorObjects.Clear();
@@ -1747,6 +1755,10 @@ static void DrawDaycareExterior(float x, float y)
 
 static void AddKiwiCuts(float x, float y)
 {
+    var barber = new NPC(new Vector2(400, 300), "Barber", "Sweet as, take a seat bro.");
+    barber.SpriteKey = "Barber";       
+    barber.Facing = NPC.Dir.South;   
+
     var kiwicuts = new Building(
         new Rectangle(x, y, 140, 110),
         new Color(240, 240, 235, 255),
@@ -1859,13 +1871,17 @@ static void AddSupermarket(float x, float y)
 
 static void AddHospital(float x, float y)
 {
+    var nurse = new NPC(new Vector2(1235, 80), "Nurse", "How may I help today?");
+    nurse.SpriteKey = "nurse";        
+    nurse.Facing = NPC.Dir.South; 
+
     var hospital = new Building(
         new Rectangle(x, y, 160, 120),
         new Color(220, 50, 50, 255),
         new Color(200, 220, 220, 255),
         new Vector2(x + 80, y + 100),
         "HOSPITAL",
-        new NPC(new Vector2(1235, 80), "Doctor", "Kia ora! I can patch you up for $20."),
+        nurse,
         entryPos: new Vector2(1225, 897)
     );
 
@@ -1978,13 +1994,17 @@ static void AddStore(float x, float y)
 
 static void AddMagicShop(float x, float y)
 {
+    var Wizard = new NPC(new Vector2(1000, 500), "Wizard", "Welcome traveller. Arcane power awaits those who seek it.");
+    Wizard.SpriteKey = "Wizard";        
+    Wizard.Facing = NPC.Dir.South;      
+
     var magic = new Building(
         new Rectangle(x, y, 160, 120),
-        new Color(60, 20, 100, 255),      // deep purple exterior
-        new Color(30, 10, 60, 255),       // dark interior
+        new Color(60, 20, 100, 255),
+        new Color(30, 10, 60, 255),
         new Vector2(x + 80, y + 100),
         "MAGIC SHOP",
-        new NPC(new Vector2(600, 120), "Mystic", "Welcome traveller. Arcane power awaits those who seek it."),
+        Wizard,                          
         entryPos: new Vector2(640, 880)
     );
 
@@ -2002,13 +2022,17 @@ static void AddMagicShop(float x, float y)
 
 static void AddRangingShop(float x, float y)
 {
+    var ranger = new NPC(new Vector2(400, 350), "Ranger", "Welcome traveller. Arcane power awaits those who seek it.");
+        ranger.SpriteKey = "ranger";        
+        ranger.Facing = NPC.Dir.South; 
+
     var ranging = new Building(
         new Rectangle(x, y, 160, 120),
         new Color(60, 35, 10, 255),
         new Color(35, 20, 8, 255),
         new Vector2(x + 80, y + 100),
         "RANGING SHOP",
-        new NPC(new Vector2(600, 120), "Fletcher", "Best bows in the land bro. Arrows too."),
+        ranger,
         entryPos: new Vector2(640, 880)
     );
 
@@ -2026,13 +2050,17 @@ static void AddRangingShop(float x, float y)
 
 static void AddWeapons(float x, float y)
 {
+    var Blacksmith = new NPC(new Vector2(585, 130), "Blacksmith", "Welcome traveller. Looking to purchase a weapon?.");
+    Blacksmith.SpriteKey = "Blacksmith";        
+    Blacksmith.Facing = NPC.Dir.South; 
+
     var weapons = new Building(
         new Rectangle(x, y, 160, 120),
         new Color(80, 80, 80, 255),
         new Color(30, 30, 35, 255),
         new Vector2(x + 80, y + 100),
         "WEAPONS",
-        new NPC(new Vector2(600, 420), "Weapons Dealer", "Need a sharper blade bro? I got you."),
+        Blacksmith,
         entryPos: new Vector2(600, 880)
     );
  
@@ -2210,13 +2238,17 @@ static void AddMarae(float x, float y)
 
 static void AddPoliceStation(float x, float y)
 {
+    var cop = new NPC(new Vector2(1235, 80), "Police officer", "What can I do for you today?");
+    cop.SpriteKey = "cop";        
+    cop.Facing = NPC.Dir.South;
+
     var station = new Building(
         new Rectangle(x, y, 160, 120),
         new Color(30, 30, 120, 255),
         new Color(40, 40, 80, 255),
         new Vector2(x + 80, y + 100),
         "POLICE STATION",
-        new NPC(new Vector2(1235, 80), "Officer", "Keep it legal out there, no funny business."),
+        cop,
         entryPos: new Vector2(1225, 897)
     );
 

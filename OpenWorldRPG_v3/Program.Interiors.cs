@@ -389,34 +389,28 @@ foreach (var table in poolTables)
         Program.DrawTextUI("E = Order Food", 545, 588, 16, Color.Gold);
 
 
-    // ── C RIDE — claw machine pro ──
-        cRideAnimTimer += Raylib.GetFrameTime();
-        float cRideBob = MathF.Sin(cRideAnimTimer * 4f) * 2f;      // subtle bob
-        float armPump = MathF.Sin(cRideAnimTimer * 8f) * 4f;       // fast arm motion (working the joystick)
+    
+cRideAnimTimer += Raylib.GetFrameTime();
+float cRideBob = MathF.Sin(cRideAnimTimer * 4f) * 2f; 
 
-        int crx = (int)cRidePos.X;
-        int cry = (int)(cRidePos.Y + cRideBob);
+int crx = (int)cRidePos.X;
+int cry = (int)(cRidePos.Y + cRideBob);
 
-        // body
-        Raylib.DrawRectangle(crx - 12, cry - 4, 24, 30, new Color((byte)180,(byte)60,(byte)160,(byte)255)); // purple shirt
-        // head
-        Raylib.DrawCircle(crx, cry - 16, 11, new Color((byte)240,(byte)200,(byte)170,(byte)255));
-        // hair
-        Raylib.DrawRectangle(crx - 11, cry - 26, 22, 8, new Color((byte)60,(byte)40,(byte)20,(byte)255));
-        // arm working the joystick (pumping)
-        Raylib.DrawLineEx(new Vector2(crx + 10, cry), new Vector2(crx + 20, cry + 8 + armPump), 4, new Color((byte)240,(byte)200,(byte)170,(byte)255));
-        // name tag
-        int tagW = Program.MeasureTextUI("C RIDE", 14);
-        Raylib.DrawRectangle(crx - tagW/2 - 4, cry - 44, tagW + 8, 18, new Color((byte)0,(byte)0,(byte)0,(byte)180));
-        Program.DrawTextUI("C RIDE", crx - tagW/2, cry - 42, 14, Color.Gold);
+// animate ACROSS row 13 — one row, cycling columns (frames), like the walk rows
+const int Cell = 64;
+int crideFrame = ((int)(cRideAnimTimer * 8f)) % 6;          
+Rectangle crideSrc = new(crideFrame * Cell, 12 * Cell, Cell, Cell);   // row 12, north claw action
+const float crideScale = 1.5f;   
+Rectangle crideDst = new(crx - 12, cry - 4, Cell * crideScale, Cell * crideScale);
+Raylib.DrawTexturePro(AssetManager.Get("Cride"), crideSrc, crideDst, Vector2.Zero, 0f, Color.White);
 
         if (cRideMessageActive)
 {
     string[] brags = {
-        "C RIDE: I've won 200 plushies this month alone!",
-        "C RIDE: The claw never beats me. Never.",
-        "C RIDE: Watch and learn, rookie.",
-        "C RIDE: I could do this with my eyes closed.",
+        "Cride: I've won 200 plushies this month alone!",
+        "Cride: The claw never beats me. Never.",
+        "Cride: Watch and learn, rookie.",
+        "Cride: I could do this with my eyes closed.",
     };
     // pick a line that changes slowly so it's readable
     int bragIndex = ((int)(cRideAnimTimer / 4f)) % brags.Length;
@@ -3993,7 +3987,8 @@ Program.DrawTextUI("FACILITIES", 1312, 172, 14, Color.LightGray);
     
 }
 DrawCollectables($"Building:{currentBuilding.BuildingName}");
-    currentBuilding.InteriorNPC.Draw();
+
+    currentBuilding.InteriorNPC.DrawSprite(AssetManager.Get(currentBuilding.InteriorNPC.SpriteKey), 1.5f);   
 
   if (currentBuilding.BuildingName == "DBar")
 {

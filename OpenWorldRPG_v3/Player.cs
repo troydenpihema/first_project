@@ -9,6 +9,7 @@ namespace OpenWorldRPG
      class Player
     {
         public Vector2 Position;
+        public PlayerCharacter Character = new PlayerCharacter();
         public enum FacingDirection { Down, Up, Left, Right }
         public FacingDirection Facing = FacingDirection.Down;
         float walkTimer = 0f;
@@ -27,7 +28,7 @@ namespace OpenWorldRPG
         }
         public bool isSwinging = false;
         public float swingTimer = 0f;
-        public float swingDuration = 0.3f;   // how long one swing takes
+        public float swingDuration = 0.55f;   // how long one swing takes
         bool walkFrame = false; // alternates legs
         bool isMoving = false;
         float chopAnimAngle = 0f;
@@ -1071,25 +1072,32 @@ int y = (int)(Position.Y + chopBob);
 
 DrawArmorAura(x, y);
 
-switch (Facing)
+if (Program.useLayeredPlayer)
+{ 
+    DrawCharacter(x, y);
+}
+else 
 {
-    case FacingDirection.Down:
-        DrawFacingDown(x, y);
-        DrawHeldItem(x, y, GetDisplayedItem());
-        break;
-    case FacingDirection.Up:
-        DrawFacingUp(x, y);
-        DrawHeldItem(x, y, GetDisplayedItem());
-        break;
-    case FacingDirection.Left:
-        DrawFacingLeft(x, y);
-        DrawHeldItem(x, y, GetDisplayedItem());
-        break;
-    case FacingDirection.Right:
-        DrawFacingRight(x, y);
-        DrawHeldItem(x, y, GetDisplayedItem());
-        DrawShieldRight(x, y); 
-        break;
+    switch (Facing)
+    {
+        case FacingDirection.Down:
+            DrawFacingDown(x, y);
+            DrawHeldItem(x, y, GetDisplayedItem());
+            break;
+        case FacingDirection.Up:
+            DrawFacingUp(x, y);
+            DrawHeldItem(x, y, GetDisplayedItem());
+            break;
+        case FacingDirection.Left:
+            DrawFacingLeft(x, y);
+            DrawHeldItem(x, y, GetDisplayedItem());
+            break;
+        case FacingDirection.Right:
+            DrawFacingRight(x, y);
+            DrawHeldItem(x, y, GetDisplayedItem());
+            DrawShieldRight(x, y);
+            break;
+    }
 }
     // draw held item on top of player
     if (HasBasket)
@@ -1101,6 +1109,686 @@ switch (Facing)
     //Raylib.DrawCircle((int)Center.X, (int)Center.Y, 4, Color.Red);
 }
 
+// ── LPC sprite draw (incremental migration) ──────────────
+bool TryDrawSprite(int x, int y)
+{
+    string item = GetDisplayedItem();
+    if (item == null) return false;
+
+    // Which sprite sheet for the active tool? null = not migrated yet → shape draw.
+    string sheet = null;
+    if (item.Contains("Pickaxe"))                               sheet = "player_pickaxe";
+    else if (item.Contains("Axe") && !item.Contains("War Axe")) sheet = "player_axe";
+    else if (item.Contains("Rod"))                              sheet = "player_fishingrod";
+    if (sheet == null) return false;                            // other tools/weapons still shape-drawn
+
+    int dir = Facing switch
+    {
+        FacingDirection.Up    => 0,
+        FacingDirection.Left  => 1,
+        FacingDirection.Down  => 2,
+        FacingDirection.Right => 3,
+        _ => 2
+    };
+
+    const int Cell = 64;
+    int row, frame;
+
+    bool fishing = Program.isFishing && sheet == "player_fishingrod";
+    bool chopping = isSwinging && sheet != "player_fishingrod";
+
+    if (fishing)                    // rod cast → shoot rows (bow-style, reads as casting)
+    {
+        row = 16 + dir;             // shoot rows 16–19 on the classic block
+        frame = (int)(chopAnimAngle / 360f * 8) % 8;   // reuse timer if you drive it; else stays frame 0
+    }
+    else if (chopping)              // pickaxe/axe swing → mining rows, fires on input anywhere
+    {
+        row = 55 + dir;                                   
+        float t = swingTimer / swingDuration;             
+        frame = Math.Clamp((int)(t * 6), 0, 5);           
+    }
+    else if (isMoving)              // walking with tool
+    {
+        row = 8 + dir;
+        frame = walkFrame ? 4 : 0;
+    }
+    else                            // idle with tool
+    {
+        row = 8 + dir;
+        frame = 0;
+    }
+
+    Rectangle src = new(frame * Cell, row * Cell, Cell, Cell);
+    float scale = 1.5f;
+    Rectangle dst = new(x - (Cell*scale - Cell)/2f, y - (Cell*scale - Cell)/2f, Cell*scale, Cell*scale);
+    Raylib.DrawTexturePro(AssetManager.Get(sheet), src, dst, Vector2.Zero, 0f, Color.White);
+    return true;
+}
+
+// Feed current state into the layered renderer, then draw it.
+bool _diagPrinted;   
+void DrawCharacter(int x, int y)
+{
+    Character.Dir = Facing switch
+    {
+        FacingDirection.Up    => 0,
+        FacingDirection.Left  => 1,
+        FacingDirection.Down  => 2,
+        FacingDirection.Right => 3,
+        _ => 2
+    };
+
+    string held = GetDisplayedItem();
+    Character.HeldTexture = GetHeldSheet(held);
+
+    // TEMP DIAG: prints once per swing — delete when bindings are confirmed
+    if (isSwinging && !_diagPrinted)
+    {
+        _diagPrinted = true;
+        Console.WriteLine($"[LPC DIAG] held='{held}' " +
+            $"body={Character.BodyTexture.Id}/{Character.BodyTexture.Height}px " +
+            $"cloth={Character.ClothingTexture.Id}/{Character.ClothingTexture.Height}px " +
+            $"hair={Character.HairTexture.Id}/{Character.HairTexture.Height}px " +
+            $"boots={Character.BootsTexture.Id}/{Character.BootsTexture.Height}px " +
+            $"heldTex={Character.HeldTexture.Id}/{Character.HeldTexture.Height}px");
+    }
+    if (!isSwinging) _diagPrinted = false;
+
+    var (actRow, actFrames) = GetActionAnim(held);
+    bool smashTool = held != null &&
+        (held.Contains("Pickaxe") || held.Contains("Hammer") ||          // CHANGED: hammer uses 128px smash block
+        (held.Contains("Axe") && !held.Contains("War Axe")));
+
+    bool fishing = Program.isFishing && held != null && held.Contains("Rod");   // NEW
+
+    if (fishing)                                                      // CHANGED: rod art lives in its 128px block, not the 64px rows
+    {
+        float castT = isSwinging ? swingTimer / swingDuration : 1f;
+        Character.FallbackRow    = PlayerCharacter.RowShoot;          // NEW: body layers cast via 64px shoot rows
+        Character.FallbackFrames = 13;                                // NEW: shoot rows are 13 columns
+        Character.OversizeBlock  = 0;                                 // NEW: first (only) 128px block on the rod sheet
+        Character.SetAction(PlayerCharacter.RowShoot, castT, 13, oversize: true);   // CHANGED: oversize on
+    }
+    else if (isSwinging && actRow >= 0)
+    {
+        float t = swingTimer / swingDuration;
+        Character.FallbackRow    = PlayerCharacter.RowSlash;          // NEW: restore smash fallback after fishing
+        Character.FallbackFrames = 6;                                 
+        Character.OversizeBlock = 0;                                   // smash = first (only) 128px block
+        Character.SetAction(actRow, t, smashTool ? 6 : actFrames, oversize: smashTool);   // CHANGED: no targetRow
+    }
+    else if (isMoving)
+    {
+        Character.BaseRow = PlayerCharacter.RowWalk;
+        float walkFps = Math.Clamp(speed / 28f, 5f, 14f);          // CHANGED: anim rate follows move speed
+        Character.TickWalk(Raylib.GetFrameTime(), 9, walkFps);
+    }
+    else
+    {
+        Character.SetIdle();
+    }
+
+    Character.Draw(new Vector2(x, y));
+    if (Program.drawShapeArmorOnSprite)               // NEW: test overlay of drawn armor
+    {
+        switch (Facing)
+        {
+            case FacingDirection.Down:  DrawArmorOverlayDown(x, y);  break;
+            case FacingDirection.Up:    DrawArmorOverlayUp(x, y);    break;
+            case FacingDirection.Left:  DrawArmorOverlayLeft(x, y);  break;
+            case FacingDirection.Right: DrawArmorOverlayRight(x, y); break;
+        }
+    }
+}
+
+void DrawArmorOverlayDown(int x, int y)
+{
+    int armSwing = isMoving ? (walkFrame ? 4 : -4) : 0;
+
+    if (Program.armorCape != null)
+    {
+        Color cc = ArmorColor(Program.armorCape, new Color((byte)140,(byte)60,(byte)60,(byte)255));
+        if (Program.armorCape.EndsWith("Quiver")) DrawQuiver(x + 11, y + 24, 18);
+        else Raylib.DrawRectangle(x + 11, y + 24, 18, 30, cc);
+    }
+
+    if (Program.armorBody != null)
+    {
+        Color col = ArmorColor(Program.armorBody, new Color((byte)120,(byte)80,(byte)30,(byte)255));
+        Raylib.DrawRectangle(x + 10, y + 24, 20, 30, col);
+        Raylib.DrawRectangle(x + 13, y + 28, 14, 10, new Color((byte)Math.Max(0,col.R-25),(byte)Math.Max(0,col.G-25),(byte)Math.Max(0,col.B-25),(byte)255));
+        if (Program.armorBody.EndsWith("Top"))
+            Raylib.DrawRectangle(x + 18, y + 26, 3, 26, new Color((byte)235,(byte)200,(byte)60,(byte)255));
+        else if (Program.armorBody.EndsWith("Tunic"))
+            Raylib.DrawRectangle(x + 10, y + 44, 20, 5, new Color((byte)90,(byte)60,(byte)30,(byte)255));
+    }
+
+    if (Program.armorGloves != null)
+    {
+        Color col = ArmorColor(Program.armorGloves, new Color((byte)120,(byte)80,(byte)30,(byte)255));
+        Raylib.DrawRectangle(x + 2,  y + 38 + armSwing, 8, 8, col);
+        Raylib.DrawRectangle(x + 30, y + 38 - armSwing, 8, 8, col);
+    }
+
+    if (Program.armorLegs != null)
+    {
+        Color col = ArmorColor(Program.armorLegs, new Color((byte)90,(byte)90,(byte)100,(byte)255));
+        if (isMoving)
+        {
+            if (walkFrame)
+            {
+                Raylib.DrawRectangle(x + 10, y + 54,     8, 10, col);
+                Raylib.DrawRectangle(x + 22, y + 54 - 6, 8, 10, col);
+            }
+            else
+            {
+                Raylib.DrawRectangle(x + 10, y + 54 - 6, 8, 10, col);
+                Raylib.DrawRectangle(x + 22, y + 54,     8, 10, col);
+            }
+        }
+        else
+        {
+            Raylib.DrawRectangle(x + 10, y + 54, 8, 10, col);
+            Raylib.DrawRectangle(x + 22, y + 54, 8, 10, col);
+        }
+    }
+
+    if (Program.armorBoots != null)
+    {
+        Color bc = ArmorColor(Program.armorBoots, new Color((byte)100,(byte)65,(byte)25,(byte)255));
+        if (isMoving)
+        {
+            if (walkFrame)
+            {
+                Raylib.DrawRectangle(x + 9,  y + 63,     10, 7, bc);
+                Raylib.DrawRectangle(x + 21, y + 63 - 6, 10, 7, bc);
+            }
+            else
+            {
+                Raylib.DrawRectangle(x + 9,  y + 63 - 6, 10, 7, bc);
+                Raylib.DrawRectangle(x + 21, y + 63,     10, 7, bc);
+            }
+        }
+        else
+        {
+            Raylib.DrawRectangle(x + 9,  y + 63, 10, 7, bc);
+            Raylib.DrawRectangle(x + 21, y + 63, 10, 7, bc);
+        }
+    }
+
+    if (Program.armorBody != null && Program.armorBody.EndsWith("Top"))
+    {
+        Color rc = ArmorColor(Program.armorBody, new Color((byte)120,(byte)80,(byte)30,(byte)255));
+        Raylib.DrawRectangle(x + 9, y + 50, 22, 14, rc);
+        Raylib.DrawRectangle(x + 9, y + 62, 22, 3, new Color((byte)Math.Max(0,rc.R-35),(byte)Math.Max(0,rc.G-35),(byte)Math.Max(0,rc.B-35),(byte)255));
+    }
+
+    if (Program.armorHelmet != null && !Program.armorHelmet.EndsWith("Hat"))
+    {
+        Color hc = ArmorColor(Program.armorHelmet, new Color((byte)120,(byte)80,(byte)30,(byte)255));
+        Raylib.DrawCircle(x + 20, y + 8, 13, hc);
+        Raylib.DrawRectangle(x + 7, y + 2, 26, 8, hc);
+        Raylib.DrawRectangle(x + 7,  y + 8, 6, 10, hc);
+        Raylib.DrawRectangle(x + 27, y + 8, 6, 10, hc);
+        Raylib.DrawRectangle(x + 7, y + 7, 26, 4, new Color((byte)Math.Max(0,hc.R-25),(byte)Math.Max(0,hc.G-25),(byte)Math.Max(0,hc.B-25),(byte)255));
+
+        if (!Program.armorHelmet.Contains("Mystical") && !Program.armorHelmet.Contains("Magic") && !Program.armorHelmet.Contains("Infernal"))
+        {
+            Color spikeCol = new Color((byte)Math.Min(255,hc.R+30),(byte)Math.Min(255,hc.G+30),(byte)Math.Min(255,hc.B+30),(byte)255);
+            Raylib.DrawTriangle(
+                new Vector2(x + 17, y + 1),
+                new Vector2(x + 23, y + 1),
+                new Vector2(x + 20, y - 7),
+                spikeCol);
+        }
+    }
+
+    if (Program.armorHelmet != null && Program.armorHelmet.Contains("Mystical"))
+    {
+        Color horn = new Color((byte)255, (byte)215, (byte)0, (byte)255);
+        Raylib.DrawRectangle(x + 4, y + 2, 6, 5, horn);
+        Raylib.DrawRectangle(x + 1, y - 2, 6, 5, horn);
+        Raylib.DrawTriangle(new Vector2(x + 1, y - 2), new Vector2(x + 6, y - 2), new Vector2(x + 2, y - 11), horn);
+        Raylib.DrawRectangle(x + 30, y + 2, 6, 5, horn);
+        Raylib.DrawRectangle(x + 33, y - 2, 6, 5, horn);
+        Raylib.DrawTriangle(new Vector2(x + 33, y - 2), new Vector2(x + 38, y - 2), new Vector2(x + 37, y - 11), horn);
+    }
+
+    if (Program.armorHelmet != null && Program.armorHelmet.Contains("Infernal"))
+    {
+        Color horn = new Color((byte)30,(byte)25,(byte)25,(byte)255);
+        DrawHorn(x + 12, y + 6, -1, horn);
+        DrawHorn(x + 28, y + 6, +1, horn);
+    }
+    if (WearingClassHat) DrawClassHat(x + 20, y, 0);
+
+    if (Program.armorShield != null && !Program.IsTwoHandedWeapon(Program.armorWeapon))
+    {
+        Color col = ArmorColor(Program.armorShield, new Color((byte)100,(byte)80,(byte)40,(byte)255));
+        if (Program.armorShield.EndsWith("Book")) DrawBookOffhand(x + 4, y + 31 + armSwing);
+        else Raylib.DrawRectangle(x + 4, y + 30 + armSwing, 8, 16, col);
+    }
+}
+
+void DrawArmorOverlayUp(int x, int y)
+{
+    int armSwing = isMoving ? (walkFrame ? 4 : -4) : 0;
+
+    if (Program.armorBody != null)
+    {
+        Color col = ArmorColor(Program.armorBody, new Color((byte)120,(byte)80,(byte)30,(byte)255));
+        Raylib.DrawRectangle(x + 10, y + 24, 20, 30, col);
+        if (Program.armorBody.EndsWith("Top"))
+            Raylib.DrawRectangle(x + 18, y + 26, 3, 26, new Color((byte)235,(byte)200,(byte)60,(byte)255));
+        else if (Program.armorBody.EndsWith("Tunic"))
+            Raylib.DrawRectangle(x + 10, y + 44, 20, 5, new Color((byte)90,(byte)60,(byte)30,(byte)255));
+    }
+
+    if (Program.armorGloves != null)
+    {
+        Color col = ArmorColor(Program.armorGloves, new Color((byte)120,(byte)80,(byte)30,(byte)255));
+        Raylib.DrawRectangle(x + 2,  y + 38 + armSwing, 8, 8, col);
+        Raylib.DrawRectangle(x + 30, y + 38 - armSwing, 8, 8, col);
+    }
+
+    if (Program.armorLegs != null)
+    {
+        Color col = ArmorColor(Program.armorLegs, new Color((byte)90,(byte)90,(byte)100,(byte)255));
+        if (isMoving)
+        {
+            if (walkFrame)
+            {
+                Raylib.DrawRectangle(x + 10, y + 54,     8, 10, col);
+                Raylib.DrawRectangle(x + 22, y + 54 - 6, 8, 10, col);
+            }
+            else
+            {
+                Raylib.DrawRectangle(x + 10, y + 54 - 6, 8, 10, col);
+                Raylib.DrawRectangle(x + 22, y + 54,     8, 10, col);
+            }
+        }
+        else
+        {
+            Raylib.DrawRectangle(x + 10, y + 54, 8, 10, col);
+            Raylib.DrawRectangle(x + 22, y + 54, 8, 10, col);
+        }
+    }
+
+    if (Program.armorBoots != null)
+    {
+        Color bc = ArmorColor(Program.armorBoots, new Color((byte)100,(byte)65,(byte)25,(byte)255));
+        if (isMoving)
+        {
+            if (walkFrame)
+            {
+                Raylib.DrawRectangle(x + 9,  y + 63,     10, 7, bc);
+                Raylib.DrawRectangle(x + 21, y + 63 - 6, 10, 7, bc);
+            }
+            else
+            {
+                Raylib.DrawRectangle(x + 9,  y + 63 - 6, 10, 7, bc);
+                Raylib.DrawRectangle(x + 21, y + 63,     10, 7, bc);
+            }
+        }
+        else
+        {
+            Raylib.DrawRectangle(x + 9,  y + 63, 10, 7, bc);
+            Raylib.DrawRectangle(x + 21, y + 63, 10, 7, bc);
+        }
+    }
+
+    if (Program.armorBody != null && Program.armorBody.EndsWith("Top"))
+    {
+        Color rc = ArmorColor(Program.armorBody, new Color((byte)120,(byte)80,(byte)30,(byte)255));
+        Raylib.DrawRectangle(x + 9, y + 50, 22, 14, rc);
+        Raylib.DrawRectangle(x + 9, y + 62, 22, 3, new Color((byte)Math.Max(0,rc.R-35),(byte)Math.Max(0,rc.G-35),(byte)Math.Max(0,rc.B-35),(byte)255));
+    }
+
+    if (Program.armorHelmet != null && !Program.armorHelmet.EndsWith("Hat"))
+    {
+        Color hc = ArmorColor(Program.armorHelmet, new Color((byte)120,(byte)80,(byte)30,(byte)255));
+        Raylib.DrawCircle(x + 20, y + 10, 13, hc);
+        Raylib.DrawRectangle(x + 7, y + 2, 26, 9, hc);
+        Raylib.DrawRectangle(x + 7,  y + 10, 6, 9, hc);
+        Raylib.DrawRectangle(x + 27, y + 10, 6, 9, hc);
+        Raylib.DrawRectangle(x + 11, y + 16, 18, 5, new Color((byte)Math.Max(0,hc.R-25),(byte)Math.Max(0,hc.G-25),(byte)Math.Max(0,hc.B-25),(byte)255));
+
+        if (!Program.armorHelmet.Contains("Mystical") && !Program.armorHelmet.Contains("Magic") && !Program.armorHelmet.Contains("Infernal"))
+        {
+            Color spikeCol = new Color((byte)Math.Min(255,hc.R+30),(byte)Math.Min(255,hc.G+30),(byte)Math.Min(255,hc.B+30),(byte)255);
+            Raylib.DrawTriangle(
+                new Vector2(x + 17, y + 1),
+                new Vector2(x + 23, y + 1),
+                new Vector2(x + 20, y - 7),
+                spikeCol);
+        }
+    }
+
+    if (Program.armorHelmet != null && Program.armorHelmet.Contains("Mystical"))
+    {
+        Color horn = new Color((byte)255, (byte)215, (byte)0, (byte)255);
+        Raylib.DrawRectangle(x + 4, y + 2, 6, 5, horn);
+        Raylib.DrawRectangle(x + 1, y - 2, 6, 5, horn);
+        Raylib.DrawTriangle(new Vector2(x + 1, y - 2), new Vector2(x + 6, y - 2), new Vector2(x + 2, y - 11), horn);
+        Raylib.DrawRectangle(x + 30, y + 2, 6, 5, horn);
+        Raylib.DrawRectangle(x + 33, y - 2, 6, 5, horn);
+        Raylib.DrawTriangle(new Vector2(x + 33, y - 2), new Vector2(x + 38, y - 2), new Vector2(x + 37, y - 11), horn);
+    }
+
+    if (Program.armorHelmet != null && Program.armorHelmet.Contains("Infernal"))
+    {
+        Color horn = new Color((byte)30,(byte)25,(byte)25,(byte)255);
+        DrawHorn(x + 12, y + 6, -1, horn);
+        DrawHorn(x + 28, y + 6, +1, horn);
+    }
+    if (WearingClassHat) DrawClassHat(x + 20, y - 1, 0);
+
+    // cape drawn LAST facing up — in front of the body, very visible from behind
+    if (Program.armorCape != null)
+    {
+        Color cc = ArmorColor(Program.armorCape, new Color((byte)140,(byte)60,(byte)60,(byte)255));
+        if (Program.armorCape.EndsWith("Quiver")) DrawQuiver(x + 10, y + 22, 20);
+        else Raylib.DrawRectangle(x + 10, y + 22, 20, 34, cc);
+    }
+}
+
+void DrawArmorOverlayLeft(int x, int y)
+{
+    int armSwing = isMoving ? (walkFrame ? 6 : -2) : 0;
+
+    if (Program.armorShield != null && !Program.IsTwoHandedWeapon(Program.armorWeapon))
+    {
+        Color col = ArmorColor(Program.armorShield, new Color((byte)100,(byte)80,(byte)40,(byte)255));
+        Raylib.DrawRectangle(x - 2, y + 28 + armSwing, 10, 18, col);
+        Raylib.DrawCircle(x + 3, y + 37 + armSwing, 3, new Color((byte)180,(byte)140,(byte)40,(byte)255));
+    }
+
+    if (Program.armorCape != null)
+    {
+        Color cc = ArmorColor(Program.armorCape, new Color((byte)140,(byte)60,(byte)60,(byte)255));
+        if (Program.armorCape.EndsWith("Quiver")) DrawQuiver(x + 18, y + 24, 12);
+        else Raylib.DrawRectangle(x + 18, y + 24, 12, 28, cc);
+    }
+
+    if (Program.armorBody != null)
+    {
+        Color col = ArmorColor(Program.armorBody, new Color((byte)120,(byte)80,(byte)30,(byte)255));
+        Raylib.DrawRectangle(x + 12, y + 24, 14, 30, col);
+        if (Program.armorBody.EndsWith("Top"))
+            Raylib.DrawRectangle(x + 17, y + 26, 3, 26, new Color((byte)235,(byte)200,(byte)60,(byte)255));
+        else if (Program.armorBody.EndsWith("Tunic"))
+            Raylib.DrawRectangle(x + 12, y + 44, 14, 5, new Color((byte)90,(byte)60,(byte)30,(byte)255));
+    }
+
+    if (Program.armorGloves != null)
+    {
+        Color col = ArmorColor(Program.armorGloves, new Color((byte)120,(byte)80,(byte)30,(byte)255));
+        Raylib.DrawRectangle(x + 10, y + 38 + armSwing, 8, 7, col);
+    }
+
+    if (Program.armorLegs != null)
+    {
+        Color col = ArmorColor(Program.armorLegs, new Color((byte)90,(byte)90,(byte)100,(byte)255));
+        if (isMoving)
+        {
+            if (walkFrame)
+            {
+                Raylib.DrawRectangle(x + 8,  y + 54,     8, 14, col);
+                Raylib.DrawRectangle(x + 16, y + 54 - 8, 8, 14, col);
+            }
+            else
+            {
+                Raylib.DrawRectangle(x + 8,  y + 54 - 8, 8, 14, col);
+                Raylib.DrawRectangle(x + 16, y + 54,     8, 14, col);
+            }
+        }
+        else
+        {
+            Raylib.DrawRectangle(x + 8,  y + 54, 8, 12, col);
+            Raylib.DrawRectangle(x + 16, y + 54, 8, 12, col);
+        }
+    }
+
+    if (Program.armorBoots != null)
+    {
+        Color bc = ArmorColor(Program.armorBoots, new Color((byte)100,(byte)65,(byte)25,(byte)255));
+        if (isMoving)
+        {
+            if (walkFrame)
+            {
+                Raylib.DrawRectangle(x + 6,  y + 64, 10, 6, bc);
+                Raylib.DrawRectangle(x + 14, y + 56, 10, 6, bc);
+            }
+            else
+            {
+                Raylib.DrawRectangle(x + 6,  y + 56, 10, 6, bc);
+                Raylib.DrawRectangle(x + 14, y + 64, 10, 6, bc);
+            }
+        }
+        else
+        {
+            Raylib.DrawRectangle(x + 6,  y + 62, 10, 6, bc);
+            Raylib.DrawRectangle(x + 14, y + 62, 10, 6, bc);
+        }
+    }
+
+    if (Program.armorBody != null && Program.armorBody.EndsWith("Top"))
+    {
+        Color rc = ArmorColor(Program.armorBody, new Color((byte)120,(byte)80,(byte)30,(byte)255));
+        Raylib.DrawRectangle(x + 11, y + 50, 16, 14, rc);      // narrowed for side view (per your inline note)
+        Raylib.DrawRectangle(x + 11, y + 62, 16, 3, new Color((byte)Math.Max(0,rc.R-35),(byte)Math.Max(0,rc.G-35),(byte)Math.Max(0,rc.B-35),(byte)255));
+    }
+
+    if (Program.armorHelmet != null && !Program.armorHelmet.EndsWith("Hat"))
+    {
+        Color hc = ArmorColor(Program.armorHelmet, new Color((byte)120,(byte)80,(byte)30,(byte)255));
+        Raylib.DrawCircle(x + 18, y + 8, 13, hc);
+        Raylib.DrawRectangle(x + 6, y + 2, 26, 8, hc);
+        Raylib.DrawRectangle(x + 24, y + 8, 6, 11, hc);
+        Raylib.DrawRectangle(x + 6, y + 8, 5, 7, hc);
+        Raylib.DrawRectangle(x + 6, y + 7, 26, 4, new Color((byte)Math.Max(0,hc.R-25),(byte)Math.Max(0,hc.G-25),(byte)Math.Max(0,hc.B-25),(byte)255));
+
+        if (!Program.armorHelmet.Contains("Mystical") && !Program.armorHelmet.Contains("Magic") && !Program.armorHelmet.Contains("Infernal"))
+        {
+            Color spikeCol = new Color((byte)Math.Min(255,hc.R+30),(byte)Math.Min(255,hc.G+30),(byte)Math.Min(255,hc.B+30),(byte)255);
+            Raylib.DrawTriangle(
+                new Vector2(x + 15, y + 1),
+                new Vector2(x + 21, y + 1),
+                new Vector2(x + 18, y - 7),
+                spikeCol);
+        }
+    }
+
+    if (Program.armorHelmet != null && Program.armorHelmet.Contains("Mystical"))
+    {
+        Color horn = new Color((byte)255, (byte)215, (byte)0, (byte)255);
+        Color hornFar = new Color((byte)255, (byte)225, (byte)0, (byte)255);
+        Raylib.DrawTriangle(
+            new Vector2(x + 24, y - 2),
+            new Vector2(x + 28, y - 2),
+            new Vector2(x + 38, y - 15),
+            hornFar);
+        Raylib.DrawRectangle(x + 18, y, 6, 5, horn);
+        Raylib.DrawRectangle(x + 22, y - 4, 6, 5, horn);
+        Raylib.DrawTriangle(
+            new Vector2(x + 22, y - 4),
+            new Vector2(x + 29, y - 4),
+            new Vector2(x + 33, y - 14),
+            horn);
+    }
+
+    if (Program.armorHelmet != null && Program.armorHelmet.Contains("Infernal"))
+    {
+        Color horn = new Color((byte)30,(byte)25,(byte)25,(byte)255);
+        Color hornFar = new Color((byte)22,(byte)18,(byte)18,(byte)255);
+        DrawHorn(x + 22, y + 5, +1, hornFar);
+        DrawHorn(x + 18, y + 6, +1, horn);
+    }
+    if (WearingClassHat) DrawClassHat(x + 18, y - 2, -1);
+}
+
+void DrawArmorOverlayRight(int x, int y)
+{
+    int armSwing = isMoving ? (walkFrame ? 6 : -2) : 0;
+
+    if (Program.armorCape != null)
+    {
+        Color cc = ArmorColor(Program.armorCape, new Color((byte)140,(byte)60,(byte)60,(byte)255));
+        if (Program.armorCape.EndsWith("Quiver")) DrawQuiver(x + 10, y + 24, 12);
+        else Raylib.DrawRectangle(x + 10, y + 24, 12, 28, cc);
+    }
+
+    if (Program.armorBody != null)
+    {
+        Color col = ArmorColor(Program.armorBody, new Color((byte)120,(byte)80,(byte)30,(byte)255));
+        Raylib.DrawRectangle(x + 14, y + 24, 14, 30, col);
+        if (Program.armorBody.EndsWith("Top"))
+            Raylib.DrawRectangle(x + 19, y + 26, 3, 26, new Color((byte)235,(byte)200,(byte)60,(byte)255));
+        else if (Program.armorBody.EndsWith("Tunic"))
+            Raylib.DrawRectangle(x + 14, y + 44, 14, 5, new Color((byte)90,(byte)60,(byte)30,(byte)255));
+    }
+
+    if (Program.armorGloves != null)
+    {
+        Color col = ArmorColor(Program.armorGloves, new Color((byte)120,(byte)80,(byte)30,(byte)255));
+        Raylib.DrawRectangle(x + 22, y + 38 + armSwing, 8, 7, col);
+    }
+
+    if (Program.armorLegs != null)
+    {
+        Color col = ArmorColor(Program.armorLegs, new Color((byte)90,(byte)90,(byte)100,(byte)255));
+        if (isMoving)
+        {
+            if (walkFrame)
+            {
+                Raylib.DrawRectangle(x + 16, y + 54,     8, 14, col);
+                Raylib.DrawRectangle(x + 24, y + 54 - 8, 8, 14, col);
+            }
+            else
+            {
+                Raylib.DrawRectangle(x + 16, y + 54 - 8, 8, 14, col);
+                Raylib.DrawRectangle(x + 24, y + 54,     8, 14, col);
+            }
+        }
+        else
+        {
+            Raylib.DrawRectangle(x + 16, y + 54, 8, 12, col);
+            Raylib.DrawRectangle(x + 24, y + 54, 8, 12, col);
+        }
+    }
+
+    if (Program.armorBoots != null)
+    {
+        Color bc = ArmorColor(Program.armorBoots, new Color((byte)100,(byte)65,(byte)25,(byte)255));
+        if (isMoving)
+        {
+            if (walkFrame)
+            {
+                Raylib.DrawRectangle(x + 14, y + 64, 10, 6, bc);
+                Raylib.DrawRectangle(x + 22, y + 56, 10, 6, bc);
+            }
+            else
+            {
+                Raylib.DrawRectangle(x + 14, y + 56, 10, 6, bc);
+                Raylib.DrawRectangle(x + 22, y + 64, 10, 6, bc);
+            }
+        }
+        else
+        {
+            Raylib.DrawRectangle(x + 14, y + 62, 10, 6, bc);
+            Raylib.DrawRectangle(x + 22, y + 62, 10, 6, bc);
+        }
+    }
+
+    if (Program.armorBody != null && Program.armorBody.EndsWith("Top"))
+    {
+        Color rc = ArmorColor(Program.armorBody, new Color((byte)120,(byte)80,(byte)30,(byte)255));
+        Raylib.DrawRectangle(x + 13, y + 50, 16, 14, rc);      // narrowed for side view (per your inline note)
+        Raylib.DrawRectangle(x + 13, y + 62, 16, 3, new Color((byte)Math.Max(0,rc.R-35),(byte)Math.Max(0,rc.G-35),(byte)Math.Max(0,rc.B-35),(byte)255));
+    }
+
+    if (Program.armorHelmet != null && !Program.armorHelmet.EndsWith("Hat"))
+    {
+        Color hc = ArmorColor(Program.armorHelmet, new Color((byte)120,(byte)80,(byte)30,(byte)255));
+        Raylib.DrawCircle(x + 22, y + 8, 13, hc);
+        Raylib.DrawRectangle(x + 9, y + 2, 26, 8, hc);
+        Raylib.DrawRectangle(x + 10, y + 8, 6, 11, hc);
+        Raylib.DrawRectangle(x + 29, y + 8, 5, 7, hc);
+        Raylib.DrawRectangle(x + 9, y + 7, 26, 4, new Color((byte)Math.Max(0,hc.R-25),(byte)Math.Max(0,hc.G-25),(byte)Math.Max(0,hc.B-25),(byte)255));
+
+        if (!Program.armorHelmet.Contains("Mystical") && !Program.armorHelmet.Contains("Magic") && !Program.armorHelmet.Contains("Infernal"))
+        {
+            Color spikeCol = new Color((byte)Math.Min(255,hc.R+30),(byte)Math.Min(255,hc.G+30),(byte)Math.Min(255,hc.B+30),(byte)255);
+            Raylib.DrawTriangle(
+                new Vector2(x + 19, y + 1),
+                new Vector2(x + 25, y + 1),
+                new Vector2(x + 22, y - 7),
+                spikeCol);
+        }
+    }
+
+    if (Program.armorHelmet != null && Program.armorHelmet.Contains("Mystical"))
+    {
+        Color horn = new Color((byte)255, (byte)215, (byte)0, (byte)255);
+        Color hornFar = new Color((byte)255, (byte)225, (byte)0, (byte)255);
+        Raylib.DrawTriangle(
+            new Vector2(x + 12, y - 2),
+            new Vector2(x + 17, y - 2),
+            new Vector2(x + 5, y - 15),
+            hornFar);
+        Raylib.DrawRectangle(x + 16, y, 6, 5, horn);
+        Raylib.DrawRectangle(x + 12, y - 4, 6, 5, horn);
+        Raylib.DrawTriangle(
+            new Vector2(x + 12, y - 4),
+            new Vector2(x + 18, y - 4),
+            new Vector2(x + 9, y - 14),
+            horn);
+    }
+
+    if (Program.armorHelmet != null && Program.armorHelmet.Contains("Infernal"))
+    {
+        Color horn = new Color((byte)30,(byte)25,(byte)25,(byte)255);
+        Color hornFar = new Color((byte)22,(byte)18,(byte)18,(byte)255);
+        DrawHorn(x + 18, y + 5, -1, hornFar);
+        DrawHorn(x + 22, y + 6, -1, horn);
+    }
+    if (WearingClassHat) DrawClassHat(x + 22, y - 2, +1);
+
+    DrawShieldRight(x, y);   // already a standalone method — reused as-is
+}
+
+Texture2D GetHeldSheet(string item)
+{
+    if (item == null) return default;
+    string key =
+        item.Contains("Pickaxe")                          ? "held_pickaxe"
+      : item.Contains("Axe") && !item.Contains("War Axe") ? "held_axe"
+      : item.Contains("Watering")                         ? "held_wateringcan"
+      : item.Contains("Spade")                            ? "held_spade"
+      : item.Contains("Sword")                            ? "held_sword"
+      : item.Contains("Dagger")                           ? "held_dagger"
+      : item.Contains("Rod")                              ? "held_fishingrod"   
+      : item.Contains("Hammer")                           ? "held_hammer"       
+      : item.Contains("Scimitar")                         ? "held_scimitar" 
+      : item.Contains("Staff")                            ? "held_staff"
+      : null;
+    return (key != null && AssetManager.Has(key)) ? AssetManager.Get(key) : default;
+}
+
+// row = -1 means "no action anim for this item"
+(int row, int frames) GetActionAnim(string item)
+{
+    if (item == null) return (-1, 0);
+    if (item.Contains("Pickaxe") ||
+       (item.Contains("Axe") && !item.Contains("War Axe"))) return (PlayerCharacter.RowMining, 12);
+    if (item.Contains("Sword") || item.Contains("Dagger")
+     || item.Contains("Scimitar"))                          return (PlayerCharacter.RowSlash, 6);   
+    if (item.Contains("Rod"))                               return (PlayerCharacter.RowShoot, 13);   
+    if (item.Contains("Staff"))                             return (PlayerCharacter.RowSpellcast, 7);
+    if (item.Contains("Spade") || item.Contains("Watering"))return (PlayerCharacter.RowThrust, 8);
+    return (-1, 0);
+}
 void DrawFacingDown(int x, int y)
 {
     int armSwing = isMoving ? (walkFrame ? 4 : -4) : 0;

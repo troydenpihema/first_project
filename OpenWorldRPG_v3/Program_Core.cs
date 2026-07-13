@@ -104,15 +104,102 @@ static void ResetGameState()
     dayOfMonth = 1;          
     currentMonth = 0;        
     dayCounter = 0f; 
+    ResetFogOfWar();
+    foreach (var a in achievements) a.Unlocked = false;
+    achievementsUnlockedCount = 0;
+    achievementVisited.Clear();
+    foreach (var e in bestiary.Values) { e.Kills = 0; e.Discovered = false; }
     }
+    static void ApplyPlayerSheets()
+{
+    player.Character.BodyTexture     = AssetManager.Get("maleBody");
+    player.Character.HairTexture     = AssetManager.Get("messy");
+    player.Character.ClothingTexture = AssetManager.Get("tshirt");
+    player.Character.BootsTexture    = AssetManager.Get("shorts");
+}
 
         static void Main()
         {
             Raylib.InitWindow(ScreenWidth, ScreenHeight, "Open World RPG V3");
+
+            // Player
+            AssetManager.Load("maleBody",  "resources/player/body/maleBody.png");
+            AssetManager.Load("messy", "resources/player/hair/messyHairstyle.png");
+            AssetManager.Load("tshirt",    "resources/player/torso/tshirt.png");
+            AssetManager.Load("shorts",    "resources/player/pants/shorts.png");
+
+            ApplyPlayerSheets(); 
+
+            // Tools and weapons
+            AssetManager.Load("held_pickaxe",     "resources/player/tools/pickaxe.png");
+            AssetManager.Load("held_axe",         "resources/player/tools/axe.png");
+            AssetManager.Load("held_wateringcan", "resources/player/tools/wateringcan.png");
+            AssetManager.Load("held_spade",       "resources/player/tools/spade.png");
+            AssetManager.Load("held_sword",       "resources/player/weapons/sword.png");
+            AssetManager.Load("held_dagger",      "resources/player/weapons/dagger.png");
+            AssetManager.Load("held_staff",       "resources/player/weapons/staff.png");
+            AssetManager.Load("held_fishingrod", "resources/player/tools/fishingrod.png");   
+            AssetManager.Load("held_hammer",     "resources/player/tools/hammer.png");       
+            AssetManager.Load("held_scimitar",   "resources/player/weapons/scimitar.png");
+
+            // Friend NPCS
+            AssetManager.Load("villager", "resources/npc/villager.png");
+            AssetManager.Load("ranger", "resources/npc/Ranger.png"); 
+            AssetManager.Load("Cride", "resources/npc/Cride.png");
+            AssetManager.Load("JDogg",     "resources/npc/JDogg.png");
+            AssetManager.Load("Jake","resources/npc/Jake.png");
+            AssetManager.Load("Shack", "resources/npc/Shack.png");
+            AssetManager.Load("Traz", "resources/npc/Traz.png");
+            AssetManager.Load("Nola",     "resources/npc/Nola.png");
+            AssetManager.Load("Tipene","resources/npc/Tipene.png");
+            AssetManager.Load("Joybells", "resources/npc/Joybells.png");
+            AssetManager.Load("Rala", "resources/npc/Rala.png");
+            AssetManager.Load("Hunter",     "resources/npc/Hunter.png");
+            AssetManager.Load("Ava","resources/npc/Ava.png");
+            AssetManager.Load("Eli", "resources/npc/Eli.png");
+            AssetManager.Load("Ezra","resources/npc/Ezra.png");
+            AssetManager.Load("Eden", "resources/npc/Eden.png");
+            AssetManager.Load("Leo","resources/npc/Leo.png");
+            AssetManager.Load("Alice", "resources/npc/Alice.png");
+            AssetManager.Load("Whale","resources/npc/Whale.png");
+            AssetManager.Load("Jail", "resources/npc/Jail.png");
+            AssetManager.Load("player_pickaxe", "resources/player/Player.png");   
+
+            // Shop NPCS
+            AssetManager.Load("Wizard", "resources/npc/Wizard.png");  
+            AssetManager.Load("Blacksmith","resources/npc/Blacksmith.png");
+            AssetManager.Load("nurse", "resources/npc/nurse.png");  
+            AssetManager.Load("cop","resources/npc/cop.png");
+
+            // Extra NPCS
+            AssetManager.Load("prince", "resources/npc/prince.png");  
+            AssetManager.Load("princess","resources/npc/princess.png");
+            AssetManager.Load("joey", "resources/npc/joey.png");  
+            AssetManager.Load("bella","resources/npc/bella.png");
+            AssetManager.Load("Elder", "resources/npc/Elder.png");
+            AssetManager.Load("shoolboy", "resources/npc/Schoolboy.png");  
+            AssetManager.Load("schoolgirl","resources/npc/Schoolgirl.png");
+            AssetManager.Load("goku", "resources/npc/goku.png");  
+            AssetManager.Load("martha","resources/npc/martha.png");
+            AssetManager.Load("iggy", "resources/npc/Iggy.png");
+            AssetManager.Load("angel", "resources/npc/Angel.png");
+
+            // Enemy NPCS
+            AssetManager.Load("skeleton", "resources/npc/SkeletonSwordsman.png");
+
+
+
+
             nightMask = Raylib.LoadRenderTexture(ScreenWidth, ScreenHeight);
             LoadUIFont();
             Raylib.SetTargetFPS(60);
             Raylib.SetExitKey(KeyboardKey.Null);
+
+            foreach (var f in friendNPCs)
+            f.Npc.SpriteKey = f.Name;
+            InitAchievements();
+            InitBestiary();
+
             Raylib.InitAudioDevice();
             
             if (Raylib.IsAudioDeviceReady())
@@ -140,7 +227,6 @@ static void ResetGameState()
             soundRockHit   = Raylib.LoadSound("resources/sound/rockHit.wav");
             soundRockBreak = Raylib.LoadSound("resources/sound/rockBreak.wav");
             soundHorseGallop = Raylib.LoadSound("resources/sound/horseGallop.ogg");
-            soundCarHorn = Raylib.LoadSound("path/to/horn.wav");
             soundSwordSwing = Raylib.LoadSound("resources/sound/swordSwing.wav");
             soundStickSwing = Raylib.LoadSound("resources/sound/stickSwing.wav");
             soundDogHit     = Raylib.LoadSound("resources/sound/dogHit.wav");
@@ -180,6 +266,10 @@ static void ResetGameState()
             musicLoaded = true;
             musicPlaying = true;
         }
+        
+        CarparkManager.Add(new Vector2(3100, 900), new Vector2(3700, 900), depth: 90f, facing: true);
+        CarparkManager.Add(new Vector2(3100, 1050), new Vector2(3700, 1050), depth: 90f, facing: true);
+        
         RoadManager.Add(new Vector2(2650, -1400), new Vector2(2650, 2000));  
         RoadManager.Add(new Vector2(-2000, 2000), new Vector2(3550, 2000));
         RoadManager.Add(new Vector2(-60000, 500), new Vector2(60000, 500));
@@ -188,8 +278,12 @@ static void ResetGameState()
         RoadManager.Add(new Vector2(200, -200), new Vector2(2650, -200));
         RoadManager.Add(new Vector2(-1700, 1100), new Vector2(200, 1100));
         RoadManager.Add(new Vector2(-1600, 1240), new Vector2(-1600, -850));
-        RoadManager.Add(new Vector2(-2500, -850), new Vector2(200, -850));        
+        RoadManager.Add(new Vector2(-2500, -850), new Vector2(200, -850)); 
+        RoadManager.Add(new Vector2(1800, -850), new Vector2(3500, -850)); 
 
+        
+       
+        
             GenerateWorld();
 
             camera.Offset = new Vector2(ScreenWidth / 2, ScreenHeight / 2);
@@ -357,6 +451,7 @@ if (Raylib.IsMouseButtonPressed(MouseButton.Left) && !multiplayerMenuOpen)
             if (Raylib.IsKeyPressed(KeyboardKey.Enter))
             {
                 player = new Player(new Vector2(-1917, -9720));
+                ApplyPlayerSheets();
                 ResetGameState();  
                 placedChests.Clear();
                 timeOfDay = 0f; dayOfWeek = 0;
@@ -386,7 +481,8 @@ if (Raylib.IsMouseButtonPressed(MouseButton.Left) && !multiplayerMenuOpen)
 
                 case SceneState.World:
 
-
+                UpdateAchievements();
+                UpdateFogOfWar();
                 CheckZoneMusic();
 
                         // ── CHAT INPUT ────────────────────────────────────────────────────────────
@@ -454,9 +550,14 @@ if (!chatInputOpen)
     }
 }
 
+if (Raylib.IsKeyPressed(KeyboardKey.P) && !chatInputOpen)     
+    useLayeredPlayer = !useLayeredPlayer;
+
 if (Raylib.IsKeyPressed(KeyboardKey.Space) && !chatInputOpen && !playerMenuOpen)
 {
     string held = toolbarSlots[toolbarSelectedSlot];
+    if (held != null && held.Contains("Pickaxe"))
+    player.TriggerMineAnim();
     var nearWorldChest = placedChests.FirstOrDefault(c =>
         c.BuildingContext == "" && Vector2.Distance(player.Center, c.Position) < 80);
 
@@ -1595,7 +1696,7 @@ foreach (GasStation station in gasStations)
             vehicle.FuelLocked = true;
         }
     }
-}   
+} 
 
     foreach (NPC npc in npcs)
         {
@@ -4441,6 +4542,52 @@ Raylib.DrawRectangle(hx + 55, hy, 8, 20, Color.DarkBrown);
     }
 }
 
+// ── ACHIEVEMENTS ─────────────────────────────────────────────
+       static void UpdateAchievements()
+       {
+           // track visited biomes for exploration achievements
+           string biome = GetCurrentBiome();
+           if (biome != null) achievementVisited.Add(biome);
+
+           foreach (var a in achievements)
+           {
+               if (a.Unlocked) continue;
+               try { if (!a.Condition()) continue; } catch { continue; }
+               a.Unlocked = true;
+               achievementsUnlockedCount++;
+               if (a.Reward > 0) player.Money += a.Reward;
+               achievementPopupTitle = a.Title;
+               achievementPopupTimer = 4f;
+               string rewardText = a.Reward > 0 ? $" +${a.Reward}" : "";
+               ShowNotification($"Achievement: {a.Title}!{rewardText}");
+           }
+       }
+
+// ── FOG OF WAR ──────────────────────────────────────────────
+       static void UpdateFogOfWar()
+       {
+           int cellX = (int)((player.Position.X - FogOriginX) / FogCellSize);
+           int cellY = (int)((player.Position.Y - FogOriginY) / FogCellSize);
+
+           for (int dy = -FogRevealRadius; dy <= FogRevealRadius; dy++)
+               for (int dx = -FogRevealRadius; dx <= FogRevealRadius; dx++)
+               {
+                   int gx = cellX + dx, gy = cellY + dy;
+                   if (gx < 0 || gx >= FogCols || gy < 0 || gy >= FogRows) continue;
+                   int idx = gy * FogCols + gx;
+                   if (!fogRevealed[idx]) { fogRevealed[idx] = true; fogRevealedCount++; }
+               }
+       }
+
+       static float GetExplorationPercent()
+           => fogRevealedCount * 100f / (FogCols * FogRows);
+
+       static void ResetFogOfWar()
+       {
+           Array.Clear(fogRevealed, 0, fogRevealed.Length);
+           fogRevealedCount = 0;
+       }
+
        static void DrawWorldMap()
 {
     if (!mapOpen) return;
@@ -4619,6 +4766,28 @@ Program.DrawTextUI("ROTOAIRA", Math.Clamp(cx+(int)(-16500*scale),mapX,mapX+mapW)
             Raylib.DrawCircleLines(fx, fy, 4, Color.White);
         }
     }
+
+    // ── FOG OF WAR OVERLAY ──
+    Raylib.BeginScissorMode(mapX, mapY, mapW, mapH);
+    Color fogColor = new Color((byte)10,(byte)10,(byte)20,(byte)230);
+    float cellScreenW = FogCellSize * scale;
+    float cellScreenH = FogCellSize * scale;
+    int visMinCX = Math.Max(0, (int)((mapX - cx) / scale - FogOriginX) / FogCellSize - 1);
+    int visMaxCX = Math.Min(FogCols - 1, (int)((mapX + mapW - cx) / scale - FogOriginX) / FogCellSize + 1);
+    int visMinCY = Math.Max(0, (int)((mapY - cy) / scale - FogOriginY) / FogCellSize - 1);
+    int visMaxCY = Math.Min(FogRows - 1, (int)((mapY + mapH - cy) / scale - FogOriginY) / FogCellSize + 1);
+    for (int fy = visMinCY; fy <= visMaxCY; fy++)
+        for (int fx = visMinCX; fx <= visMaxCX; fx++)
+        {
+            if (fogRevealed[fy * FogCols + fx]) continue;
+            int sx = cx + (int)((FogOriginX + fx * FogCellSize) * scale);
+            int sy = cy + (int)((FogOriginY + fy * FogCellSize) * scale);
+            Raylib.DrawRectangle(sx, sy, (int)cellScreenW + 1, (int)cellScreenH + 1, fogColor);
+        }
+    Raylib.EndScissorMode();
+
+    string expText = $"Explored: {GetExplorationPercent():F1}%";
+    Program.DrawTextUI(expText, mapX + mapW - 180, mapY + mapH - 90, 16, Color.Gold);
 
     // Player dot
     int px = cx + (int)(player.Position.X * scale);
@@ -5040,6 +5209,8 @@ static void DrawCheatsMenu()
         static void DrawWorld()
         {
             Raylib.ClearBackground(new Color(100,180,100,255));
+            
+            
 
             if (shakeDuration > 0)
         {
@@ -5144,6 +5315,7 @@ Raylib.DrawRectangle(300, -1000, 700, 580, Color.DarkGray);
 
 // Roads draw
 RoadManager.DrawAll(camera.Target, ScreenWidth, ScreenHeight, camera.Zoom);
+CarparkManager.DrawAll(camera.Target, ScreenWidth, ScreenHeight, camera.Zoom);
 
 // desert/ocean side road (extended to ocean edge)
 Raylib.DrawRectangle(4000, 200, 51000, 120, Color.DarkGray);
@@ -6943,10 +7115,11 @@ foreach (var tree in fruitTrees)
     }
 }
 
+
             foreach (NPC npc in npcs)
             {
                 if (npc.Hidden) continue;
-                npc.Draw();
+                npc.DrawSprite(AssetManager.Get(npc.SpriteKey));   
                 if (Vector2.Distance(player.Center, npc.Position) < 150)
                     DrawSpeechBubble(npc.Position, npc.Dialogue,
                         new Color((byte)80,(byte)120,(byte)80,(byte)255));
@@ -6954,7 +7127,7 @@ foreach (var tree in fruitTrees)
 
             foreach (var f in friendNPCs)
             {
-                f.Npc.Draw();
+                f.Npc.DrawSprite(AssetManager.Get(f.Npc.SpriteKey));
                 // friendship hearts above head
                 int hearts = f.Friendship / 20;   // 0–5
                 for (int h = 0; h < 5; h++)
@@ -6967,7 +7140,7 @@ foreach (var tree in fruitTrees)
                     DrawSpeechBubble(f.Npc.Position, $"E = Talk  |  G = Gift ({f.FavoriteGift})", Color.Gold);
             }
 
-rangerNpc.Draw();
+rangerNpc.DrawSprite(AssetManager.Get(rangerNpc.SpriteKey));
 foreach (var q in storyQuests)
 {
     if (q.Completed) continue;

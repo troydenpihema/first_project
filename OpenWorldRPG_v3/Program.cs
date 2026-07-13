@@ -120,6 +120,10 @@ public static readonly Dictionary<SlotSymbol, float> TwoMatchMultiplier = new()
         static float sceneFadeSpeed = 500f;
         static Camera2D camera = new Camera2D();
         public static Player player = new Player(new Vector2(-1917, -9720));
+        public static int dbgRow = 54, dbgFrames = 12;
+
+        // Player
+        public static bool useLayeredPlayer = true;
 
         // Magic
         static Vector2 holyShrinePos = new Vector2(8000, -2000);
@@ -128,6 +132,7 @@ public static readonly Dictionary<SlotSymbol, float> TwoMatchMultiplier = new()
         // COMBAT
         enum HandPhase { Tools, Combat }
         static HandPhase currentPhase = HandPhase.Tools;
+        public static bool drawShapeArmorOnSprite = true;
 
         static (int melee, int ranged, int magic) GetArmorStyleBonus()
         {
@@ -216,7 +221,7 @@ public static readonly Dictionary<SlotSymbol, float> TwoMatchMultiplier = new()
 
         // NPCS
         static float cRideAnimTimer = 0f;
-        static Vector2 cRidePos = new Vector2(640, 320);   
+        static Vector2 cRidePos = new Vector2(565, 250);   
         static bool cRideMessageActive = false;
         static int EnrolledToday()
         {
@@ -641,10 +646,24 @@ static int  cardSpentToday = 0;
 
 static List<FriendNPC> friendNPCs = new()
 {
-    new FriendNPC{ Name="Aroha",   FavoriteGift="Fish",  Shop="SUPERMARKET", Npc=new NPC(new Vector2(300, -500),  "Aroha",  "") },
-    new FriendNPC{ Name="Tama",    FavoriteGift="Logs",  Shop="FARMING SHOP", Npc=new NPC(new Vector2(-400, -750), "Tama",   "") },
-    new FriendNPC{ Name="Sione",   FavoriteGift="Bones", Shop="MAGIC SHOP", Npc=new NPC(new Vector2(700, -900),  "Sione",  "") },
+    new FriendNPC{ Name="JDogg",   FavoriteGift="Fish",  Shop="SUPERMARKET", Npc=new NPC(new Vector2(300, -500),  "JDogg",  "") },
+    new FriendNPC{ Name="Jake", FavoriteGift="Logs",  Shop="FARMING SHOP", Npc=new NPC(new Vector2(-400, -750), "Jake",   "") },
+    new FriendNPC{ Name="Shack",   FavoriteGift="Bones", Shop="MAGIC SHOP", Npc=new NPC(new Vector2(700, -900),  "Shack",  "") },
     new FriendNPC{ Name="Cride", FavoriteGift="Fur",   Shop="DBar",  Npc=new NPC(new Vector2(-150, -300), "Cride","") },
+    new FriendNPC{ Name="Traz",     FavoriteGift="Fish",  Shop="SUPERMARKET",  Npc=new NPC(new Vector2(360, -520),  "Traz",     "Kia ora!") },
+    new FriendNPC{ Name="Nola", FavoriteGift="Logs",  Shop="FARMING SHOP", Npc=new NPC(new Vector2(-400, -750), "Nola",   "") },
+    new FriendNPC{ Name="Tipene",   FavoriteGift="Bones", Shop="MAGIC SHOP", Npc=new NPC(new Vector2(700, -900),  "Tipene",  "") },
+    new FriendNPC{ Name="Joybells", FavoriteGift="Fur",   Shop="DBar",  Npc=new NPC(new Vector2(-150, -300), "Joybells","") },
+    new FriendNPC{ Name="Rala",   FavoriteGift="Fish",  Shop="SUPERMARKET", Npc=new NPC(new Vector2(300, -500),  "Rala",  "") },
+    new FriendNPC{ Name="Eden", FavoriteGift="Logs",  Shop="FARMING SHOP", Npc=new NPC(new Vector2(-400, -750), "Eden",   "") },
+    new FriendNPC{ Name="Eli",   FavoriteGift="Bones", Shop="MAGIC SHOP", Npc=new NPC(new Vector2(700, -900),  "Eli",  "") },
+    new FriendNPC{ Name="Ezra", FavoriteGift="Fur",   Shop="DBar",  Npc=new NPC(new Vector2(-150, -300), "Ezra","") },
+    new FriendNPC{ Name="Hunter",   FavoriteGift="Bones", Shop="MAGIC SHOP", Npc=new NPC(new Vector2(700, -900),  "Hunter",  "") },
+    new FriendNPC{ Name="Ava", FavoriteGift="Fur",   Shop="DBar",  Npc=new NPC(new Vector2(-150, -300), "Ava","") },
+    new FriendNPC{ Name="Leo",   FavoriteGift="Bones", Shop="MAGIC SHOP", Npc=new NPC(new Vector2(700, -900),  "Leo",  "") },
+    new FriendNPC{ Name="Alice", FavoriteGift="Fur",   Shop="DBar",  Npc=new NPC(new Vector2(-150, -300), "Alice","") },
+    new FriendNPC{ Name="Whale",   FavoriteGift="Bones", Shop="MAGIC SHOP", Npc=new NPC(new Vector2(700, -900),  "Whale",  "") },
+    new FriendNPC{ Name="Jail", FavoriteGift="Fur",   Shop="DBar",  Npc=new NPC(new Vector2(-150, -300), "Jail","") },
 };        
 
         // Grocery / shopping bag
@@ -796,7 +815,7 @@ static List<FriendNPC> friendNPCs = new()
 
         // Player menu
          static bool playerMenuOpen = false;
-        enum PlayerMenuTab { Identity, Stats, Crafting, Achievements, Unlocks, Relationships, Collectables, Collection }
+        enum PlayerMenuTab { Identity, Stats, Crafting, Achievements, Bestiary, Unlocks, Relationships, Collectables, Collection }
         static PlayerMenuTab playerMenuTab = PlayerMenuTab.Identity; 
         static float idColScrollY = 0f; 
 
@@ -1473,6 +1492,293 @@ static float survivalHpTick = 0f;
         static int minimapY = 20;
         static float minimapScale = 0.01f;
         static float worldMapZoom = 1f;
+        // FOG OF WAR
+        const int FogCellSize = 500;           // world units per cell
+        const int FogOriginX  = -65000;        // left edge of fog grid in world coords
+        const int FogOriginY  = -42000;        // top edge
+        const int FogCols     = 220;           // (45000 - -65000) / 500 = 220
+        const int FogRows     = 168;           // (42000 - -42000) / 500 = 168
+        static bool[] fogRevealed = new bool[FogCols * FogRows];
+        static int    fogRevealedCount = 0;
+        const int     FogRevealRadius = 3; 
+        // ── ACHIEVEMENTS ──
+        class Achievement
+        {
+            public string Id;
+            public string Title;
+            public string Description;
+            public string Category;     // Exploration, Combat, Gathering, Crafting, Social, Wealth, Mastery, Misc
+            public int    Reward;       // money reward
+            public Func<bool> Condition;
+            public bool   Unlocked;
+            public Color  IconColor;
+        }
+
+        static bool achievementsOpen = false;
+        static float achievementScrollY = 0f;
+        static int   achievementCategory = 0;  // 0=All, then per-category
+        static float achievementPopupTimer = 0f;
+        static string achievementPopupTitle = "";
+        static int   achievementsUnlockedCount = 0;
+
+        static readonly string[] achievementCategories = { "All", "Exploration", "Combat", "Gathering", "Crafting", "Social", "Wealth", "Mastery", "Misc" };
+
+        static List<Achievement> achievements = new();
+
+        static void InitAchievements()
+        {
+            achievements.Clear();
+            achievementsUnlockedCount = 0;
+
+            void A(string id, string title, string desc, string cat, int reward, Func<bool> cond, Color col)
+                => achievements.Add(new Achievement { Id=id, Title=title, Description=desc, Category=cat, Reward=reward, Condition=cond, IconColor=col });
+
+            Color expl = new Color((byte)60,(byte)180,(byte)255,(byte)255);
+            Color comb = new Color((byte)220,(byte)50,(byte)50,(byte)255);
+            Color gath = new Color((byte)80,(byte)200,(byte)80,(byte)255);
+            Color craf = new Color((byte)200,(byte)160,(byte)60,(byte)255);
+            Color soci = new Color((byte)220,(byte)120,(byte)220,(byte)255);
+            Color weal = new Color((byte)255,(byte)215,(byte)0,(byte)255);
+            Color mast = new Color((byte)100,(byte)200,(byte)255,(byte)255);
+            Color misc = new Color((byte)180,(byte)180,(byte)180,(byte)255);
+
+            // ── Exploration ──
+            A("expl_first_steps",   "First Steps",       "Walk 500 units from spawn",          "Exploration", 25,  () => Vector2.Distance(player.Position, new Vector2(-1917,-9720)) > 500, expl);
+            A("expl_desert",        "Sandy Boots",       "Visit the Desert biome",             "Exploration", 50,  () => GetCurrentBiome() == "DESERT" || achievementVisited.Contains("DESERT"), expl);
+            A("expl_snow",          "Frostbitten",       "Visit the Snow Zone",                "Exploration", 50,  () => GetCurrentBiome() == "SNOW ZONE" || achievementVisited.Contains("SNOW ZONE"), expl);
+            A("expl_volcano",       "Playing With Fire", "Visit the Volcano",                  "Exploration", 75,  () => GetCurrentBiome() == "VOLCANO" || achievementVisited.Contains("VOLCANO"), expl);
+            A("expl_ocean",         "Deep Blue",         "Visit the Ocean",                    "Exploration", 50,  () => GetCurrentBiome() == "OCEAN" || achievementVisited.Contains("OCEAN"), expl);
+            A("expl_mountains",     "Peak Climber",      "Visit the Mountains",                "Exploration", 50,  () => GetCurrentBiome() == "MOUNTAINS" || achievementVisited.Contains("MOUNTAINS"), expl);
+            A("expl_beach",         "Beach Bum",         "Visit the Beach",                    "Exploration", 30,  () => GetCurrentBiome() == "BEACH" || achievementVisited.Contains("BEACH"), expl);
+            A("expl_hamiltron",     "City Slicker",      "Visit Hamiltron City",               "Exploration", 75,  () => GetCurrentBiome() == "HAMILTRON CITY" || achievementVisited.Contains("HAMILTRON CITY"), expl);
+            A("expl_rotoaira",      "Small Town Vibes",  "Visit Rotoaira",                     "Exploration", 75,  () => GetCurrentBiome() == "ROTOAIRA" || achievementVisited.Contains("ROTOAIRA"), expl);
+            A("expl_10pct",         "Cartographer",      "Explore 10% of the world map",       "Exploration", 100, () => GetExplorationPercent() >= 10f, expl);
+            A("expl_25pct",         "Pathfinder",        "Explore 25% of the world map",       "Exploration", 250, () => GetExplorationPercent() >= 25f, expl);
+            A("expl_50pct",         "Trailblazer",       "Explore 50% of the world map",       "Exploration", 500, () => GetExplorationPercent() >= 50f, expl);
+            A("expl_100pct",        "World Walker",      "Explore 100% of the world map",      "Exploration", 2000,() => GetExplorationPercent() >= 99.5f, expl);
+            A("expl_collectables5", "Treasure Seeker",   "Find 5 hidden collectables",         "Exploration", 150, () => CollectablesFound >= 5, expl);
+            A("expl_collectables15","Treasure Master",   "Find 15 hidden collectables",        "Exploration", 500, () => CollectablesFound >= 15, expl);
+
+            // ── Combat ──
+            A("comb_first_kill",  "First Blood",         "Defeat your first enemy",            "Combat", 25,  () => wolvesKilled > 0 || player.CombatLevel > 1, comb);
+            A("comb_wolves10",    "Wolf Culler",          "Slay 10 wolves",                    "Combat", 100, () => wolvesKilled >= 10, comb);
+            A("comb_wolves50",    "Alpha Hunter",         "Slay 50 wolves",                    "Combat", 300, () => wolvesKilled >= 50, comb);
+            A("comb_dungeon1",    "Dungeon Delver",       "Clear your first dungeon",          "Combat", 150, () => dungeonsCleared >= 1, comb);
+            A("comb_dungeon5",    "Dungeon Crawler",      "Clear 5 dungeons",                  "Combat", 400, () => dungeonsCleared >= 5, comb);
+            A("comb_dungeon20",   "Dungeon Master",       "Clear 20 dungeons",                 "Combat", 1000,() => dungeonsCleared >= 20, comb);
+            A("comb_combat25",    "Brawler",              "Reach Combat level 25",             "Combat", 200, () => player.CombatLevel >= 25, comb);
+            A("comb_combat50",    "Warrior",              "Reach Combat level 50",             "Combat", 500, () => player.CombatLevel >= 50, comb);
+            A("comb_combat100",   "Legendary Fighter",    "Reach Combat level 100",            "Combat", 2000,() => player.CombatLevel >= 100, comb);
+            A("comb_ranged25",    "Sharpshooter",         "Reach Ranged level 25",             "Combat", 200, () => player.RangedLevel >= 25, comb);
+            A("comb_magic25",     "Apprentice Mage",      "Reach Elemental level 25",          "Combat", 200, () => player.ElementalLevel >= 25, comb);
+
+            // ── Gathering ──
+            A("gath_chop1",       "Lumberjack",           "Chop your first tree",              "Gathering", 15,  () => player.WoodcuttingLevel > 1 || player.Logs > 0, gath);
+            A("gath_logs100",     "Timber Baron",         "Accumulate 100 logs",               "Gathering", 150, () => player.Logs + player.BirchLogs + player.OakLogs + player.PineLogs + player.ArcticLogs >= 100, gath);
+            A("gath_fish1",       "First Catch",          "Catch your first fish",             "Gathering", 15,  () => player.Fish > 0, gath);
+            A("gath_fish50",      "Master Angler",        "Catch 50 fish",                     "Gathering", 200, () => player.Fish >= 50, gath);
+            A("gath_mine1",       "Prospector",           "Mine your first rock",              "Gathering", 15,  () => player.MiningLevel > 1 || player.StoneOre > 0 || player.CopperOre > 0, gath);
+            A("gath_gold_ore",    "Gold Rush",            "Mine some Gold Ore",                "Gathering", 200, () => player.GoldOre > 0, gath);
+            A("gath_crystal",     "Crystal Clear",        "Mine some Crystals",                "Gathering", 300, () => player.Crystals > 0, gath);
+            A("gath_wc50",        "Woodcutting 50",       "Reach Woodcutting level 50",        "Gathering", 400, () => player.WoodcuttingLevel >= 50, gath);
+            A("gath_fish_lv50",   "Fishing 50",           "Reach Fishing level 50",            "Gathering", 400, () => player.FishingLevel >= 50, gath);
+            A("gath_mine50",      "Mining 50",            "Reach Mining level 50",             "Gathering", 400, () => player.MiningLevel >= 50, gath);
+            A("gath_harvest10",   "Green Thumb",          "Harvest 10 crops",                  "Gathering", 100, () => cropsHarvested >= 10, gath);
+            A("gath_harvest50",   "Farmer Supreme",       "Harvest 50 crops",                  "Gathering", 400, () => cropsHarvested >= 50, gath);
+
+            // ── Crafting ──
+            A("craf_first",       "DIY Beginner",         "Reach Crafting level 2",            "Crafting", 25,  () => player.CraftingLevel >= 2, craf);
+            A("craf_craft25",     "Artisan",              "Reach Crafting level 25",           "Crafting", 200, () => player.CraftingLevel >= 25, craf);
+            A("craf_smith10",     "Apprentice Smith",     "Reach Blacksmith level 10",         "Crafting", 150, () => player.BlacksmithLevel >= 10, craf);
+            A("craf_smith50",     "Master Smith",         "Reach Blacksmith level 50",         "Crafting", 500, () => player.BlacksmithLevel >= 50, craf);
+            A("craf_enchant10",   "Enchantment Novice",   "Reach Enchanting level 10",         "Crafting", 150, () => player.EnchantingLevel >= 10, craf);
+            A("craf_cook15",      "Master Chef",          "Cook 15 meals",                     "Crafting", 150, () => mealsCooked >= 15, craf);
+            A("craf_cook50",      "Legendary Chef",       "Cook 50 meals",                     "Crafting", 500, () => mealsCooked >= 50, craf);
+
+            // ── Social ──
+            A("soci_friend1",     "Making Friends",       "Reach friendship level 10 with any NPC", "Social", 50,  () => friendNPCs.Any(f => f.Friendship >= 10), soci);
+            A("soci_bestfriend",  "Best Friend",          "Max out friendship with any NPC",        "Social", 300, () => friendNPCs.Any(f => f.Friendship >= 100), soci);
+            A("soci_popular",     "Popular",              "Have 5 NPCs at friendship 20+",          "Social", 500, () => friendNPCs.Count(f => f.Friendship >= 20) >= 5, soci);
+            A("soci_cards_win",   "Card Shark",           "Win 10 card games",                      "Social", 200, () => player.EuchreWins + player.FiveHundredWins + player.SequenceWins >= 10, soci);
+            A("soci_cards_win50", "Grand Master",         "Win 50 card games",                      "Social", 1000,() => player.EuchreWins + player.FiveHundredWins + player.SequenceWins >= 50, soci);
+
+            // ── Wealth ──
+            A("weal_100",         "Pocket Change",        "Have $100 on hand",                 "Wealth", 0,   () => player.Money >= 100, weal);
+            A("weal_1000",        "Comfortable",          "Have $1,000 on hand",               "Wealth", 0,   () => player.Money >= 1000, weal);
+            A("weal_10000",       "Wealthy",              "Have $10,000 on hand",              "Wealth", 0,   () => player.Money >= 10000, weal);
+            A("weal_100000",      "Tycoon",               "Have $100,000 on hand",             "Wealth", 0,   () => player.Money >= 100000, weal);
+            A("weal_bank",        "Banker",               "Open a bank account",               "Wealth", 50,  () => bankSignedUp, weal);
+            A("weal_bank1000",    "Saver",                "Bank $1,000",                       "Wealth", 100, () => bankBalance >= 1000, weal);
+            A("weal_house1",      "Homeowner",            "Own a land plot",                   "Wealth", 200, () => ownedHousePlots.Count >= 1, weal);
+            A("weal_house3",      "Property Mogul",       "Own 3 land plots",                  "Wealth", 500, () => ownedHousePlots.Count >= 3, weal);
+            A("weal_vehicle",     "Licensed Driver",      "Own a vehicle",                     "Wealth", 100, () => vehicles.Count >= 1, weal);
+
+            // ── Mastery ──
+            A("mast_allskills10", "Jack of All Trades",   "Get 10 skills to level 10+",        "Mastery", 500,  () => CountSkillsAtLevel(10) >= 10, mast);
+            A("mast_allskills25", "Skilled",              "Get 10 skills to level 25+",        "Mastery", 1000, () => CountSkillsAtLevel(25) >= 10, mast);
+            A("mast_anyskill100", "True Mastery",         "Get any skill to level 100",        "Mastery", 2000, () => cheatSkills.Any(s => s.get() >= 100), mast);
+            A("mast_tutorial",    "Graduate",             "Complete the tutorial",              "Mastery", 50,   () => tutorialCompleted, mast);
+            A("mast_id",          "Citizen",              "Get your ID card",                  "Mastery", 50,   () => idClaimed, mast);
+
+            // ── Misc ──
+            A("misc_sport5",      "Sporty",               "Play 5 sports matches",             "Misc", 100, () => sportPlayCounts.Values.Sum() >= 5, misc);
+            A("misc_minigame5",   "Fun & Games",          "Play 5 minigames",                  "Misc", 100, () => minigamePlayCounts.Values.Sum() >= 5, misc);
+            A("misc_night",       "Night Owl",            "Stay up past midnight",             "Misc", 25,  () => timeOfDay * 24f >= 0f && timeOfDay * 24f < 4f, misc);
+            A("misc_rain",        "Singing in the Rain",  "Experience rain",                   "Misc", 15,  () => isRaining, misc);
+            A("misc_dropzone",    "VIP",                  "Get a Dropzone membership card",    "Misc", 50,  () => hasDropzoneCard, misc);
+            A("misc_playtime2h",  "Dedicated",            "Play for 2 hours",                  "Misc", 100, () => totalPlayTime >= 7200, misc);
+            A("misc_playtime10h", "Addicted",             "Play for 10 hours",                 "Misc", 500, () => totalPlayTime >= 36000, misc);
+        }
+
+        static HashSet<string> achievementVisited = new();
+        static float pmAchScrollY = 0f;
+        static int   pmAchCategory = 0;
+
+        static int CountSkillsAtLevel(int minLevel)
+        {
+            int count = 0;
+            foreach (var s in cheatSkills)
+                if (s.get() >= minLevel) count++;
+            return count;
+        } 
+
+        // ── BESTIARY ──
+        class BestiaryEntry
+        {
+            public string Type;
+            public int    Kills;
+            public bool   Discovered;
+            public string Location;     // biome where found
+            public int    HP;
+            public int    CombatXP;
+            public string[] Drops;      // possible drop names
+            public string[] DropRates;  // matching rate strings
+            public Color  EnemyColor;
+        }
+
+        static Dictionary<string, BestiaryEntry> bestiary = new();
+        static float pmBestScrollY = 0f;
+        static int   pmBestFilter = 0; // 0=All, 1=Discovered, 2=Undiscovered
+
+        static void InitBestiary()
+        {
+            bestiary.Clear();
+
+            void B(string type, string loc, int hp, int xp, Color col, string[] drops, string[] rates)
+                => bestiary[type] = new BestiaryEntry { Type=type, Location=loc, HP=hp, CombatXP=xp, EnemyColor=col, Drops=drops, DropRates=rates };
+
+            B("Wild Dog",       "Grasslands / Farm",  3,  20,
+              new Color((byte)139,(byte)90,(byte)43,(byte)255),
+              new[] { "Bone", "Fur", "Dog Fang" },
+              new[] { "100%", "20%", "5%" });
+
+            B("Wolf",           "Forest",             5,  35,
+              Color.DarkGray,
+              new[] { "Fur", "Bone", "Wolf Claw" },
+              new[] { "100%", "25%", "8%" });
+
+            B("Scorpion",       "Desert",             4,  30,
+              new Color((byte)180,(byte)120,(byte)0,(byte)255),
+              new[] { "Stinger", "Stinger (x2)", "Venom Sac" },
+              new[] { "100%", "20%", "6%" });
+
+            B("Bear",           "Snow Zone",          8,  50,
+              new Color((byte)100,(byte)100,(byte)120,(byte)255),
+              new[] { "Bear Pelt", "Fur", "Bear Claw" },
+              new[] { "100%", "30%", "7%" });
+
+            B("Crab",           "Beach",              10, 55,
+              new Color((byte)210,(byte)80,(byte)30,(byte)255),
+              new[] { "Crab Claw", "Crab Claw (x2)", "Crab Shell" },
+              new[] { "100%", "25%", "8%" });
+
+            B("Shark",          "Ocean",              13, 70,
+              new Color((byte)70,(byte)100,(byte)140,(byte)255),
+              new[] { "Shark Fin", "Shark Fin (x2)", "Shark Tooth" },
+              new[] { "100%", "20%", "5%" });
+
+            B("Snake",          "Swamp",              10, 55,
+              new Color((byte)40,(byte)100,(byte)40,(byte)255),
+              new[] { "Snake Skin", "Stinger", "Snake Fang" },
+              new[] { "100%", "20%", "6%" });
+
+            B("Crocodile",      "Swamp",              14, 75,
+              new Color((byte)50,(byte)80,(byte)30,(byte)255),
+              new[] { "Croc Scale", "Croc Scale (x2)", "Croc Tooth" },
+              new[] { "100%", "25%", "7%" });
+
+            B("Fire Lizard",    "Volcano",            12, 65,
+              new Color((byte)180,(byte)60,(byte)10,(byte)255),
+              new[] { "Lizard Scale", "Lizard Scale (x2)", "Ember Stone" },
+              new[] { "100%", "20%", "6%" });
+
+            B("Magma Beetle",   "Volcano",            15, 80,
+              new Color((byte)120,(byte)30,(byte)0,(byte)255),
+              new[] { "Magma Shard", "Magma Shard (x2)", "Lava Core" },
+              new[] { "100%", "25%", "5%" });
+
+            B("Eagle",          "Mountains",          11, 60,
+              new Color((byte)100,(byte)70,(byte)20,(byte)255),
+              new[] { "Feather", "Feather (x2)", "Eagle Talon" },
+              new[] { "100%", "30%", "7%" });
+
+            B("Mountain Goat",  "Mountains",          13, 70,
+              new Color((byte)200,(byte)195,(byte)185,(byte)255),
+              new[] { "Horn", "Fur", "Goat Hoof" },
+              new[] { "100%", "25%", "8%" });
+
+            B("Warrior",        "Grasslands",          6, 60,
+              new Color((byte)150,(byte)150,(byte)165,(byte)255),
+              new[] { "Iron Armour Piece" },
+              new[] { "20%" });
+
+            B("Wizard",         "Grasslands",          5, 60,
+              new Color((byte)90,(byte)60,(byte)150,(byte)255),
+              new[] { "Mage Robe Piece" },
+              new[] { "20%" });
+
+            B("Archer",         "Grasslands",          5, 55,
+              new Color((byte)120,(byte)85,(byte)45,(byte)255),
+              new[] { "Leather Armour Piece" },
+              new[] { "20%" });
+
+            B("Goblin",         "Grasslands",          4, 30,
+              new Color((byte)90,(byte)150,(byte)70,(byte)255),
+              new[] { "Bone" },
+              new[] { "Rare" });
+
+            B("Thug",           "City",                7, 40,
+              new Color((byte)70,(byte)70,(byte)80,(byte)255),
+              new[] { "Bone" },
+              new[] { "Rare" });
+
+            B("Robber",         "City",                6, 38,
+              new Color((byte)45,(byte)45,(byte)55,(byte)255),
+              new[] { "Bone" },
+              new[] { "Rare" });
+
+            B("Gangster",       "City",                8, 45,
+              new Color((byte)30,(byte)30,(byte)35,(byte)255),
+              new[] { "Bone" },
+              new[] { "Rare" });
+
+            B("Giant Bug",      "Forest",              9, 50,
+              new Color((byte)60,(byte)90,(byte)45,(byte)255),
+              new[] { "Stinger", "Venom Sac" },
+              new[] { "50%", "10%" });
+        }
+
+        static void RecordBestiaryKill(string enemyType, string biome)
+        {
+            if (!bestiary.TryGetValue(enemyType, out var entry)) return;
+            entry.Kills++;
+            if (!entry.Discovered)
+            {
+                entry.Discovered = true;
+                entry.Location = biome ?? entry.Location;
+                ShowNotification($"Bestiary: {enemyType} discovered!");
+            }
+        }
 
         // RAIN
         static bool isRaining = false;
@@ -1949,7 +2255,7 @@ public static string RegisterPlushWin(int slot, string name)
         static int cropsHarvested = 0;
         static int mealsCooked = 0;
 
-static NPC rangerNpc = new NPC(new Vector2(-1800, -7000), "Ranger", "Those wolves are getting bold...");
+static NPC rangerNpc = new NPC(new Vector2(-1500, -7000), "Ranger", "Those wolves are getting bold...") { SpriteKey = "Ranger" };
 static List<StoryQuest> storyQuests = new()
 {
     new StoryQuest { Title = "The Wolf Menace", GiverName = "Ranger", Reward = 500,
@@ -2410,10 +2716,10 @@ static void AdvanceStoryQuest(StoryQuest q)
         // BUS SYSTEM
         record BusStop(string Name, Vector2 WorldPos);
         static BusStop[] busStops = {
-            new("Safe Zone",  new Vector2(440,  640)),
-            new("Supermarket",new Vector2(3790, 640)),
-            new("Desert",     new Vector2(8000, 260)),
-            new("Snow Zone",  new Vector2(-9000,260)),
+            new("Safe Zone",  new Vector2(440,  440)),
+            new("Supermarket",new Vector2(3790, 440)),
+            new("Desert",     new Vector2(8000, 440)),
+            new("Snow Zone",  new Vector2(-9000, 440)),
             new("Hamiltron City", new Vector2(14800, 5660)),
             new("Rotoaira",       new Vector2(-16200, 4540)),
         };
@@ -4580,6 +4886,7 @@ static readonly (PlayerMenuTab tab, string label)[] playerMenuTabs =
     (PlayerMenuTab.Stats,         "Stats"),
     (PlayerMenuTab.Crafting,      "Crafting"),
     (PlayerMenuTab.Achievements,  "Achievements"),
+    (PlayerMenuTab.Bestiary,      "Bestiary"),
     (PlayerMenuTab.Unlocks,       "Unlocks"),
     (PlayerMenuTab.Relationships, "Relationships"),
     (PlayerMenuTab.Collectables,  "Collectables"),
@@ -4591,6 +4898,236 @@ static void DrawPMPlaceholder(int cx, int cy, string label)
     Program.DrawTextUI(label.ToUpper(), cx, cy, 26, Color.Gold);
     Program.DrawTextUI("Coming soon.", cx, cy + 40, 18, Color.LightGray);
 }
+
+static void DrawPMAchievements(int x, int y, int w)
+{
+    Program.DrawTextUI("ACHIEVEMENTS", x, y, 34, Color.Gold);
+
+    // completion summary
+    float pct = achievements.Count > 0 ? (float)achievementsUnlockedCount / achievements.Count : 0f;
+    Program.DrawTextUI($"{achievementsUnlockedCount}/{achievements.Count} unlocked", x + 260, y + 8, 20, Color.White);
+    Raylib.DrawRectangle(x, y + 42, w - 40, 14, new Color((byte)40,(byte)40,(byte)40,(byte)255));
+    Raylib.DrawRectangle(x, y + 42, (int)((w - 40) * pct), 14, new Color((byte)255,(byte)215,(byte)0,(byte)255));
+    Program.DrawTextUI($"{pct*100:F1}%", x + w - 80, y + 40, 16, Color.Gold);
+
+    // category tabs
+    Vector2 mouse = Raylib.GetMousePosition();
+    int tabY = y + 66;
+    int tabX = x;
+    for (int i = 0; i < achievementCategories.Length; i++)
+    {
+        string cat = achievementCategories[i];
+        int catW = Program.MeasureTextUI(cat, 15) + 16;
+        Rectangle tab = new Rectangle(tabX, tabY, catW, 26);
+        bool hover = Raylib.CheckCollisionPointRec(mouse, tab);
+        bool active = pmAchCategory == i;
+        Raylib.DrawRectangleRec(tab, active ? new Color((byte)60,(byte)50,(byte)20,(byte)255) : new Color((byte)26,(byte)30,(byte)44,(byte)255));
+        Raylib.DrawRectangleLinesEx(tab, 1, active ? Color.Gold : (hover ? Color.White : new Color((byte)60,(byte)66,(byte)90,(byte)255)));
+        Program.DrawTextUI(cat, tabX + 8, tabY + 5, 15, active ? Color.Gold : (hover ? Color.White : Color.Gray));
+        if (hover && Raylib.IsMouseButtonPressed(MouseButton.Left)) { pmAchCategory = i; pmAchScrollY = 0f; }
+        tabX += catW + 4;
+        if (tabX > x + w - 80) { tabX = x; tabY += 30; }
+    }
+
+    // filtered list
+    int contentTop = tabY + 34;
+    int contentH = 640 - (contentTop - y);  // fill rest of panel
+    string filterCat = pmAchCategory == 0 ? null : achievementCategories[pmAchCategory];
+    var filtered = filterCat == null ? achievements : achievements.Where(a => a.Category == filterCat).ToList();
+
+    int rowH = 62;
+    int totalH = filtered.Count * rowH;
+    float maxScroll = Math.Max(0, totalH - contentH);
+    if (Raylib.CheckCollisionPointRec(mouse, new Rectangle(x, contentTop, w - 40, contentH)))
+        pmAchScrollY = Math.Clamp(pmAchScrollY - Raylib.GetMouseWheelMove() * 40f, 0f, maxScroll);
+    pmAchScrollY = Math.Clamp(pmAchScrollY, 0f, maxScroll);
+
+    Raylib.BeginScissorMode(x, contentTop, w - 40, contentH);
+    for (int i = 0; i < filtered.Count; i++)
+    {
+        var a = filtered[i];
+        int ry = contentTop + i * rowH - (int)pmAchScrollY;
+        if (ry + rowH < contentTop || ry > contentTop + contentH) continue;
+
+        int rw = w - 50;
+        Color bgCol = a.Unlocked
+            ? new Color((byte)30,(byte)42,(byte)24,(byte)220)
+            : new Color((byte)22,(byte)24,(byte)32,(byte)220);
+        Raylib.DrawRectangle(x, ry, rw, rowH - 4, bgCol);
+        Raylib.DrawRectangleLinesEx(new Rectangle(x, ry, rw, rowH - 4), 1,
+            a.Unlocked ? new Color((byte)120,(byte)180,(byte)60,(byte)255) : new Color((byte)50,(byte)55,(byte)65,(byte)255));
+
+        // icon circle
+        int iconX = x + 26, iconY = ry + rowH / 2 - 2;
+        if (a.Unlocked)
+        {
+            Raylib.DrawCircle(iconX, iconY, 16, a.IconColor);
+            Program.DrawTextUI("★", iconX - 8, iconY - 12, 22, new Color((byte)255,(byte)255,(byte)255,(byte)230));
+        }
+        else
+        {
+            Raylib.DrawCircle(iconX, iconY, 16, new Color((byte)40,(byte)40,(byte)48,(byte)255));
+            Raylib.DrawCircleLines(iconX, iconY, 16, new Color((byte)60,(byte)66,(byte)90,(byte)255));
+            Program.DrawTextUI("?", iconX - 5, iconY - 10, 18, Color.DarkGray);
+        }
+
+        // title + description
+        Color titleCol = a.Unlocked ? Color.White : Color.Gray;
+        Color descCol = a.Unlocked ? Color.LightGray : new Color((byte)80,(byte)80,(byte)90,(byte)255);
+        Program.DrawTextUI(a.Title, x + 52, ry + 6, 20, titleCol);
+        Program.DrawTextUI(a.Description, x + 52, ry + 28, 15, descCol);
+
+        // category badge
+        Program.DrawTextUI(a.Category, x + rw - 160, ry + 6, 12, new Color((byte)140,(byte)140,(byte)160,(byte)200));
+
+        // reward + status on the right
+        if (a.Reward > 0)
+        {
+            string rText = a.Unlocked ? $"+${a.Reward}" : $"${a.Reward}";
+            Color rCol = a.Unlocked ? new Color((byte)100,(byte)200,(byte)80,(byte)255) : new Color((byte)150,(byte)130,(byte)50,(byte)180);
+            Program.DrawTextUI(rText, x + rw - 70, ry + 6, 16, rCol);
+        }
+
+        string status = a.Unlocked ? "UNLOCKED" : "LOCKED";
+        Color stCol = a.Unlocked ? new Color((byte)100,(byte)220,(byte)60,(byte)255) : new Color((byte)100,(byte)100,(byte)110,(byte)255);
+        Program.DrawTextUI(status, x + rw - 90, ry + 30, 13, stCol);
+    }
+    Raylib.EndScissorMode();
+
+    // scroll hint
+    if (maxScroll > 0)
+        Program.DrawTextUI("Scroll to see more", x + w / 2 - 70, contentTop + contentH + 4, 14, Color.DarkGray);
+}
+
+static void DrawPMBestiary(int x, int y, int w)
+{
+    int discovered = bestiary.Values.Count(e => e.Discovered);
+    int total = bestiary.Count;
+    Program.DrawTextUI("BESTIARY", x, y, 34, Color.Gold);
+    Program.DrawTextUI($"{discovered}/{total} discovered", x + 220, y + 8, 20, Color.White);
+
+    // progress bar
+    float pct = total > 0 ? (float)discovered / total : 0f;
+    Raylib.DrawRectangle(x, y + 42, w - 40, 14, new Color((byte)40,(byte)40,(byte)40,(byte)255));
+    Raylib.DrawRectangle(x, y + 42, (int)((w - 40) * pct), 14, new Color((byte)220,(byte)50,(byte)50,(byte)255));
+    Program.DrawTextUI($"{pct*100:F0}%", x + w - 80, y + 40, 16, Color.Red);
+
+    // filter tabs
+    Vector2 mouse = Raylib.GetMousePosition();
+    string[] filters = { "All", "Discovered", "Undiscovered" };
+    int tabX = x;
+    for (int i = 0; i < filters.Length; i++)
+    {
+        int tw = Program.MeasureTextUI(filters[i], 16) + 16;
+        Rectangle tab = new Rectangle(tabX, y + 64, tw, 26);
+        bool hover = Raylib.CheckCollisionPointRec(mouse, tab);
+        bool active = pmBestFilter == i;
+        Raylib.DrawRectangleRec(tab, active ? new Color((byte)60,(byte)30,(byte)20,(byte)255) : new Color((byte)26,(byte)30,(byte)44,(byte)255));
+        Raylib.DrawRectangleLinesEx(tab, 1, active ? Color.Red : (hover ? Color.White : new Color((byte)60,(byte)66,(byte)90,(byte)255)));
+        Program.DrawTextUI(filters[i], tabX + 8, y + 69, 16, active ? Color.Red : (hover ? Color.White : Color.Gray));
+        if (hover && Raylib.IsMouseButtonPressed(MouseButton.Left)) { pmBestFilter = i; pmBestScrollY = 0f; }
+        tabX += tw + 6;
+    }
+
+    // total kills stat
+    int totalKills = bestiary.Values.Sum(e => e.Kills);
+    Program.DrawTextUI($"Total Kills: {totalKills}", x + w - 200, y + 69, 16, Color.LightGray);
+
+    // filtered + sorted list (discovered first, then alphabetical)
+    var entries = bestiary.Values.ToList();
+    if (pmBestFilter == 1) entries = entries.Where(e => e.Discovered).ToList();
+    else if (pmBestFilter == 2) entries = entries.Where(e => !e.Discovered).ToList();
+    entries.Sort((a, b) =>
+    {
+        if (a.Discovered != b.Discovered) return a.Discovered ? -1 : 1;
+        return string.Compare(a.Type, b.Type, StringComparison.Ordinal);
+    });
+
+    int contentTop = y + 98;
+    int contentH = 580;
+    int rowH = 90;
+    int totalH = entries.Count * rowH;
+    float maxScroll = Math.Max(0, totalH - contentH);
+    if (Raylib.CheckCollisionPointRec(mouse, new Rectangle(x, contentTop, w - 40, contentH)))
+        pmBestScrollY = Math.Clamp(pmBestScrollY - Raylib.GetMouseWheelMove() * 40f, 0f, maxScroll);
+    pmBestScrollY = Math.Clamp(pmBestScrollY, 0f, maxScroll);
+
+    Raylib.BeginScissorMode(x, contentTop, w - 40, contentH);
+    for (int i = 0; i < entries.Count; i++)
+    {
+        var e = entries[i];
+        int ry = contentTop + i * rowH - (int)pmBestScrollY;
+        if (ry + rowH < contentTop || ry > contentTop + contentH) continue;
+
+        int rw = w - 50;
+        Color bgCol = e.Discovered
+            ? new Color((byte)28,(byte)30,(byte)38,(byte)230)
+            : new Color((byte)18,(byte)18,(byte)22,(byte)230);
+        Raylib.DrawRectangle(x, ry, rw, rowH - 4, bgCol);
+        Raylib.DrawRectangleLinesEx(new Rectangle(x, ry, rw, rowH - 4), 1,
+            e.Discovered ? new Color((byte)100,(byte)60,(byte)60,(byte)255) : new Color((byte)40,(byte)40,(byte)48,(byte)255));
+
+        // enemy icon (circle silhouette or colored)
+        int iconX = x + 30, iconY = ry + rowH / 2 - 2;
+        if (e.Discovered)
+        {
+            Raylib.DrawCircle(iconX, iconY, 20, e.EnemyColor);
+            Raylib.DrawCircle(iconX, iconY, 16, new Color(
+                (byte)Math.Min(255, e.EnemyColor.R + 30),
+                (byte)Math.Min(255, e.EnemyColor.G + 30),
+                (byte)Math.Min(255, e.EnemyColor.B + 30), (byte)255));
+        }
+        else
+        {
+            Raylib.DrawCircle(iconX, iconY, 20, new Color((byte)30,(byte)30,(byte)35,(byte)255));
+            Raylib.DrawCircleLines(iconX, iconY, 20, new Color((byte)60,(byte)60,(byte)70,(byte)255));
+            Program.DrawTextUI("?", iconX - 6, iconY - 12, 20, Color.DarkGray);
+        }
+
+        if (e.Discovered)
+        {
+            // name + location
+            Program.DrawTextUI(e.Type, x + 60, ry + 4, 22, Color.White);
+            Program.DrawTextUI($"Found: {e.Location}", x + 60, ry + 28, 14, new Color((byte)160,(byte)180,(byte)200,(byte)255));
+
+            // stats
+            Program.DrawTextUI($"HP: {e.HP}", x + 60, ry + 48, 13, Color.LightGray);
+            Program.DrawTextUI($"XP: {e.CombatXP}", x + 130, ry + 48, 13, Color.LightGray);
+            Program.DrawTextUI($"Kills: {e.Kills}", x + 210, ry + 48, 13, new Color((byte)255,(byte)100,(byte)100,(byte)255));
+
+            // drops
+            string dropStr = "";
+            for (int d = 0; d < e.Drops.Length; d++)
+            {
+                if (d > 0) dropStr += ", ";
+                dropStr += $"{e.Drops[d]} ({e.DropRates[d]})";
+            }
+            // truncate if too long
+            if (Program.MeasureTextUI(dropStr, 12) > rw - 280)
+                dropStr = dropStr.Substring(0, Math.Min(dropStr.Length, 60)) + "...";
+            Program.DrawTextUI($"Drops: {dropStr}", x + 300, ry + 48, 12, new Color((byte)200,(byte)180,(byte)100,(byte)255));
+
+            // kill count badge on right
+            Raylib.DrawRectangle(x + rw - 80, ry + 8, 70, 30, new Color((byte)60,(byte)20,(byte)20,(byte)200));
+            Raylib.DrawRectangleLinesEx(new Rectangle(x + rw - 80, ry + 8, 70, 30), 1, new Color((byte)200,(byte)60,(byte)60,(byte)255));
+            string killText = e.Kills.ToString();
+            int kw = Program.MeasureTextUI(killText, 20);
+            Program.DrawTextUI(killText, x + rw - 80 + 35 - kw / 2, ry + 13, 20, Color.Red);
+        }
+        else
+        {
+            // unknown entry
+            Program.DrawTextUI("???", x + 60, ry + 8, 22, Color.DarkGray);
+            Program.DrawTextUI("Not yet encountered", x + 60, ry + 34, 15, new Color((byte)80,(byte)80,(byte)90,(byte)255));
+            Program.DrawTextUI("Defeat this enemy to reveal its entry", x + 60, ry + 54, 13, new Color((byte)60,(byte)60,(byte)70,(byte)255));
+        }
+    }
+    Raylib.EndScissorMode();
+
+    if (maxScroll > 0)
+        Program.DrawTextUI("Scroll to see more", x + w / 2 - 70, contentTop + contentH + 4, 14, Color.DarkGray);
+}
+
 static void DrawPMRelationships(int x, int y, int w)
 {
     Program.DrawTextUI("RELATIONSHIPS", x, y, 34, Color.Gold);
@@ -4760,6 +5297,8 @@ static void DrawPMIdentity(int x, int y, int w)
     Line("Dropzone Tickets:", player.Tickets.ToString());
     Line("Land Plots Owned:", ownedHousePlots.Count.ToString());
     Line("Dungeons Cleared:", dungeonsCleared.ToString());
+    Line("World Explored:", $"{GetExplorationPercent():F1}%");
+    Line("Achievements:", $"{achievementsUnlockedCount}/{achievements.Count}");
     if (timesCheated > 0)
     Line("Times Cheated:", timesCheated.ToString());
 
@@ -6752,8 +7291,8 @@ static void DrawSpeechBubbleScreen(int sx, int sy, string text, float alphaPct =
             if (pos.X >= -1260 - buffer && pos.X <= -1140 + buffer) return true;
             if (pos.X >= 200 - buffer && pos.X <= 320 + buffer && pos.Y <= 550 + buffer) return true;
             if (pos.X >= 500 - buffer && pos.X <= 620 + buffer && pos.Y <= 550 + buffer) return true;
+            if (CarparkManager.IsNearCarpark(pos, buffer)) return true;
             if (RoadManager.IsNearRoad(pos, buffer)) return true;
-
             return false;
         }
 
@@ -6828,7 +7367,9 @@ static void DrawSpeechBubbleScreen(int sx, int sy, string text, float alphaPct =
     if (pos.X >= -18000 && pos.X <= -17880 && pos.Y >= 3200 && pos.Y <= 6220) return true; // loop W
     if (pos.X >= -13920 && pos.X <= -13800 && pos.Y >= 3200 && pos.Y <= 6220) return true; // loop E
     if (pos.X >= -16200 && pos.X <= -16080 && pos.Y >= 260  && pos.Y <= 3320) return true; // connector
+    if (CarparkManager.IsOnCarparkSurface(pos)) return true;
     if (RoadManager.IsOnRoadSurface(pos)) return true;
+    
 
     return false;
 }
