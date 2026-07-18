@@ -55,6 +55,7 @@ namespace OpenWorldRPG
             SpawnDeathFx(enemy.Center, enemy.EnemyColor, enemy.Type);
 
                 if (enemy.Type == "Wild Dog") Raylib.PlaySound(soundDogDie);
+                if (enemy.Type == "Wolf") Raylib.PlaySound(soundWolfDie);
 
                 int killerId = enemy.LastDamagerId >= 0 ? enemy.LastDamagerId : multiplayer.MyId;
                 if (killerId == multiplayer.MyId)
@@ -531,6 +532,7 @@ static void UpdateSpellProjectiles(float dt)
             int baseDmg  = GetSpellDamage(p.SpellType);
             int lvlBonus = player.ElementalLevel / 5;
             int dmg      = baseDmg + lvlBonus;
+            if (HasSynergy("Arcane Warrior")) dmg = (int)(dmg * 1.25f);
 
             int actualDmg = Math.Min(dmg, enemy.Health);
 
@@ -601,6 +603,26 @@ static void UpdateSpellProjectiles(float dt)
     player.AddElementalXP(dmg);
     hit = true;
 }
+// ADD — biome boss spell hits
+        if (!hit)
+        {
+            foreach (var boss in biomeBosses)
+            {
+                if (!boss.Dead && Raylib.CheckCollisionPointRec(p.Pos, boss.Bounds))
+                {
+                    int dmg = GetSpellDamage(p.SpellType) + player.ElementalLevel / 3 + GetArmorStyleBonus().magic;
+                    boss.Health -= dmg;
+                    if (boss.Health <= 0) { boss.Dead = true; AwardBossKill(boss, false); }
+                    floatingTexts.Add(new FloatingText {
+                        Position = boss.Center - new Vector2(0, boss.Size / 2f),
+                        Text = $"-{dmg}", Timer = 1f, TextColor = GetSpellColor(p.SpellType)
+                    });
+                    player.AddElementalXP(dmg);
+                    hit = true;
+                    break;
+                }
+            }
+        }
 
         if (hit) spellProjectiles.RemoveAt(i);
         else     spellProjectiles[i] = p;
@@ -668,6 +690,7 @@ static void UpdateProjectiles(float dt)
 
             int baseDmg  = p.AmmoType == "Bolts" ? 18 : 12;
             int dmg = baseDmg + (player.RangedLevel / 5) + GetArmorStyleBonus().ranged;
+            if (HasSynergy("Sharpshooter")) dmg = (int)(dmg * 1.2f);
             if (!multiplayer.Connected || multiplayer.IsHost)
             {
                 enemy.LastDamagerId = multiplayer.MyId;
@@ -776,18 +799,7 @@ static void UpdateWorldBoss(WorldBoss boss, float dt)
     // else: client — boss state comes entirely from BossStateReceived; no local Update() at all.
 
     if (boss.Dead) return;
-
-    // proximity rumble for super bosses
-    if (boss.ShakesWhenNear)
-    {
-        float dist = Vector2.Distance(player.Center, boss.Center);
-        if (dist < boss.ProximityShakeRange)
-        {
-            float intensity = 0.15f * (1f - dist / boss.ProximityShakeRange);
-            TriggerShake(intensity);
-        }
-    }
-
+    
     // contact damage
     if (Raylib.CheckCollisionRecs(player.Bounds, boss.Bounds) && boss.AttackCooldown <= 0)
     {
@@ -795,7 +807,6 @@ static void UpdateWorldBoss(WorldBoss boss, float dt)
         int dmg = Math.Max(1, boss.ContactDamage - def);
         player.TakeDamage(dmg);
         boss.AttackCooldown = 1.0f;
-        TriggerShake(0.3f);
         floatingTexts.Add(new FloatingText {
             Position = player.Position - new Vector2(0, 20),
             Text = $"-{dmg}", Timer = 1f, TextColor = Color.Red
@@ -816,6 +827,7 @@ static void UpdateWorldBoss(WorldBoss boss, float dt)
         if (equipped != null && GetItemSlot(equipped) == "WEAPON")
         {
             int dmg = 1 + (player.CombatLevel / 10) + GetWeaponDamage(equipped) + GetArmorStyleBonus().melee;
+            if (HasPerk("Combat", 15)) dmg += 2;
 
             if (amHost || !multiplayer.Connected)
             {

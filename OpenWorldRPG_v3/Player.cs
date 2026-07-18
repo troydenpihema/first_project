@@ -189,8 +189,8 @@ namespace OpenWorldRPG
         void AddNewSkillXP(ref int xpField, ref int lvField, int xp, string name)
         {
             if (lvField >= 100) return;
-            xpField += xp;
-            int required = lvField * lvField * 50;   // same curve as Crafting
+            xpField += (int)(xp * Program.SynergyXPMultiplier());
+            int required = lvField * lvField * 50;
             if (xpField >= required) { xpField = 0; lvField++; Program.ShowLevelUp(name, lvField); }
         }
         public int SportsLevel = 1;
@@ -212,13 +212,15 @@ namespace OpenWorldRPG
         public int EducationLevel = 1;
         public int EducationXP = 0;
         public int BoatingLevel = 1;
-        public int BoatingXP = 0;           
+        public int BoatingXP = 0;
+        // ── REPUTATION / TOWN STANDING ──
+        public int Reputation = 0;
         public int PlushPrizes = 0;
         public int Tickets = 0;
         public bool HasTrolley = false;
         public bool HasBasket = false;
-        public float BaseSpeed => 300 + (AthleticsLevel * 2);
-        float speed => HasTrolley ? BaseSpeed * 0.65f : BaseSpeed;
+        public float BaseSpeed => (170 + (AthleticsLevel * 2)) * (Program.HasSynergy("Trailblazer") ? 1.1f : 1f);
+        float speed => Program.cheatSpeedBoost ? 2000f : (HasTrolley ? BaseSpeed * 0.65f : BaseSpeed);
         float regenTimer = 0f;
         float damageCooldown = 0f;
         public Color ShirtColor = Color.Blue;
@@ -232,6 +234,10 @@ namespace OpenWorldRPG
         Color ArmorColor(string item, Color fallback)
         {
             if (item == null) return fallback;
+            
+            if (item == "Hawkeye's Cloak" || item == "Marksman Hood")
+            return new Color((byte)120,(byte)80,(byte)40,(byte)255);
+
             if (item.Contains("Mage ") || item.Contains("Ranger "))
             {
                 string[] tiers = item.Contains("Mage ") ? Program.mageTiers : Program.rangerTiers;
@@ -453,6 +459,7 @@ void DrawStar(int cx, int cy, float size, Color col)
                 Position.X = coastX + maxSwimDepth;
 
             float swimSpeedMultiplier = 0.5f + Math.Min(SwimmingLevel, 50) * 0.01f;
+            if (Program.HasSynergy("Sea Lord")) swimSpeedMultiplier *= 1.25f;
             Position = oldPos + (Position - oldPos) * swimSpeedMultiplier;
             AddSwimmingXP(1);
             AddStaminaXP(1); 
@@ -699,7 +706,7 @@ public void DriveAnimation(bool moving, float dt)
         {
             if (WoodcuttingLevel >= 100) return;
 
-            WoodcuttingXP += xp;
+            WoodcuttingXP += (int)(xp * Program.SynergyXPMultiplier());
 
             int requiredXP = WoodcuttingLevel * WoodcuttingLevel * 50;
 
@@ -713,7 +720,7 @@ public void DriveAnimation(bool moving, float dt)
         public void AddMiningXP(int xp)
         {
             if (MiningLevel >= 100) return;
-            MiningXP += xp;
+            MiningXP += (int)(xp * Program.SynergyXPMultiplier());
             int requiredXP = MiningLevel * MiningLevel * 50;
             if (MiningXP >= requiredXP)
             {
@@ -727,7 +734,7 @@ public void DriveAnimation(bool moving, float dt)
         {
             if (FishingLevel >= 100) return;
 
-            FishingXP += xp;
+            FishingXP += (int)(xp * Program.SynergyXPMultiplier());
 
             int requiredXP = FishingLevel * FishingLevel * 50;
 
@@ -743,7 +750,7 @@ public void DriveAnimation(bool moving, float dt)
         {
             if (CombatLevel >= 100) return;
 
-            CombatXP += xp;
+            CombatXP += (int)(xp * Program.SynergyXPMultiplier());
 
             int requiredXP = CombatLevel * CombatLevel * 50;
 
@@ -758,7 +765,7 @@ public void DriveAnimation(bool moving, float dt)
         public void AddOneHandMeleeXP(int xp)
         {
             if (OneHandMeleeLevel >= 100) return;
-            OneHandMeleeXP += xp;
+            OneHandMeleeXP += (int)(xp * Program.SynergyXPMultiplier());
             int requiredXP = OneHandMeleeLevel * OneHandMeleeLevel * 50;
             if (OneHandMeleeXP >= requiredXP)
             {
@@ -771,7 +778,7 @@ public void DriveAnimation(bool moving, float dt)
         public void AddTwoHandMeleeXP(int xp)
         {
             if (TwoHandMeleeLevel >= 100) return;
-            TwoHandMeleeXP += xp;
+            TwoHandMeleeXP += (int)(xp * Program.SynergyXPMultiplier());
             int requiredXP = TwoHandMeleeLevel * TwoHandMeleeLevel * 50;
             if (TwoHandMeleeXP >= requiredXP)
             {
@@ -785,7 +792,7 @@ public void DriveAnimation(bool moving, float dt)
 {
     if (DrivingLevel >= 100) return;
 
-    DrivingXP += xp;
+    DrivingXP += (int)(xp * Program.SynergyXPMultiplier());
 
     int requiredXP = DrivingLevel * DrivingLevel * 150;
 
@@ -801,7 +808,7 @@ public void AddAthleticsXP(int xp)
 {
     if (AthleticsLevel >= 100) return;
 
-    AthleticsXP += xp;
+    AthleticsXP += (int)(xp * Program.SynergyXPMultiplier());
 
     int requiredXP = AthleticsLevel * AthleticsLevel * 150;
 
@@ -816,7 +823,7 @@ public void AddAthleticsXP(int xp)
 public void AddStrengthXP(int xp)
 {
     if (StrengthLevel >= 100) return;
-    StrengthXP += xp;
+    StrengthXP += (int)(xp * Program.SynergyXPMultiplier());
     int requiredXP = StrengthLevel * StrengthLevel * 50;
     if (StrengthXP >= requiredXP)
     {
@@ -829,7 +836,7 @@ public void AddStrengthXP(int xp)
 public void AddGamblingXP(int xp)
 {
     if (GamblingLevel >= 100) return;
-    GamblingXP += xp;
+    GamblingXP += (int)(xp * Program.SynergyXPMultiplier());
     int requiredXP = GamblingLevel * GamblingLevel * 50;
     if (GamblingXP >= requiredXP)
     {
@@ -841,7 +848,7 @@ public void AddGamblingXP(int xp)
 public void AddFarmingXP(int xp)
 {
     if (FarmingLevel >= 100) return;
-    FarmingXP += xp;
+    FarmingXP += (int)(xp * Program.SynergyXPMultiplier());
     int required = FarmingLevel * FarmingLevel * 50;
     if (FarmingXP >= required)
     {
@@ -853,7 +860,7 @@ public void AddFarmingXP(int xp)
 public void AddRidingXP(int xp)
 {
     if (RidingLevel >= 100) return;
-    RidingXP += xp;
+    RidingXP += (int)(xp * Program.SynergyXPMultiplier());
     int requiredXP = RidingLevel * RidingLevel * 150;
     if (RidingXP >= requiredXP)
     {
@@ -866,7 +873,7 @@ public void AddRidingXP(int xp)
 public void AddCyclingXP(int xp)
 {
     if (CyclingLevel >= 100) return;
-    CyclingXP += xp;
+    CyclingXP += (int)(xp * Program.SynergyXPMultiplier());
     int requiredXP = CyclingLevel * CyclingLevel * 150;
     if (CyclingXP >= requiredXP)
     {
@@ -878,7 +885,7 @@ public void AddCyclingXP(int xp)
 public void AddSwimmingXP(int xp)
 {
     if (SwimmingLevel >= 100) return;
-    SwimmingXP += xp;
+    SwimmingXP += (int)(xp * Program.SynergyXPMultiplier());
     int requiredXP = SwimmingLevel * SwimmingLevel * 50;
     if (SwimmingXP >= requiredXP)
     {
@@ -890,7 +897,7 @@ public void AddSwimmingXP(int xp)
 public void AddStaminaXP(int xp)
 {
     if (StaminaLevel >= 100) return;
-    StaminaXP += xp;
+    StaminaXP += (int)(xp * Program.SynergyXPMultiplier());
     int requiredXP = StaminaLevel * StaminaLevel * 300;   // 2x slower than the movement skills — it trains from all of them
     if (StaminaXP >= requiredXP)
     {
@@ -903,7 +910,7 @@ public void AddStaminaXP(int xp)
 public void AddDivingXP(int xp)
 {
     if (DivingLevel >= 100) return;
-    DivingXP += xp;
+    DivingXP += (int)(xp * Program.SynergyXPMultiplier());
     int requiredXP = DivingLevel * DivingLevel * 50;
     if (DivingXP >= requiredXP)
     {
@@ -915,7 +922,7 @@ public void AddDivingXP(int xp)
 public void AddSportsXP(int xp)
 {
     if (SportsLevel >= 100) return;
-    SportsXP += xp;
+    SportsXP += (int)(xp * Program.SynergyXPMultiplier());
     int requiredXP = SportsLevel * SportsLevel * 50;
     if (SportsXP >= requiredXP)
     {
@@ -927,7 +934,7 @@ public void AddSportsXP(int xp)
 public void AddRangedXP(int xp)
 {
     if (RangedLevel >= 100) return;
-    RangedXP += xp;
+    RangedXP += (int)(xp * Program.SynergyXPMultiplier());
     int requiredXP = RangedLevel * RangedLevel * 50;
     if (RangedXP >= requiredXP)
     {
@@ -939,7 +946,7 @@ public void AddRangedXP(int xp)
 public void AddCookingXP(int xp)
 {
     if (CookingLevel >= 100) return;
-    CookingXP += xp;
+    CookingXP += (int)(xp * Program.SynergyXPMultiplier());
     int required = CookingLevel * CookingLevel * 40;
     if (CookingXP >= required)
     {
@@ -952,7 +959,7 @@ public void AddCookingXP(int xp)
 public void AddElementalXP(int xp)
 {
     if (ElementalLevel >= 100) return;
-    ElementalXP += xp;
+    ElementalXP += (int)(xp * Program.SynergyXPMultiplier());
     int requiredXP = ElementalLevel * ElementalLevel * 50;
     if (ElementalXP >= requiredXP)
     {
@@ -964,7 +971,7 @@ public void AddElementalXP(int xp)
 public void AddCraftingXP(int xp)
 {
     if (CraftingLevel >= 100) return;
-    CraftingXP += xp;
+    CraftingXP += (int)(xp * Program.SynergyXPMultiplier());
     int required = CraftingLevel * CraftingLevel * 50;
     if (CraftingXP >= required)
     {
@@ -976,7 +983,7 @@ public void AddCraftingXP(int xp)
 public void AddBlacksmithXP(int xp)
 {
     if (BlacksmithLevel >= 100) return;
-    BlacksmithXP += xp;
+    BlacksmithXP += (int)(xp * Program.SynergyXPMultiplier());
     int required = BlacksmithLevel * BlacksmithLevel * 50;
     if (BlacksmithXP >= required)
     {
@@ -988,7 +995,7 @@ public void AddBlacksmithXP(int xp)
 public void AddEnchantingXP(int xp)
 {
     if (EnchantingLevel >= 100) return;
-    EnchantingXP += xp;
+    EnchantingXP += (int)(xp * Program.SynergyXPMultiplier());
     int required = EnchantingLevel * EnchantingLevel * 50;
     if (EnchantingXP >= required)
     {
@@ -1000,7 +1007,7 @@ public void AddEnchantingXP(int xp)
 public void AddEducationXP(int xp)
 {
     if (EducationLevel >= 100) return;
-    EducationXP += xp;
+    EducationXP += (int)(xp * Program.SynergyXPMultiplier());
     int required = EducationLevel * EducationLevel * 50;
     if (EducationXP >= required)
     {
@@ -1012,7 +1019,7 @@ public void AddEducationXP(int xp)
 public void AddBoatingXP(int xp)
 {
     if (BoatingLevel >= 100) return;
-    BoatingXP += xp;
+    BoatingXP += (int)(xp * Program.SynergyXPMultiplier());
     int required = BoatingLevel * BoatingLevel * 50;
     if (BoatingXP >= required)
     {
@@ -1246,7 +1253,23 @@ void DrawArmorOverlayDown(int x, int y)
 {
     int armSwing = isMoving ? (walkFrame ? 4 : -4) : 0;
 
-    if (Program.armorCape != null)
+      // ── Mastery: Hawkeye's Cloak (Ranged Lv 100) ──
+    if (Program.armorCape != null && Program.armorCape == "Hawkeye's Cloak")
+    {
+        Color cloak  = new Color((byte)120,(byte)80,(byte)40,(byte)255);
+        Color cloakH = new Color((byte)150,(byte)100,(byte)55,(byte)255);
+        // draping cloak behind shoulders, visible at sides
+        Raylib.DrawRectangle(x + 2, y + 22, 8, 30, cloak);   // left drape
+        Raylib.DrawRectangle(x + 30, y + 22, 8, 30, cloak);  // right drape
+        // tattered bottom edge
+        Raylib.DrawTriangle(new Vector2(x + 2, y + 52), new Vector2(x + 10, y + 52),
+            new Vector2(x + 6, y + 58), cloak);
+        Raylib.DrawTriangle(new Vector2(x + 30, y + 52), new Vector2(x + 38, y + 52),
+            new Vector2(x + 34, y + 58), cloak);
+        // clasp at collar
+        Raylib.DrawCircle(x + 20, y + 24, 3, cloakH);
+    }
+    else if (Program.armorCape != null)
     {
         Color cc = ArmorColor(Program.armorCape, new Color((byte)140,(byte)60,(byte)60,(byte)255));
         if (Program.armorCape.EndsWith("Quiver")) DrawQuiver(x + 11, y + 24, 18);
@@ -1361,6 +1384,25 @@ void DrawArmorOverlayDown(int x, int y)
         DrawHorn(x + 12, y + 6, -1, horn);
         DrawHorn(x + 28, y + 6, +1, horn);
     }
+
+    // ── Mastery: Marksman Hood (Ranged Lv 100) ──
+    if (Program.armorHelmet != null && Program.armorHelmet == "Marksman Hood")
+    {
+        Color hood  = new Color((byte)120,(byte)80,(byte)40,(byte)255);
+        Color hoodD = new Color((byte)90,(byte)60,(byte)30,(byte)255);
+        // hood wraps around head
+        Raylib.DrawCircle(x + 20, y + 12, 14, hood);
+        // face opening — cut-out so skin shows through
+        Raylib.DrawCircle(x + 20, y + 14, 10, SkinColor);
+        // brow ridge
+        Raylib.DrawRectangle(x + 8, y + 5, 24, 4, hoodD);
+        // feather on right side
+        Color feather = new Color((byte)220,(byte)150,(byte)50,(byte)255);
+        Raylib.DrawLineEx(new Vector2(x + 32, y + 6), new Vector2(x + 38, y - 8), 2, feather);
+        Raylib.DrawLineEx(new Vector2(x + 32, y + 6), new Vector2(x + 40, y - 4), 2, feather);
+        Raylib.DrawLineEx(new Vector2(x + 32, y + 6), new Vector2(x + 36, y - 10), 2, feather);
+    }
+    
     if (WearingClassHat) DrawClassHat(x + 20, y, 0);
 
     if (Program.armorShield != null && !Program.IsTwoHandedWeapon(Program.armorWeapon))
@@ -1482,10 +1524,44 @@ void DrawArmorOverlayUp(int x, int y)
         DrawHorn(x + 12, y + 6, -1, horn);
         DrawHorn(x + 28, y + 6, +1, horn);
     }
+
+    // ── Mastery: Marksman Hood (facing up) ──
+    if (Program.armorHelmet != null && Program.armorHelmet == "Marksman Hood")
+    {
+        Color hood  = new Color((byte)120,(byte)80,(byte)40,(byte)255);
+        Color hoodD = new Color((byte)90,(byte)60,(byte)30,(byte)255);
+        // hood covers back of head
+        Raylib.DrawCircle(x + 20, y + 12, 14, hood);
+        // pointed tip at back
+        Raylib.DrawTriangle(new Vector2(x + 14, y + 2), new Vector2(x + 26, y + 2),
+            new Vector2(x + 20, y - 6), hoodD);
+        // feather tucked in right side
+        Color feather = new Color((byte)220,(byte)150,(byte)50,(byte)255);
+        Raylib.DrawLineEx(new Vector2(x + 30, y + 6), new Vector2(x + 36, y - 6), 2, feather);
+        Raylib.DrawLineEx(new Vector2(x + 30, y + 6), new Vector2(x + 38, y - 2), 2, feather);
+    }
+
     if (WearingClassHat) DrawClassHat(x + 20, y - 1, 0);
 
-    // cape drawn LAST facing up — in front of the body, very visible from behind
-    if (Program.armorCape != null)
+    // ── Mastery: Hawkeye's Cloak (facing up — full cloak visible from behind) ──
+    if (Program.armorCape != null && Program.armorCape == "Hawkeye's Cloak")
+    {
+        Color cloak  = new Color((byte)120,(byte)80,(byte)40,(byte)255);
+        Color cloakH = new Color((byte)150,(byte)100,(byte)55,(byte)255);
+        Color cloakD = new Color((byte)90,(byte)60,(byte)30,(byte)255);
+        // full back cloak
+        Raylib.DrawRectangle(x + 6, y + 20, 28, 38, cloak);
+        // centre seam
+        Raylib.DrawRectangle(x + 19, y + 22, 2, 34, cloakD);
+        // tattered bottom edge
+        for (int t = 0; t < 4; t++)
+            Raylib.DrawTriangle(
+                new Vector2(x + 6 + t * 7, y + 58), new Vector2(x + 13 + t * 7, y + 58),
+                new Vector2(x + 9 + t * 7, y + 64), cloak);
+        // shoulder highlight
+        Raylib.DrawRectangle(x + 6, y + 20, 28, 3, cloakH);
+    }
+    else if (Program.armorCape != null)
     {
         Color cc = ArmorColor(Program.armorCape, new Color((byte)140,(byte)60,(byte)60,(byte)255));
         if (Program.armorCape.EndsWith("Quiver")) DrawQuiver(x + 10, y + 22, 20);
@@ -1504,7 +1580,21 @@ void DrawArmorOverlayLeft(int x, int y)
         Raylib.DrawCircle(x + 3, y + 37 + armSwing, 3, new Color((byte)180,(byte)140,(byte)40,(byte)255));
     }
 
-    if (Program.armorCape != null)
+    // ── Mastery: Hawkeye's Cloak (facing left — drapes behind) ──
+    if (Program.armorCape != null && Program.armorCape == "Hawkeye's Cloak")
+    {
+        Color cloak  = new Color((byte)120,(byte)80,(byte)40,(byte)255);
+        Color cloakD = new Color((byte)90,(byte)60,(byte)30,(byte)255);
+        // cloak trails behind (right side)
+        Raylib.DrawRectangle(x + 26, y + 22, 12, 34, cloak);
+        Raylib.DrawRectangle(x + 26, y + 22, 12, 3, new Color((byte)150,(byte)100,(byte)55,(byte)255));
+        // tattered edge
+        Raylib.DrawTriangle(new Vector2(x + 26, y + 56), new Vector2(x + 38, y + 56),
+            new Vector2(x + 32, y + 62), cloak);
+        Raylib.DrawTriangle(new Vector2(x + 32, y + 56), new Vector2(x + 40, y + 56),
+            new Vector2(x + 36, y + 64), cloakD);
+    }
+    else if (Program.armorCape != null)
     {
         Color cc = ArmorColor(Program.armorCape, new Color((byte)140,(byte)60,(byte)60,(byte)255));
         if (Program.armorCape.EndsWith("Quiver")) DrawQuiver(x + 18, y + 24, 12);
@@ -1625,6 +1715,25 @@ void DrawArmorOverlayLeft(int x, int y)
         DrawHorn(x + 22, y + 5, +1, hornFar);
         DrawHorn(x + 18, y + 6, +1, horn);
     }
+
+    // ── Mastery: Marksman Hood (facing left) ──
+    if (Program.armorHelmet != null && Program.armorHelmet == "Marksman Hood")
+    {
+        Color hood  = new Color((byte)120,(byte)80,(byte)40,(byte)255);
+        Color hoodD = new Color((byte)90,(byte)60,(byte)30,(byte)255);
+        // hood wraps head, profile view
+        Raylib.DrawCircle(x + 16, y + 12, 13, hood);
+        // face opening
+        Raylib.DrawCircle(x + 14, y + 14, 9, SkinColor);
+        // brow ridge
+        Raylib.DrawRectangle(x + 4, y + 6, 16, 4, hoodD);
+        // feather sweeping back
+        Color feather = new Color((byte)220,(byte)150,(byte)50,(byte)255);
+        Raylib.DrawLineEx(new Vector2(x + 26, y + 4), new Vector2(x + 36, y - 6), 2, feather);
+        Raylib.DrawLineEx(new Vector2(x + 26, y + 4), new Vector2(x + 34, y - 10), 2, feather);
+        Raylib.DrawLineEx(new Vector2(x + 26, y + 4), new Vector2(x + 38, y - 3), 2, feather);
+    }
+
     if (WearingClassHat) DrawClassHat(x + 18, y - 2, -1);
 }
 
@@ -1632,7 +1741,21 @@ void DrawArmorOverlayRight(int x, int y)
 {
     int armSwing = isMoving ? (walkFrame ? 6 : -2) : 0;
 
-    if (Program.armorCape != null)
+    // ── Mastery: Hawkeye's Cloak (facing right — drapes behind left) ──
+    if (Program.armorCape != null && Program.armorCape == "Hawkeye's Cloak")
+    {
+        Color cloak  = new Color((byte)120,(byte)80,(byte)40,(byte)255);
+        Color cloakD = new Color((byte)90,(byte)60,(byte)30,(byte)255);
+        // cloak trails behind (left side)
+        Raylib.DrawRectangle(x + 2, y + 22, 12, 34, cloak);
+        Raylib.DrawRectangle(x + 2, y + 22, 12, 3, new Color((byte)150,(byte)100,(byte)55,(byte)255));
+        // tattered edge
+        Raylib.DrawTriangle(new Vector2(x + 2, y + 56), new Vector2(x + 14, y + 56),
+            new Vector2(x + 8, y + 62), cloak);
+        Raylib.DrawTriangle(new Vector2(x, y + 56), new Vector2(x + 8, y + 56),
+            new Vector2(x + 4, y + 64), cloakD);
+    }
+    else if (Program.armorCape != null)
     {
         Color cc = ArmorColor(Program.armorCape, new Color((byte)140,(byte)60,(byte)60,(byte)255));
         if (Program.armorCape.EndsWith("Quiver")) DrawQuiver(x + 10, y + 24, 12);
@@ -1753,6 +1876,25 @@ void DrawArmorOverlayRight(int x, int y)
         DrawHorn(x + 18, y + 5, -1, hornFar);
         DrawHorn(x + 22, y + 6, -1, horn);
     }
+
+    // ── Mastery: Marksman Hood (facing right) ──
+    if (Program.armorHelmet != null && Program.armorHelmet == "Marksman Hood")
+    {
+        Color hood  = new Color((byte)120,(byte)80,(byte)40,(byte)255);
+        Color hoodD = new Color((byte)90,(byte)60,(byte)30,(byte)255);
+        // hood wraps head, mirrored profile
+        Raylib.DrawCircle(x + 22, y + 12, 13, hood);
+        // face opening
+        Raylib.DrawCircle(x + 24, y + 14, 9, SkinColor);
+        // brow ridge
+        Raylib.DrawRectangle(x + 18, y + 6, 16, 4, hoodD);
+        // feather sweeping back (left side)
+        Color feather = new Color((byte)220,(byte)150,(byte)50,(byte)255);
+        Raylib.DrawLineEx(new Vector2(x + 12, y + 4), new Vector2(x + 2, y - 6), 2, feather);
+        Raylib.DrawLineEx(new Vector2(x + 12, y + 4), new Vector2(x + 4, y - 10), 2, feather);
+        Raylib.DrawLineEx(new Vector2(x + 12, y + 4), new Vector2(x, y - 3), 2, feather);
+    }
+
     if (WearingClassHat) DrawClassHat(x + 22, y - 2, +1);
 
     DrawShieldRight(x, y);   // already a standalone method — reused as-is

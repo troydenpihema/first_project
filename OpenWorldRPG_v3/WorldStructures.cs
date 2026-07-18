@@ -479,27 +479,223 @@ class WorldBoss
         if (Dead) return;
         int x = (int)Position.X, y = (int)Position.Y;
         int s = Size;
-        float bob = MathF.Sin(animTimer * 2f) * 8f;
+        float t = animTimer;
+        float bob = MathF.Sin(t * 2f) * 8f;
+        int by = y + (int)bob;
 
-        // huge body
-        Raylib.DrawRectangle(x, y + (int)bob, s, s, BodyColor);
-        // darker core
-        Raylib.DrawRectangle(x + s/6, y + s/6 + (int)bob, s*2/3, s*2/3,
-            new Color((byte)Math.Max(0, BodyColor.R-40), (byte)Math.Max(0, BodyColor.G-40), (byte)Math.Max(0, BodyColor.B-40), (byte)255));
-        // glowing eyes
-        Raylib.DrawCircle(x + s/3, y + s/3 + (int)bob, 18, Color.Red);
-        Raylib.DrawCircle(x + 2*s/3, y + s/3 + (int)bob, 18, Color.Red);
+        switch (Name)
+        {
+            case "Frost Wyrm":
+                // serpentine ice dragon — segmented body
+                for (int i = 4; i >= 0; i--)
+                {
+                    float segBob = MathF.Sin(t * 2f + i * 0.8f) * 12f;
+                    int segX = x + s / 2 + (int)(MathF.Cos(t * 1.5f + i * 1.2f) * (i * 20));
+                    int segY = by + s / 2 + i * 30 + (int)segBob;
+                    int segR = 40 - i * 4;
+                    Raylib.DrawCircle(segX, segY, segR, new Color((byte)100, (byte)180, (byte)220, (byte)255));
+                    Raylib.DrawCircle(segX, segY, segR - 6, new Color((byte)140, (byte)210, (byte)240, (byte)200));
+                }
+                // head
+                Raylib.DrawCircle(x + s / 2, by + s / 4, 50, new Color((byte)120, (byte)195, (byte)230, (byte)255));
+                Raylib.DrawCircle(x + s / 2, by + s / 4, 38, new Color((byte)160, (byte)220, (byte)245, (byte)255));
+                // icy eyes
+                Raylib.DrawCircle(x + s / 2 - 18, by + s / 4 - 8, 10, Color.White);
+                Raylib.DrawCircle(x + s / 2 + 18, by + s / 4 - 8, 10, Color.White);
+                Raylib.DrawCircle(x + s / 2 - 18, by + s / 4 - 8, 5, new Color((byte)40, (byte)120, (byte)200, (byte)255));
+                Raylib.DrawCircle(x + s / 2 + 18, by + s / 4 - 8, 5, new Color((byte)40, (byte)120, (byte)200, (byte)255));
+                // ice crown spikes
+                for (int i = -2; i <= 2; i++)
+                    Raylib.DrawTriangle(
+                        new Vector2(x + s / 2 + i * 16, by + s / 4 - 40),
+                        new Vector2(x + s / 2 + i * 16 - 6, by + s / 4 - 20),
+                        new Vector2(x + s / 2 + i * 16 + 6, by + s / 4 - 20),
+                        new Color((byte)200, (byte)230, (byte)255, (byte)200));
+                break;
+
+            case "Stone Guardian":
+                // massive golem — blocky rock body
+                Raylib.DrawRectangle(x + 40, by + 60, s - 80, s - 80, new Color((byte)100, (byte)95, (byte)85, (byte)255));
+                Raylib.DrawRectangle(x + 55, by + 75, s - 110, s - 110, new Color((byte)120, (byte)115, (byte)105, (byte)255));
+                // shoulders
+                Raylib.DrawRectangle(x + 10, by + 80, 60, 80, new Color((byte)90, (byte)85, (byte)75, (byte)255));
+                Raylib.DrawRectangle(x + s - 70, by + 80, 60, 80, new Color((byte)90, (byte)85, (byte)75, (byte)255));
+                // head
+                Raylib.DrawRectangle(x + s / 2 - 40, by + 20, 80, 60, new Color((byte)110, (byte)105, (byte)95, (byte)255));
+                // glowing rune eyes
+                float glow = MathF.Sin(t * 3f) * 0.3f + 0.7f;
+                byte ga = (byte)(255 * glow);
+                Raylib.DrawCircle(x + s / 2 - 16, by + 45, 12, new Color(ga, (byte)(ga / 2), (byte)0, (byte)255));
+                Raylib.DrawCircle(x + s / 2 + 16, by + 45, 12, new Color(ga, (byte)(ga / 2), (byte)0, (byte)255));
+                // cracks across body
+                Raylib.DrawLineEx(new Vector2(x + 80, by + 100), new Vector2(x + 140, by + 200), 3, new Color((byte)60, (byte)55, (byte)45, (byte)180));
+                Raylib.DrawLineEx(new Vector2(x + s - 80, by + 120), new Vector2(x + s - 130, by + 220), 3, new Color((byte)60, (byte)55, (byte)45, (byte)180));
+                break;
+
+            case "Infernal Golem":
+                // lava-cracked fire giant
+                Raylib.DrawCircle(x + s / 2, by + s / 2, s / 2 - 10, new Color((byte)60, (byte)20, (byte)5, (byte)255));
+                Raylib.DrawCircle(x + s / 2, by + s / 2, s / 2 - 30, new Color((byte)80, (byte)30, (byte)10, (byte)255));
+                // lava cracks glowing
+                float lavaGlow = MathF.Sin(t * 2.5f) * 0.4f + 0.6f;
+                byte lr = (byte)(255 * lavaGlow), lg = (byte)(120 * lavaGlow);
+                Color lava = new Color(lr, lg, (byte)0, (byte)220);
+                Raylib.DrawLineEx(new Vector2(x + s / 2 - 40, by + 60), new Vector2(x + s / 2 + 20, by + s - 40), 4, lava);
+                Raylib.DrawLineEx(new Vector2(x + s / 2 + 30, by + 80), new Vector2(x + s / 2 - 10, by + s - 60), 4, lava);
+                Raylib.DrawLineEx(new Vector2(x + 50, by + s / 2), new Vector2(x + s - 50, by + s / 2 + 30), 3, lava);
+                // burning eyes
+                Raylib.DrawCircle(x + s / 2 - 30, by + s / 3, 16, new Color((byte)255, (byte)160, (byte)0, (byte)255));
+                Raylib.DrawCircle(x + s / 2 + 30, by + s / 3, 16, new Color((byte)255, (byte)160, (byte)0, (byte)255));
+                Raylib.DrawCircle(x + s / 2 - 30, by + s / 3, 8, new Color((byte)255, (byte)255, (byte)100, (byte)255));
+                Raylib.DrawCircle(x + s / 2 + 30, by + s / 3, 8, new Color((byte)255, (byte)255, (byte)100, (byte)255));
+                // ember particles (static, decorative)
+                for (int i = 0; i < 6; i++)
+                {
+                    float ea = MathF.Sin(t * 4f + i * 1.5f) * 20f;
+                    Raylib.DrawCircle(x + 40 + (i * 45) % s, by + 30 + (int)ea, 3,
+                        new Color((byte)255, (byte)140, (byte)20, (byte)(120 + (int)(60 * MathF.Sin(t * 3f + i)))));
+                }
+                break;
+
+            case "Swamp Hydra":
+                // three-headed serpent
+                Color hydraBody = new Color((byte)40, (byte)85, (byte)35, (byte)255);
+                Color hydraLight = new Color((byte)60, (byte)110, (byte)50, (byte)255);
+                // body mass
+                Raylib.DrawEllipse(x + s / 2, by + s / 2 + 30, s / 3, s / 4, hydraBody);
+                Raylib.DrawEllipse(x + s / 2, by + s / 2 + 30, s / 4, s / 5, hydraLight);
+                // three necks + heads
+                for (int h = -1; h <= 1; h++)
+                {
+                    float neckSway = MathF.Sin(t * 2f + h * 2f) * 15f;
+                    int nx = x + s / 2 + h * 60;
+                    int ny = by + s / 4;
+                    // neck
+                    Raylib.DrawLineEx(new Vector2(x + s / 2, by + s / 2), new Vector2(nx + neckSway, ny), 14, hydraBody);
+                    // head
+                    Raylib.DrawCircle(nx + (int)neckSway, ny, 24, hydraBody);
+                    Raylib.DrawCircle(nx + (int)neckSway, ny, 18, hydraLight);
+                    // eyes
+                    Raylib.DrawCircle(nx + (int)neckSway - 8, ny - 4, 5, new Color((byte)200, (byte)255, (byte)0, (byte)255));
+                    Raylib.DrawCircle(nx + (int)neckSway + 8, ny - 4, 5, new Color((byte)200, (byte)255, (byte)0, (byte)255));
+                }
+                break;
+
+            case "Sand King":
+                // giant scorpion shape
+                Color sandBody = new Color((byte)190, (byte)155, (byte)60, (byte)255);
+                Color sandDark = new Color((byte)160, (byte)130, (byte)40, (byte)255);
+                // body segments
+                Raylib.DrawEllipse(x + s / 2, by + s / 2 + 20, s / 3, s / 4, sandBody);
+                Raylib.DrawEllipse(x + s / 2, by + s / 2, s / 4, s / 5, sandDark);
+                // pincers
+                float clack = MathF.Sin(t * 3f) * 8f;
+                Raylib.DrawCircle(x + 30, by + s / 3 + (int)clack, 22, sandBody);
+                Raylib.DrawCircle(x + s - 30, by + s / 3 - (int)clack, 22, sandBody);
+                Raylib.DrawCircle(x + 14, by + s / 3 + (int)clack - 6, 10, sandDark);
+                Raylib.DrawCircle(x + s - 14, by + s / 3 - (int)clack - 6, 10, sandDark);
+                // tail curving up
+                for (int i = 0; i < 5; i++)
+                {
+                    int tx2 = x + s / 2 + (int)(MathF.Sin(t + i * 0.5f) * 10);
+                    int ty2 = by + s - 20 - i * 25;
+                    Raylib.DrawCircle(tx2, ty2, 14 - i * 2, sandBody);
+                }
+                // stinger
+                Raylib.DrawTriangle(
+                    new Vector2(x + s / 2, by + s - 140),
+                    new Vector2(x + s / 2 - 8, by + s - 120),
+                    new Vector2(x + s / 2 + 8, by + s - 120),
+                    new Color((byte)100, (byte)30, (byte)10, (byte)255));
+                // eyes
+                Raylib.DrawCircle(x + s / 2 - 14, by + s / 2 - 10, 7, Color.Black);
+                Raylib.DrawCircle(x + s / 2 + 14, by + s / 2 - 10, 7, Color.Black);
+                break;
+
+            case "Ancient Treant":
+                // massive tree creature
+                Color bark = new Color((byte)70, (byte)50, (byte)25, (byte)255);
+                Color barkLight = new Color((byte)90, (byte)65, (byte)35, (byte)255);
+                Color leaves = new Color((byte)30, (byte)100, (byte)25, (byte)255);
+                Color leavesLight = new Color((byte)50, (byte)130, (byte)35, (byte)255);
+                // trunk body
+                Raylib.DrawRectangle(x + s / 2 - 50, by + s / 3, 100, s * 2 / 3, bark);
+                Raylib.DrawRectangle(x + s / 2 - 38, by + s / 3 + 10, 76, s * 2 / 3 - 20, barkLight);
+                // branch arms
+                float armSway = MathF.Sin(t * 1.5f) * 10f;
+                Raylib.DrawLineEx(new Vector2(x + s / 2 - 50, by + s / 3 + 40), new Vector2(x + 20 + armSway, by + s / 3), 18, bark);
+                Raylib.DrawLineEx(new Vector2(x + s / 2 + 50, by + s / 3 + 40), new Vector2(x + s - 20 - armSway, by + s / 3), 18, bark);
+                // twig fingers
+                Raylib.DrawLineEx(new Vector2(x + 20 + armSway, by + s / 3), new Vector2(x + armSway, by + s / 4), 6, bark);
+                Raylib.DrawLineEx(new Vector2(x + s - 20 - armSway, by + s / 3), new Vector2(x + s - armSway, by + s / 4), 6, bark);
+                // canopy / head
+                Raylib.DrawCircle(x + s / 2, by + s / 5, 80, leaves);
+                Raylib.DrawCircle(x + s / 2 - 40, by + s / 4, 50, leavesLight);
+                Raylib.DrawCircle(x + s / 2 + 40, by + s / 4, 50, leavesLight);
+                Raylib.DrawCircle(x + s / 2, by + s / 6, 40, leavesLight);
+                // face in the trunk
+                Raylib.DrawCircle(x + s / 2 - 20, by + s / 3 + 30, 10, new Color((byte)180, (byte)255, (byte)80, (byte)255));
+                Raylib.DrawCircle(x + s / 2 + 20, by + s / 3 + 30, 10, new Color((byte)180, (byte)255, (byte)80, (byte)255));
+                // knothole mouth
+                Raylib.DrawEllipse(x + s / 2, by + s / 3 + 60, 16, 10, new Color((byte)30, (byte)20, (byte)10, (byte)255));
+                // roots at base
+                Raylib.DrawLineEx(new Vector2(x + s / 2 - 50, by + s - 10), new Vector2(x + 30, by + s + 20), 10, bark);
+                Raylib.DrawLineEx(new Vector2(x + s / 2 + 50, by + s - 10), new Vector2(x + s - 30, by + s + 20), 10, bark);
+                break;
+
+            case "Reef Leviathan":
+                // deep sea serpent / whale hybrid
+                Color ocean = new Color((byte)25, (byte)70, (byte)140, (byte)255);
+                Color oceanLight = new Color((byte)40, (byte)100, (byte)170, (byte)255);
+                // body — undulating segments
+                for (int i = 5; i >= 0; i--)
+                {
+                    float segBob2 = MathF.Sin(t * 1.8f + i * 0.7f) * 15f;
+                    int sx2 = x + s / 2 + (int)(MathF.Sin(t + i * 0.9f) * 30);
+                    int sy2 = by + 60 + i * 40 + (int)segBob2;
+                    int sr = 50 - i * 5;
+                    Raylib.DrawEllipse(sx2, sy2, sr, sr / 2, ocean);
+                    Raylib.DrawEllipse(sx2, sy2, sr - 8, sr / 2 - 4, oceanLight);
+                }
+                // head
+                Raylib.DrawEllipse(x + s / 2, by + 50, 60, 40, ocean);
+                Raylib.DrawEllipse(x + s / 2, by + 50, 48, 30, oceanLight);
+                // jaw
+                Raylib.DrawEllipse(x + s / 2, by + 75, 40, 15, new Color((byte)20, (byte)55, (byte)120, (byte)255));
+                // bioluminescent eyes
+                float eyePulse = MathF.Sin(t * 4f) * 0.3f + 0.7f;
+                byte eb = (byte)(255 * eyePulse);
+                Raylib.DrawCircle(x + s / 2 - 24, by + 42, 10, new Color((byte)0, eb, eb, (byte)255));
+                Raylib.DrawCircle(x + s / 2 + 24, by + 42, 10, new Color((byte)0, eb, eb, (byte)255));
+                // fins
+                Raylib.DrawTriangle(
+                    new Vector2(x + s / 2 - 55, by + 60), new Vector2(x + 20, by + 30), new Vector2(x + s / 2 - 40, by + 80),
+                    new Color((byte)30, (byte)80, (byte)150, (byte)200));
+                Raylib.DrawTriangle(
+                    new Vector2(x + s / 2 + 55, by + 60), new Vector2(x + s - 20, by + 30), new Vector2(x + s / 2 + 40, by + 80),
+                    new Color((byte)30, (byte)80, (byte)150, (byte)200));
+                break;
+
+            default:
+                // fallback — original generic boss look (Colossus, Titan, etc)
+                Raylib.DrawRectangle(x, by, s, s, BodyColor);
+                Raylib.DrawRectangle(x + s / 6, by + s / 6, s * 2 / 3, s * 2 / 3,
+                    new Color((byte)Math.Max(0, BodyColor.R - 40), (byte)Math.Max(0, BodyColor.G - 40), (byte)Math.Max(0, BodyColor.B - 40), (byte)255));
+                Raylib.DrawCircle(x + s / 3, by + s / 3, 18, Color.Red);
+                Raylib.DrawCircle(x + 2 * s / 3, by + s / 3, 18, Color.Red);
+                break;
+        }
 
         // aggro indicator
         if (Aggro)
-            Program.DrawTextUI("!", x + s/2 - 8, y - 40 + (int)bob, 48, Color.Red);
+            Program.DrawTextUI("!", x + s / 2 - 8, by - 40, 48, Color.Red);
 
-        // big health bar above
+        // health bar above
         int barW = s;
-        Raylib.DrawRectangle(x, y - 30 + (int)bob, barW, 16, Color.DarkGray);
-        Raylib.DrawRectangle(x, y - 30 + (int)bob, (int)(barW * (Health / MaxHealth)), 16, Color.Red);
+        Raylib.DrawRectangle(x, by - 30, barW, 16, Color.DarkGray);
+        Raylib.DrawRectangle(x, by - 30, (int)(barW * (Health / MaxHealth)), 16, Color.Red);
         int tw = Program.MeasureTextUI(Name, 24);
-        Program.DrawTextUI(Name, x + s/2 - tw/2, y - 60 + (int)bob, 24, Color.White);
+        Program.DrawTextUI(Name, x + s / 2 - tw / 2, by - 60, 24, Color.White);
     }
 }
 class FruitTree

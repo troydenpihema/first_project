@@ -251,6 +251,8 @@ static void DoInventoryAction(string action, string item)
 
 static void UseItem(string item)
 {
+    int cookBonus = HasPerk("Cooking", 5) ? 5 : 0;
+    if (HasPerk("Cooking", 25)) cookBonus += 10;
     switch (item)
     {
         case "Apple":         player.Health = Math.Min(player.MaxHealth, player.Health + 10); RemoveOneItem(item); ShowNotification("+10 HP"); break;
@@ -278,6 +280,7 @@ static void UseItem(string item)
         ShowNotification("Unpacked your shopping!");
         return; // early return to avoid "Used Shopping Bag" message
         }
+        if (cookBonus > 0) player.Health = Math.Min(player.MaxHealth, player.Health + cookBonus);
         ShowNotification($"Used {item}");
 }
 
@@ -399,6 +402,10 @@ if (item == "Stamina Potion")
         var recipe = cookingRecipes.FirstOrDefault(r => r.Result == item);
         if (recipe != null) heal = recipe.HpRestore;
     }
+
+    // Synergy: Gourmet Angler — cooked fish items heal +50%
+    if (HasSynergy("Gourmet Angler") && item.Contains("Fish") && item.Contains("Cooked"))
+        heal = (int)(heal * 1.5f);
 
     // Shopping Bag is "usable" but unpacks rather than heals — let UseItem handle it
     if (item == "Shopping Bag")
@@ -925,9 +932,14 @@ static int ChestSlotsUsed(int[] chestCounts)
     return used;
 }
 
-static void DrawInventoryUI()
-{
+static string invHoverName = null;
+static int invHoverCount = 0;
+static int invHoverMouseX = 0;
+static int invHoverMouseY = 0;
 
+static void DrawInventoryUI()
+
+{
     if (player.InventoryOpen)
     {
         int invX = ScreenWidth - 380;
@@ -956,7 +968,13 @@ static void DrawInventoryUI()
         if (player.ArcaneEssence > 0 && equippedAmmo != "Arcane Essence") items.Add(("Arcane Essence", player.ArcaneEssence));
         // owned staffs not currently equipped as weapon
         foreach (var g in player.OwnedGear)
-            if (g.EndsWith("Staff") && g != equipped1H && g != equipped2H) items.Add((g, 1));
+        {
+            // skip weapons already equipped
+            if (g == equipped1H || g == equipped2H) continue;
+            if (g == armorHelmet || g == armorBody || g == armorLegs || g == armorBoots
+                || g == armorGloves || g == armorCape || g == armorShield) continue;
+            items.Add((g, 1));
+        }
         foreach (var kv in backpack)
             if (kv.Value > 0) items.Add((kv.Key, kv.Value));
       
@@ -987,6 +1005,11 @@ static void DrawInventoryUI()
             if (Raylib.CheckCollisionPointRec(mouse, slotRect))
             {
                 Raylib.DrawRectangleLines(x, y, slotSize, slotSize, Color.Gold);
+                // CHANGE — store hover info instead of drawing immediately
+                invHoverName = items[i].name;
+                invHoverCount = items[i].count;
+                invHoverMouseX = (int)mouse.X;
+                invHoverMouseY = (int)mouse.Y;
                 if (Raylib.IsMouseButtonPressed(MouseButton.Left))
                 {
                     invSelectedIndex = i;
@@ -1048,8 +1071,16 @@ static void DrawInventoryUI()
             invSelectedName = "";
         }
 
+        // ADD — deferred tooltip, drawn on top of all slots
+        if (invHoverName != null)
+        {
+            DrawInventoryTooltip(invHoverName, invHoverCount, invHoverMouseX, invHoverMouseY);
+            invHoverName = null;
+        }
+
         Program.DrawTextUI("Click item to select  |  Right-click to cancel", invX - 10, invY + 5 * (slotSize + padding) + 25, 14, Color.LightGray);
     }
+
     else
     {
         // clear selection when inventory closes
@@ -1190,10 +1221,11 @@ static void ZeroOutInventory(string item)
     }
 }
 
+static int lastToolbarSlot = -1;
+static float toolbarEquipFade = 0f;
+
 static void DrawToolbar()
 {
-    
-
     int slotSize = 72;   
     int padding = 0;
     int totalW = 8 * (slotSize + padding) - padding;
@@ -1277,14 +1309,25 @@ static void DrawToolbar()
             3, Color.Gold);
     }
 
-    // tooltip — show equipped tool name above toolbar
-    if (toolbarSlots[toolbarSelectedSlot] != null)
+    // tooltip — fades in on slot change, then fades out
+    if (toolbarSelectedSlot != lastToolbarSlot)
     {
-        string equipped = toolbarSlots[toolbarSelectedSlot];
-        int tw = Program.MeasureTextUI($"Equipped: {equipped}", 18);
-        Raylib.DrawRectangle(startX, startY - 28, tw + 12, 24,
-            new Color((byte)0,(byte)0,(byte)0,(byte)180));
-        Program.DrawTextUI($"Equipped: {equipped}", startX + 6, startY - 24, 18, Color.Gold);
+        lastToolbarSlot = toolbarSelectedSlot;
+        toolbarEquipFade = 2f;
+    }
+    if (toolbarEquipFade > 0f)
+    {
+        toolbarEquipFade -= Raylib.GetFrameTime();
+        if (toolbarSlots[toolbarSelectedSlot] != null)
+        {
+            string equipped = toolbarSlots[toolbarSelectedSlot];
+            byte alpha = (byte)(255 * Math.Min(1f, toolbarEquipFade));
+            int tw = Program.MeasureTextUI($"Equipped: {equipped}", 18);
+            Raylib.DrawRectangle(startX, startY - 28, tw + 12, 24,
+                new Color((byte)0, (byte)0, (byte)0, (byte)(180 * Math.Min(1f, toolbarEquipFade))));
+            Program.DrawTextUI($"Equipped: {equipped}", startX + 6, startY - 24, 18,
+                new Color((byte)255, (byte)215, (byte)0, alpha));
+        }
     }
 }
 
@@ -1485,6 +1528,12 @@ static void UnequipArmorSlot(string slot)
 static string GetItemSlot(string item)
 {
     if (item == null) return null;
+
+    // mastery capes & headpieces
+    if (item.EndsWith("Cloak") || item.EndsWith("Mantle") || item.EndsWith("Jacket")) return "CAPE";
+    if (item.EndsWith("Crown") || item.EndsWith("Wreath") || item.EndsWith("Hood") || item.EndsWith("Helm")
+        || item == "Golden Chef Hat" || item == "Golden Top Hat" || item == "Mortarboard"
+        || item == "Racing Helmet" || item == "Cyclist's Helm") return "HELMET";
 
     // weapons (check specific before general)
     if (item.Contains("Great Sword") || item.Contains("War Axe")
@@ -1716,6 +1765,7 @@ static void DrawSupermarketInventoryUI()
 
 static void BuyShopItem(string item, int price, int qty)
 {
+    price = (int)(price * (1f - eventShopDiscount));
     if (player.Money < price)
     {
         shopMessage = $"Need ${price} for {item}";

@@ -231,6 +231,8 @@ static void ResetGameState()
             soundStickSwing = Raylib.LoadSound("resources/sound/stickSwing.wav");
             soundDogHit     = Raylib.LoadSound("resources/sound/dogHit.wav");
             soundDogDie     = Raylib.LoadSound("resources/sound/dogDie.ogg");
+            soundWolfHit     = Raylib.LoadSound("resources/sound/wolfHit.ogg");
+            soundWolfDie     = Raylib.LoadSound("resources/sound/wolfDie.ogg");
             soundHorn = Raylib.LoadSound("resources/sound/horn.wav");
         
 
@@ -280,6 +282,26 @@ static void ResetGameState()
         RoadManager.Add(new Vector2(-1600, 1240), new Vector2(-1600, -850));
         RoadManager.Add(new Vector2(-2500, -850), new Vector2(200, -850)); 
         RoadManager.Add(new Vector2(1800, -850), new Vector2(3500, -850)); 
+        RoadManager.Add(new Vector2(15000, -60000), new Vector2(15000, 60000));
+        RoadManager.Add(new Vector2(11800, 8150), new Vector2(18000, 8150)); 
+        RoadManager.Add(new Vector2(11800, 7200), new Vector2(18000, 7200)); 
+        RoadManager.Add(new Vector2(11800, 5500), new Vector2(18000, 5500)); 
+        RoadManager.Add(new Vector2(11800, 3900), new Vector2(18000, 3900)); 
+        RoadManager.Add(new Vector2(11800, 3000), new Vector2(18000, 3000));
+        RoadManager.Add(new Vector2(11800, 3000), new Vector2(11800, 8150)); 
+        RoadManager.Add(new Vector2(12800, 3000), new Vector2(12800, 8150)); 
+        RoadManager.Add(new Vector2(16600, 3000), new Vector2(16600, 8150)); 
+        RoadManager.Add(new Vector2(18000, 3000), new Vector2(18000, 8150));  
+        RoadManager.Add(new Vector2(-18000, -60000), new Vector2(-18000, 60000));
+        RoadManager.Add(new Vector2(-18000, 3700), new Vector2(-15300, 3700));
+        RoadManager.Add(new Vector2(-15400, 3700), new Vector2(-15400, 5000));
+        RoadManager.Add(new Vector2(-18000, 5000), new Vector2(-14000, 5000));
+        RoadManager.Add(new Vector2(-18000, 5800), new Vector2(-14400, 5800));
+        RoadManager.Add(new Vector2(-14500, 5800), new Vector2(-14500, 6500));
+        RoadManager.Add(new Vector2(-60000, -60000), new Vector2(60000, -60000));
+        RoadManager.Add(new Vector2(-60000, -60000), new Vector2(-60000, 60000));
+        RoadManager.Add(new Vector2(60000, -60000), new Vector2(60000, 60000));
+        RoadManager.Add(new Vector2(-60000, 60000), new Vector2(60000, 60000));
 
         
        
@@ -409,6 +431,7 @@ if (Raylib.IsMouseButtonPressed(MouseButton.Left) && !multiplayerMenuOpen)
             selectedSlot = i;
             slotSelected = true;
             LoadGame();
+            AddNewStoryQuests();
             ChangeScene(SceneState.World);
         }
         else if (!isLoadingGame && !exists)
@@ -464,6 +487,7 @@ if (Raylib.IsMouseButtonPressed(MouseButton.Left) && !multiplayerMenuOpen)
                 tutorialNpcPos = player.Position + new Vector2(-60, -40);
                 foreach (var t in tutorialTasks) t.Done = false;
                 SnapshotTutorialMarks();
+                AddNewStoryQuests();
                 ChangeScene(SceneState.World);
             }
         }
@@ -480,7 +504,6 @@ if (Raylib.IsMouseButtonPressed(MouseButton.Left) && !multiplayerMenuOpen)
     break;
 
                 case SceneState.World:
-
                 UpdateAchievements();
                 UpdateFogOfWar();
                 CheckZoneMusic();
@@ -610,9 +633,13 @@ foreach (var pen in livestockPens)
 
 foreach (var plot in farmPlots)
 {
+    // Rain auto-waters crops (weather system handles all-season rain watering)
+    if (isRaining && plot.Planted && !plot.Watered)
+        plot.Watered = true;
+
     if (plot.Planted && plot.Watered && !plot.ReadyToHarvest)
     {
-        plot.GrowTimer += dt;
+        plot.GrowTimer += dt * (HasPerk("Farming", 5) ? 1.1f : 1f) * (HasSynergy("Nature's Hand") ? 1.2f : 1f) * GetSeasonalGrowthMultiplier(plot.CropType) * GetWeatherGrowthMult();
         if (plot.GrowTimer >= plot.GrowDuration) 
             plot.ReadyToHarvest = true;
     }
@@ -623,7 +650,7 @@ foreach (var tree in fruitTrees)
     if (!tree.Planted) continue;
     if (!tree.ReadyToHarvest)
     {
-        tree.GrowTimer += dt;
+        tree.GrowTimer += dt * (HasPerk("Farming", 5) ? 1.1f : 1f) * (HasSynergy("Nature's Hand") ? 1.2f : 1f) * GetWeatherGrowthMult();
         if (tree.GrowTimer >= tree.GrowDuration) tree.ReadyToHarvest = true;
     }
     else if (tree.RegrowTimer > 0f)
@@ -635,9 +662,8 @@ foreach (var tree in fruitTrees)
 UpdateCollectables("World", player.Center);
 UpdateShrines();
 
-// Also mouse scroll wheel
 float scroll = Raylib.GetMouseWheelMove();
-if (scroll != 0)
+if (scroll != 0 && Raylib.IsKeyDown(KeyboardKey.LeftShift))
     camera.Zoom = Math.Clamp(camera.Zoom + scroll * 0.1f, 0.2f, 4.0f);
 
                 // Axe pickup
@@ -933,18 +959,16 @@ if (Raylib.IsKeyPressed(KeyboardKey.F8))
                     }
 
                     UpdateWeather(dt);
+                    UpdateWorldEvents(dt);
                     UpdateQuests();
                     player.UpdateHealth(dt);
                     UpdateQuickCook(dt);
                     bool nearEnemy = false;
                     totalPlayTime += dt;
 
-                    if (player.Health <= 0)
+                    if (player.Health <= 0 && !deathScreenActive)
                     {
-                    player.Health = player.MaxHealth;
-                    player.Position = new Vector2(400, -50);
-                    player.Money = Math.Max(0, player.Money - 50);
-                    ShowLevelUp("You died! Lost $50", 0);
+                        TriggerDeathScreen();
                     }
 
                    autoSaveTimer += dt;
@@ -964,6 +988,14 @@ if (Raylib.IsKeyPressed(KeyboardKey.F8))
                         biomeMessageTimer = 3f;
                     }
                     if (biomeMessageTimer > 0) biomeMessageTimer -= dt;
+
+                    UpdateDirection(dt);
+                    UpdateNotificationQueue(dt);
+                    UpdateWeatherEffects(dt);
+                    UpdateJournal();
+                    UpdatePolish(dt);
+                    UpdatePolish2(dt);
+                    UpdatePolish3(dt);
 
                     if (timeOfDay > 1f)
                     {
@@ -991,6 +1023,9 @@ if (Raylib.IsKeyPressed(KeyboardKey.F8))
                         cardSpentToday = 0;
                         foreach (var t in billboardTasks) { t.DoneToday = false; }
                         RollDailyPlushStock();
+                        RollNpcFavors();
+                        RollDailyChallenges();
+                        TriggerDailyChallengePulse();
                     }
 
 
@@ -1006,6 +1041,8 @@ if (Raylib.IsKeyPressed(KeyboardKey.F8))
                     UpdateDeathFx(dt);
                     UpdateIncubation(dt);
                     UpdatePendingPet();
+                    CheckSynergyUnlocks();
+                    UpdateDailyChallenges();
                     if (activePet != null) activePet.Update(dt, player.Center);
 
                      if (comboTimer > 0f)
@@ -1187,7 +1224,7 @@ if (Raylib.IsKeyPressed(KeyboardKey.Space) && !chatInputOpen)
                         if (blocked)
                             enemy.Position = enemyOldPos;
                         
-                        if (!enemy.Dead && enemy.AttackCooldown <= 0f   && Raylib.CheckCollisionRecs(player.Bounds, enemy.Bounds))
+                        if (!enemy.Dead && enemy.AttackCooldown <= 0f && !PlayerInvincible && !deathScreenActive && Raylib.CheckCollisionRecs(player.Bounds, enemy.Bounds))
             {
                 int damage = 0;
                 if (enemy.Type == "Wild Dog") damage = 5;
@@ -1209,8 +1246,9 @@ if (Raylib.IsKeyPressed(KeyboardKey.Space) && !chatInputOpen)
                 else if (enemy.Type == "Gangster")      damage = 12;
                 else if (enemy.Type == "Giant Bug")     damage = 14;
 
-                int defense = GetTotalDefense();
+                int defense = GetTotalDefense() + GetBuffBonusDefense();
                 int reducedDamage = Math.Max(1, damage - defense);
+                if (HasSynergy("Iron Will")) reducedDamage = Math.Max(1, (int)(reducedDamage * 0.9f));
                 player.TakeDamage(reducedDamage);
                 enemy.AttackCooldown = 1.0f;   
                 TriggerShake(0.2f);
@@ -1245,7 +1283,8 @@ if (Raylib.IsKeyPressed(KeyboardKey.Space) && !chatInputOpen)
     {
         int weaponBonus = GetWeaponDamage(equipped);
         int slotBonus   = GetWeaponDamage(armorWeapon);
-        int attackDamage = 1 + (player.CombatLevel / 10) + weaponBonus + ComboDamageBonus() + GetArmorStyleBonus().melee;
+        int attackDamage = 1 + (player.CombatLevel / 10) + weaponBonus + ComboDamageBonus() + GetArmorStyleBonus().melee + GetBuffBonusDamage();
+        if (HasSynergy("Master Smith")) attackDamage = (int)(attackDamage * 1.15f);
 
         // crit roll
         bool isCrit = Raylib.GetRandomValue(1, 100) <= (int)(critChance * 100);
@@ -1266,10 +1305,17 @@ if (Raylib.IsKeyPressed(KeyboardKey.Space) && !chatInputOpen)
         enemy.TriggerFlash();
         SpawnSplat(enemy.Center, new Color((byte)170, (byte)20, (byte)20, (byte)255), isCrit ? 16 : 8);
         RegisterComboHit();
+        TriggerHitStop(isCrit ? 0.07f : 0.04f);
+        if (isCrit) TriggerScreenFlash(new Color((byte)255, (byte)200, (byte)50, (byte)255), 0.1f);
+        if (GetEnemyStatusInflict(enemy.Type) is var si && si != null)
+            InflictStatus(si.Value.type, si.Value.duration);
 
         // dog hit sound
         if (enemy.Type == "Wild Dog")
             Raylib.PlaySound(soundDogHit);
+
+        if (enemy.Type == "Wolf")
+            Raylib.PlaySound(soundWolfHit);
 
         floatingTexts.Add(new FloatingText {
             Position = enemy.Position - new Vector2(0, 20),
@@ -1353,7 +1399,8 @@ if (Raylib.IsKeyPressed(KeyboardKey.Space) && !chatInputOpen)
     SyncEnemiesIfHost(dt);
     SyncWorldClockIfHost(dt); 
     UpdateWorldBoss(worldBoss, dt);    
-     UpdateWorldBoss(superBoss, dt);
+    UpdateWorldBoss(superBoss, dt);
+    UpdateBiomeBosses(dt);
 
     player.Update(dt, buildings, trees, vehicles, lakes, decorativeBuildings, decorativeAssets);
 
@@ -1716,21 +1763,82 @@ if (currentBuilding?.BuildingName == "FamilyHub"){
         {
             f.TalkedToday = true;
             f.Friendship = Math.Min(100, f.Friendship + 3);
-            ShowNotification($"{f.Name} ({f.Tier}): \"{f.TierDialogue}\" (+3 friendship)");
+            // contextual dialogue — reacts to weather, quests, events, time
+            string line = GetContextualDialogue(f);
+            string family = "";
+            if (f.Friendship >= 30 && f.Partner != "" && f.Partner != "someone")
+                family = $" [with {f.Partner}]";
+            else if (f.Friendship >= 30 && f.Partner == "someone")
+                family = " [seeing someone]";
+            ShowNotification($"{f.Name}{family} ({f.Tier}): \"{line}\" (+3 friendship)");
         }
-        if (Raylib.IsKeyPressed(KeyboardKey.G) && !f.GiftedToday && GetResourceCount(f.FavoriteGift) > 0)
+
+        if (Raylib.IsKeyPressed(KeyboardKey.G) && !f.GiftedToday)
         {
-            f.GiftedToday = true;
-            SpendResource(f.FavoriteGift, 1);
-            f.Friendship = Math.Min(100, f.Friendship + 10);
-            ShowNotification($"{f.Name} loved the {f.FavoriteGift}! (+10 friendship)");
+            // try favorite gift first, then any liked item the player has
+            string giftItem = null;
+            if (GetResourceCount(f.FavoriteGift) > 0)
+                giftItem = f.FavoriteGift;
+            else
+            {
+                // check if player has any item the NPC likes
+                foreach (string like in f.Likes)
+                    if (GetResourceCount(like) > 0) { giftItem = like; break; }
+            }
+
+            if (giftItem != null)
+            {
+                f.GiftedToday = true;
+                SpendResource(giftItem, 1);
+                int gain = f.GiftFriendshipGain(giftItem);
+                f.Friendship = Math.Clamp(f.Friendship + gain, 0, 100);
+                string sign = gain >= 0 ? $"+{gain}" : $"{gain}";
+                ShowNotification($"{f.GiftReaction(giftItem)} ({sign} friendship)");
+            }
+        }
+
+        // ── FAVOR DELIVERY (F key) ──
+        if (f.ActiveFavor != null && !f.ActiveFavor.Completed
+            && Raylib.IsKeyPressed(KeyboardKey.F) && !chatInputOpen)
+        {
+            TryDeliverFavor(f);
+        }
+
+        // ── FRIENDSHIP MILESTONES ──
+        if (f.Friendship >= 30 && !f.Milestone30)
+        {
+            f.Milestone30 = true;
+            AddReputation(10, $"Friend: {f.Name}");
+            string partnerMsg = f.Partner != "" && f.Partner != "someone"
+                ? $" \"{f.Partner} told me you're alright.\""
+                : "";
+            ShowNotification($"{f.Name} considers you a Friend!{partnerMsg}");
+        }
+        if (f.Friendship >= 60 && !f.Milestone60)
+        {
+            f.Milestone60 = true;
+            AddReputation(20, $"Close Friend: {f.Name}");
+            player.Money += 100;
+            string bio = f.IsChild && f.Parents.Length > 0
+                ? $" ({f.Parents[0]} & {f.Parents[1]}'s kid)"
+                : f.Partner != "" && f.Partner != "someone"
+                ? $" (with {f.Partner})" : "";
+            ShowNotification($"{f.Name}{bio} is now a Close Friend! They gift you $100.");
+        }
+        if (f.Friendship >= 90 && !f.Milestone90)
+        {
+            f.Milestone90 = true;
+            AddReputation(30, $"Best Friend: {f.Name}");
+            player.Money += 300;
+            ShowNotification($"{f.Name}: \"{f.Opinion}\" — Best Friend! +$300");
         }
         if (f.Friendship >= 100 && !f.RewardGiven)
         {
             f.RewardGiven = true;
             player.Money += 500;
-            ShowNotification($"{f.Name} is your Best Friend! They gift you $500!");
+            ShowNotification($"{f.Name} is your soulmate friend! They gift you $500!");
         }
+
     }
 }
 
@@ -1770,12 +1878,14 @@ if (currentBuilding?.BuildingName == "FamilyHub"){
                     player.TriggerMineAnim(); 
                     Raylib.PlaySound(soundRockHit);
                     TriggerShake(0.1f);
+                    SpawnMiningHitParticles(rock.Position, rock.RockType);
 
                     if (rock.Health <= 0)
 {
     rock.Broken = true;
     Raylib.PlaySound(soundRockBreak);
-    int oreGained = Raylib.GetRandomValue(1, 3);
+    SpawnMiningBreakParticles(rock.Position, rock.RockType);
+    int oreGained = Raylib.GetRandomValue(1, 3) + (HasPerk("Mining", 25) ? 1 : 0);
 
     if (TryGiveItem(rock.OreType, oreGained))
     {
@@ -1840,11 +1950,14 @@ foreach (TreeObject tree in trees)
                     tree.ChopAnimTimer = 0f;
                     player.TriggerChopAnim();
                     Raylib.PlaySound(soundTreeChop);
+                    TriggerShake(0.06f);  // subtle feedback per chop
+                    SpawnChopHitParticles(tree.Center, tree.TreeType);
 
                     if (tree.Health <= 0)
 {
     tree.Chopped = true;
     Raylib.PlaySound(soundTreeFall);
+    SpawnTreeFellParticles(tree.Center, tree.TreeType);
     int logsGained = Raylib.GetRandomValue(1, 3);
 
     if (TryGiveItem(tree.LogType, logsGained))
@@ -1868,6 +1981,21 @@ foreach (TreeObject tree in trees)
     }
 }
 
+if (npcActivityBubbleTimer > 0f) npcActivityBubbleTimer -= dt;
+if (Raylib.IsKeyPressed(KeyboardKey.E) && !chatInputOpen)
+{
+    foreach (NPC npc in npcs)
+    {
+        if (npc.Hidden || npc.DailySchedule == null) continue;
+        if (Vector2.Distance(player.Center, npc.Position) < 80)
+        {
+            talkingToNpc = npc;
+            npcActivityBubbleTimer = 3f;
+            break;
+        }
+    }
+}
+
 // ── INTERACTABLE BUILDING ENTRY PROMPTS ───────────────────────────────────
 foreach (Building building in buildings)
 {
@@ -1879,14 +2007,34 @@ foreach (Building building in buildings)
     {
         if (!buildingPromptLocked)
         {
-            buildingPromptMessage = $"Press E to enter {building.BuildingName}";
-            buildingPromptColor = new Color((byte)255,(byte)215,(byte)0,(byte)255);
+            bool open = IsShopOpen(building.BuildingName);
+            if (open)
+            {
+                buildingPromptMessage = $"Press E to enter {building.BuildingName}";
+                buildingPromptColor = new Color((byte)255,(byte)215,(byte)0,(byte)255);
+            }
+            else
+            {
+                string hrs = GetShopHoursLabel(building.BuildingName);
+                buildingPromptMessage = $"{building.BuildingName} is CLOSED (Hours: {hrs})";
+                buildingPromptColor = new Color((byte)200,(byte)80,(byte)80,(byte)255);
+            }
             buildingPromptTimer = 0.1f;
         }
 
         if (Raylib.IsKeyPressed(KeyboardKey.E) && !chatInputOpen)
         {
-            // your existing entry logic here
+            if (!IsShopOpen(building.BuildingName))
+            {
+                buildingPromptMessage = $"{building.BuildingName} is closed right now.";
+                buildingPromptColor = Color.Red;
+                buildingPromptTimer = 2f;
+                buildingPromptLocked = true;
+            }
+            else
+            {
+                // your existing entry logic here
+            }
         }
     }
 }
@@ -2050,7 +2198,9 @@ foreach (var plot in nearbyPlots)
         toolbarCounts[slot]--;                              // decrements the actual seed stack
         if (toolbarCounts[slot] <= 0) toolbarSlots[slot] = null;
 
-        ShowNotification($"Planted {plot.CropType}.");
+        ShowNotification(IsCropInSeason(plot.CropType)
+            ? $"Planted {plot.CropType}."
+            : $"Planted {plot.CropType} — out of season! Growth will be slow.");
     }
     // farm plot watering interaction — CHANGED to consume/require charge
 else if (plot.Planted && !plot.Watered && held2 == "Watering Can" && farmToolCooldown <= 0f && Raylib.IsKeyPressed(KeyboardKey.Space))
@@ -2143,6 +2293,7 @@ foreach (Lake lake in lakes)
     {
         currentLake = lake;
         TryStartFishing("Lake");
+        SpawnFishingCastParticles(lake.Position);
     }
 }
 
@@ -2185,6 +2336,7 @@ foreach (var river in rivers)
                 nearRiver = true;
                 if (Raylib.IsKeyPressed(KeyboardKey.Space) && !chatInputOpen)
                     TryStartFishing("River");
+                    SpawnFishingCastParticles(player.Center + new Vector2(0, 40));
                 break;
             }
         }
@@ -2237,6 +2389,7 @@ if (isFishing)
             fishingReactWindow = 0.9f;   // must press Space within this window
             fishingResult = "BITE! Press SPACE!";
             fishingResultTimer = 1f;
+            SpawnFishingBiteParticles(player.Center + new Vector2(0, 40));
         }
     }
     // ── PHASE 1: react to the bite ──
@@ -2250,7 +2403,7 @@ if (isFishing)
             reelBarPos = 0f;
             reelBarUp = true;
             // green zone size: bigger (easier) at low fishing level, set a tidy default
-            float zone = 0.22f;
+            float zone = 0.22f + (HasPerk("Fishing", 15) ? 0.04f : 0f);
             float centre = Raylib.GetRandomValue(25, 75) / 100f;
             reelTargetMin = Math.Clamp(centre - zone / 2f, 0f, 1f);
             reelTargetMax = Math.Clamp(centre + zone / 2f, 0f, 1f);
@@ -2292,6 +2445,7 @@ if (isFishing)
     else
 {
     int fishCount = accuracy > 0.8f ? 2 : 1;
+    if (HasPerk("Fishing", 25) && Raylib.GetRandomValue(1,100) <= 20) fishCount++;
     int xp = 15 + (int)(accuracy * 25f) + caught.Value / 2;
 
     if (TryGiveItem("Fish", fishCount))
@@ -2299,7 +2453,17 @@ if (isFishing)
         player.TrackFishSpecies(caught.Name, fishCount);
         player.AddFishingXP(xp);
 
+        // ── fishing tournament bonus ──
+        if (activeWorldEvent?.Type == WorldEventType.FishingTournament)
+        {
+            activeWorldEvent.Data++;
+            int bonus = 10 * activeWorldEvent.Data;
+            player.Money += bonus;
+            ShowNotification($"Tournament catch #{activeWorldEvent.Data}! +${bonus}");
+        }
+
         string quality = accuracy > 0.8f ? "PERFECT!" : "Caught";
+        SpawnFishingCatchParticles(player.Position);
         fishingResult = $"{quality} {fishCount}x {caught.Name} (worth ${caught.Value})  +{xp} XP";
         floatingTexts.Add(new FloatingText {
             Position = player.Position - new Vector2(0, 20),
@@ -2410,7 +2574,7 @@ foreach (var entrance in dungeonEntrances)
 }
 
 
-                    camera.Target = player.Position;
+                    camera.Target = GetSmoothedCameraTarget(dt);
 }
 
                     break;
@@ -4295,7 +4459,10 @@ if (licenceMailMenuOpen)
     DrawTreeChopConfirm();
 
     if (sceneFadeAlpha > 0f)
+    {
         Raylib.DrawRectangle(0, 0, ScreenWidth, ScreenHeight, new Color((byte)0, (byte)0, (byte)0, (byte)sceneFadeAlpha));
+        DrawLoadingTip();
+    }
 
             Raylib.EndDrawing();
         }
@@ -4613,83 +4780,50 @@ if (Raylib.IsKeyPressed(KeyboardKey.Equal)) worldMapZoom = Math.Clamp(worldMapZo
 if (Raylib.IsKeyPressed(KeyboardKey.Minus)) worldMapZoom = Math.Clamp(worldMapZoom - 0.25f, 0.5f, 4f);
 if (Raylib.IsKeyPressed(KeyboardKey.Zero))  worldMapZoom = 1f; // reset
 
-    // 1. Base grasslands
+// 1. Base grasslands
 Raylib.DrawRectangle(mapX, mapY, mapW, mapH, new Color((byte)90,(byte)170,(byte)90,(byte)255));
 
-// 2. Forest 
-// 2. Forest top band (X -20000 to 13000, Y < -12000)
-int forestL = cx + (int)(-20000 * scale); int forestR = cx + (int)(13000 * scale);
-int forestT = cy + (int)(-38000 * scale); int forestB = cy + (int)(-12000 * scale);
-Raylib.DrawRectangle(Math.Clamp(forestL, mapX, mapX + mapW), Math.Clamp(forestT, mapY, mapY + mapH),
-    Math.Clamp(forestR - forestL, 0, mapW), Math.Clamp(forestB - forestT, 0, mapH),
-    new Color((byte)40,(byte)100,(byte)40,(byte)255));
+// helper lambda for clamped map rects
+void MapRect(int wL, int wT, int wR, int wB, Color c) {
+    int l = cx + (int)(wL * scale), r = cx + (int)(wR * scale);
+    int t = cy + (int)(wT * scale), b = cy + (int)(wB * scale);
+    Raylib.DrawRectangle(Math.Clamp(l,mapX,mapX+mapW), Math.Clamp(t,mapY,mapY+mapH),
+        Math.Clamp(r-l,0,mapW), Math.Clamp(b-t,0,mapH), c);
+}
 
-// 3. Forest bottom band (X -20000 to 13000, Y > 12000)
-int forestBL = cx + (int)(-20000 * scale); int forestBR = cx + (int)(13000 * scale);
-int forestBT = cy + (int)(12000  * scale); int forestBB = cy + (int)(38000 * scale);
-Raylib.DrawRectangle(Math.Clamp(forestBL, mapX, mapX + mapW), Math.Clamp(forestBT, mapY, mapY + mapH),
-    Math.Clamp(forestBR - forestBL, 0, mapW), Math.Clamp(forestBB - forestBT, 0, mapH),
-    new Color((byte)40,(byte)100,(byte)40,(byte)255));
+// NW: Snow
+MapRect(-250000,-250000,-80000,-80000, new Color((byte)220,(byte)235,(byte)255,(byte)255));
+// N: Mountains
+MapRect(-80000,-250000,80000,-80000, new Color((byte)100,(byte)95,(byte)90,(byte)255));
+// NE: Volcano
+MapRect(80000,-250000,250000,-80000, new Color((byte)40,(byte)20,(byte)10,(byte)255));
+// W: Swamp
+MapRect(-250000,-80000,-80000,80000, new Color((byte)55,(byte)75,(byte)35,(byte)255));
+// C: Grasslands (already base fill)
+MapRect(-80000,-80000,80000,80000, new Color((byte)140,(byte)195,(byte)80,(byte)255));
+// E: Desert
+MapRect(80000,-80000,250000,80000, new Color((byte)210,(byte)180,(byte)100,(byte)255));
+// SW: Forest
+MapRect(-250000,80000,-80000,250000, new Color((byte)40,(byte)100,(byte)40,(byte)255));
+// S+SE: Beach strip
+MapRect(-80000,80000,250000,115000, new Color((byte)240,(byte)220,(byte)150,(byte)255));
+// S+SE: Ocean
+MapRect(-80000,115000,250000,250000, new Color((byte)30,(byte)100,(byte)180,(byte)255));
 
-
-// 4. Swamp (X -55000 to -30000, middle)
-int swL = cx + (int)(-55000 * scale); int swR = cx + (int)(-30000 * scale);
-int swT = cy + (int)(-12000 * scale); int swB = cy + (int)(12000  * scale);
-Raylib.DrawRectangle(Math.Clamp(swL, mapX, mapX + mapW), Math.Clamp(swT, mapY, mapY + mapH),
-    Math.Clamp(swR - swL, 0, mapW), Math.Clamp(swB - swT, 0, mapH),
-    new Color((byte)55,(byte)75,(byte)35,(byte)255));
-
-// 5. Snow (X -60000 to -30000, middle)
-int snL = cx + (int)(-60000 * scale); int snR = cx + (int)(-30000 * scale);
-int snT = cy + (int)(-12000 * scale); int snB = cy + (int)(12000 * scale);
-Raylib.DrawRectangle(Math.Clamp(snL, mapX, mapX + mapW), Math.Clamp(snT, mapY, mapY + mapH),
-    Math.Clamp(snR - snL, 0, mapW), Math.Clamp(snB - snT, 0, mapH),
-    new Color((byte)220,(byte)235,(byte)255,(byte)255));
-
-// 6. Desert (X 8000 to 22000, middle)
-int deL = cx + (int)(8000  * scale); int deR = cx + (int)(22000 * scale);
-int deT = cy + (int)(-12000 * scale); int deB = cy + (int)(12000  * scale);
-Raylib.DrawRectangle(Math.Clamp(deL, mapX, mapX + mapW), Math.Clamp(deT, mapY, mapY + mapH),
-    Math.Clamp(deR - deL, 0, mapW), Math.Clamp(deB - deT, 0, mapH),
-    new Color((byte)210,(byte)180,(byte)100,(byte)255));
-
-// 7. Beach (X 22000 to 28000, full height)
-int beL = cx + (int)(22000 * scale); int beR = cx + (int)(28000 * scale);
-Raylib.DrawRectangle(Math.Clamp(beL, mapX, mapX + mapW), mapY,
-    Math.Clamp(beR - beL, 0, mapW), mapH, new Color((byte)240,(byte)220,(byte)150,(byte)255));
-
-// 8. Ocean (X 28000+, full height)
-int ocL = cx + (int)(28000 * scale);
-Raylib.DrawRectangle(Math.Clamp(ocL, mapX, mapX + mapW), mapY,
-    Math.Clamp(mapX + mapW - ocL, 0, mapW), mapH, new Color((byte)30,(byte)100,(byte)180,(byte)255));
-
-// 9. Volcano (X 22000+, Y above -12000)
-int voL = cx + (int)(22000  * scale); int voB = cy + (int)(-12000 * scale);
-Raylib.DrawRectangle(Math.Clamp(voL, mapX, mapX + mapW), mapY,
-    Math.Clamp(mapX + mapW - voL, 0, mapW), Math.Clamp(voB - mapY, 0, mapH),
-    new Color((byte)40,(byte)20,(byte)10,(byte)255));
-
-// 10. Mountains (X below -30000, Y above -12000)
-int moL = cx + (int)(-30000 * scale); int moR = cx + (int)(-10000 * scale); 
-int moT = cy + (int)(-38000 * scale); int moB = cy + (int)(23000 * scale);
-Raylib.DrawRectangle(Math.Clamp(moL, mapX, mapX + mapW),
-    Math.Clamp(moT, mapY, mapY + mapH), Math.Clamp(moR - moL, 0, mapW), Math.Clamp(moB - moT, 0, mapH),
-    new Color((byte)100,(byte)95,(byte)90,(byte)255));
-
-// 11. Safe zone
+// Safe zone
 int szX  = cx + (int)(-3000 * scale); int szY  = cy + (int)(-1500 * scale);
 int szW  = (int)(7000 * scale);       int szH  = (int)(4000 * scale);
 Raylib.DrawRectangle(szX, szY, szW, szH, new Color((byte)90,(byte)170,(byte)90,(byte)255));
 Raylib.DrawRectangleLines(szX, szY, szW, szH, new Color((byte)120,(byte)200,(byte)120,(byte)255));
 
-// 12. Farm zone
+// Farm zone
 int faX = cx + (int)(-3000  * scale); int faY = cy + (int)(-10000 * scale);
 int faW = (int)(3000 * scale);        int faH = (int)(4000  * scale);
 Raylib.DrawRectangle(Math.Clamp(faX, mapX, mapX + mapW), Math.Clamp(faY, mapY, mapY + mapH),
     Math.Clamp(faW, 0, mapW), Math.Clamp(faH, 0, mapH),
     new Color((byte)139,(byte)90,(byte)43,(byte)255));
 
-// City of Hamiltron zone
+// City of Hamiltron zone (unchanged position)
 int hmL = cx + (int)(11800 * scale); int hmR = cx + (int)(18200 * scale);
 int hmT = cy + (int)(3000  * scale); int hmB = cy + (int)(8200  * scale);
 Raylib.DrawRectangle(Math.Clamp(hmL, mapX, mapX+mapW), Math.Clamp(hmT, mapY, mapY+mapH),
@@ -4698,7 +4832,7 @@ Raylib.DrawRectangleLines(Math.Clamp(hmL,mapX,mapX+mapW), Math.Clamp(hmT,mapY,ma
     Math.Clamp(hmR-hmL,0,mapW), Math.Clamp(hmB-hmT,0,mapH), new Color((byte)220,(byte)180,(byte)20,(byte)255));
 Program.DrawTextUI("HAMILTRON", Math.Clamp(cx+(int)(13500*scale),mapX,mapX+mapW), Math.Clamp(cy+(int)(5500*scale),mapY,mapY+mapH), 12, new Color((byte)255,(byte)240,(byte)100,(byte)255));
 
-// Rotoaira zone
+// Rotoaira zone (unchanged position)
 int roL = cx + (int)(-18000 * scale); int roR = cx + (int)(-13800 * scale);
 int roT = cy + (int)(3200   * scale); int roB = cy + (int)(6200   * scale);
 Raylib.DrawRectangle(Math.Clamp(roL, mapX, mapX+mapW), Math.Clamp(roT, mapY, mapY+mapH),
@@ -4707,110 +4841,26 @@ Raylib.DrawRectangleLines(Math.Clamp(roL,mapX,mapX+mapW), Math.Clamp(roT,mapY,ma
     Math.Clamp(roR-roL,0,mapW), Math.Clamp(roB-roT,0,mapH), new Color((byte)180,(byte)220,(byte)120,(byte)255));
 Program.DrawTextUI("ROTOAIRA", Math.Clamp(cx+(int)(-16500*scale),mapX,mapX+mapW), Math.Clamp(cy+(int)(4400*scale),mapY,mapY+mapH), 12, new Color((byte)200,(byte)255,(byte)160,(byte)255));
 
-    // Roads
-    int roadY    = cy + (int)(550  * scale);
-    int highwayX = cx + (int)(200  * scale);
-    Raylib.DrawRectangle(mapX, roadY, mapW, Math.Max(2, (int)(180 * scale)), new Color((byte)80,(byte)80,(byte)80,(byte)255));
-    Raylib.DrawRectangle(highwayX, mapY, Math.Max(2, (int)(120 * scale)), mapH, new Color((byte)80,(byte)80,(byte)80,(byte)255));
+// Biome labels (centred in each sector)
+    Program.DrawTextUI("SNOW",       Math.Clamp(cx + (int)(-165000 * scale), mapX, mapX + mapW), Math.Clamp(cy + (int)(-165000 * scale), mapY, mapY + mapH), 14, new Color((byte)100,(byte)160,(byte)220,(byte)255));
+    Program.DrawTextUI("MOUNTAINS",  Math.Clamp(cx + (int)(0 * scale), mapX, mapX + mapW),      Math.Clamp(cy + (int)(-165000 * scale), mapY, mapY + mapH), 14, new Color((byte)200,(byte)195,(byte)185,(byte)255));
+    Program.DrawTextUI("VOLCANO",    Math.Clamp(cx + (int)(165000 * scale), mapX, mapX + mapW),  Math.Clamp(cy + (int)(-165000 * scale), mapY, mapY + mapH), 14, new Color((byte)255,(byte)120,(byte)40,(byte)255));
+    Program.DrawTextUI("SWAMP",      Math.Clamp(cx + (int)(-165000 * scale), mapX, mapX + mapW), cy, 14, new Color((byte)100,(byte)130,(byte)60,(byte)255));
+    Program.DrawTextUI("GRASSLANDS", Math.Clamp(cx - 40, mapX, mapX + mapW), cy, 14, new Color((byte)60,(byte)140,(byte)30,(byte)255));
+    Program.DrawTextUI("DESERT",     Math.Clamp(cx + (int)(165000 * scale), mapX, mapX + mapW),  cy, 14, new Color((byte)255,(byte)220,(byte)100,(byte)255));
+    Program.DrawTextUI("FOREST",     Math.Clamp(cx + (int)(-165000 * scale), mapX, mapX + mapW), Math.Clamp(cy + (int)(165000 * scale), mapY, mapY + mapH), 14, new Color((byte)150,(byte)255,(byte)150,(byte)255));
+    Program.DrawTextUI("BEACH",      Math.Clamp(cx + (int)(85000 * scale), mapX, mapX + mapW),   Math.Clamp(cy + (int)(97000 * scale), mapY, mapY + mapH), 12, new Color((byte)200,(byte)180,(byte)100,(byte)255));
+    Program.DrawTextUI("OCEAN",      Math.Clamp(cx + (int)(85000 * scale), mapX, mapX + mapW),   Math.Clamp(cy + (int)(180000 * scale), mapY, mapY + mapH), 14, new Color((byte)100,(byte)180,(byte)255,(byte)255));
+    Program.DrawTextUI("SAFE ZONE",  szX + 4, szY + 10, 14, new Color((byte)100,(byte)255,(byte)100,(byte)255));
+    Program.DrawTextUI("FARM",       Math.Clamp(cx + (int)(-2000 * scale), mapX, mapX + mapW), Math.Clamp(cy + (int)(-8000 * scale), mapY, mapY + mapH), 14, new Color((byte)200,(byte)150,(byte)80,(byte)255));
 
-    int desertRoadY = cy + (int)(200 * scale);
-    Raylib.DrawRectangle(cx + (int)(8000 * scale), desertRoadY, mapX + mapW - (cx + (int)(8000 * scale)), Math.Max(2, (int)(120 * scale)), new Color((byte)80,(byte)80,(byte)80,(byte)255));
-    Raylib.DrawRectangle(mapX, desertRoadY, Math.Max(0, cx + (int)(-30000 * scale) - mapX), Math.Max(2, (int)(120 * scale)), new Color((byte)80,(byte)80,(byte)80,(byte)255));
+int ringTopY   = cy + (int)(-245000 * scale);
+    int ringBotY   = cy + (int)(245000  * scale);
+    int ringLeftX  = cx + (int)(-245000 * scale);
+    int ringRightX = cx + (int)(244820  * scale);
 
-    // Ring roads
-    int ringTopY   = cy + (int)(-38000 * scale);
-    int ringBotY   = cy + (int)(38000  * scale);
-    int ringLeftX  = cx + (int)(-40000 * scale);
-    int ringRightX = cx + (int)(39820  * scale);
-    Raylib.DrawRectangle(mapX, ringTopY,   mapW, Math.Max(2, (int)(180 * scale)), new Color((byte)80,(byte)80,(byte)80,(byte)255));
-    Raylib.DrawRectangle(mapX, ringBotY,   mapW, Math.Max(2, (int)(180 * scale)), new Color((byte)80,(byte)80,(byte)80,(byte)255));
-    Raylib.DrawRectangle(ringLeftX,  mapY, Math.Max(2, (int)(180 * scale)), mapH, new Color((byte)80,(byte)80,(byte)80,(byte)255));
-    Raylib.DrawRectangle(ringRightX, mapY, Math.Max(2, (int)(180 * scale)), mapH, new Color((byte)80,(byte)80,(byte)80,(byte)255));
-
-    RoadManager.DrawOnWorldMap(cx, cy, scale, mapX, mapY, mapW, mapH);
-
-    // Snow/Desert connectors
-    int[] connX = { -20000, -10000, 15000, 25000 };
-    foreach (int wx in connX)
-        Raylib.DrawRectangle(cx + (int)(wx * scale), mapY, Math.Max(2, (int)(120 * scale)), mapH, new Color((byte)80,(byte)80,(byte)80,(byte)255));
-
-    // Lakes
-    foreach (Lake lake in lakes)
-    {
-        int lkX = cx + (int)(lake.Position.X * scale);
-        int lkY = cy + (int)(lake.Position.Y * scale);
-        Raylib.DrawCircle(lkX, lkY, (int)(120 * scale), new Color((byte)30,(byte)100,(byte)200,(byte)255));
-        Program.DrawTextUI("Lake", lkX - 14, lkY - 8, 12, Color.White);
-    }
-
-    // Buildings
-    foreach (Building building in buildings)
-    {
-        int bx = cx + (int)(building.Bounds.X * scale);
-        int by = cy + (int)(building.Bounds.Y * scale);
-        if (bx >= mapX && bx <= mapX + mapW && by >= mapY && by <= mapY + mapH)
-        {
-            Raylib.DrawRectangle(bx - 5, by - 5, 14, 14, Color.Yellow);
-            Raylib.DrawRectangleLines(bx - 5, by - 5, 14, 14, Color.Gold);
-        }
-    }
-
-    // Flags
-    foreach (var f in placedFlags)
-    {
-        int fx = cx + (int)(f.X * scale);
-        int fy = cy + (int)(f.Y * scale);
-        if (fx > mapX && fx < mapX + mapW && fy > mapY && fy < mapY + mapH)
-        {
-            Raylib.DrawCircle(fx, fy, 4, Color.Red);
-            Raylib.DrawCircleLines(fx, fy, 4, Color.White);
-        }
-    }
-
-    // ── FOG OF WAR OVERLAY ──
-    Raylib.BeginScissorMode(mapX, mapY, mapW, mapH);
-    Color fogColor = new Color((byte)10,(byte)10,(byte)20,(byte)230);
-    float cellScreenW = FogCellSize * scale;
-    float cellScreenH = FogCellSize * scale;
-    int visMinCX = Math.Max(0, (int)((mapX - cx) / scale - FogOriginX) / FogCellSize - 1);
-    int visMaxCX = Math.Min(FogCols - 1, (int)((mapX + mapW - cx) / scale - FogOriginX) / FogCellSize + 1);
-    int visMinCY = Math.Max(0, (int)((mapY - cy) / scale - FogOriginY) / FogCellSize - 1);
-    int visMaxCY = Math.Min(FogRows - 1, (int)((mapY + mapH - cy) / scale - FogOriginY) / FogCellSize + 1);
-    for (int fy = visMinCY; fy <= visMaxCY; fy++)
-        for (int fx = visMinCX; fx <= visMaxCX; fx++)
-        {
-            if (fogRevealed[fy * FogCols + fx]) continue;
-            int sx = cx + (int)((FogOriginX + fx * FogCellSize) * scale);
-            int sy = cy + (int)((FogOriginY + fy * FogCellSize) * scale);
-            Raylib.DrawRectangle(sx, sy, (int)cellScreenW + 1, (int)cellScreenH + 1, fogColor);
-        }
-    Raylib.EndScissorMode();
-
-    string expText = $"Explored: {GetExplorationPercent():F1}%";
-    Program.DrawTextUI(expText, mapX + mapW - 180, mapY + mapH - 90, 16, Color.Gold);
-
-    // Player dot
-    int px = cx + (int)(player.Position.X * scale);
-    int py = cy + (int)(player.Position.Y * scale);
-    px = Math.Clamp(px, mapX + 5, mapX + mapW - 5);
-    py = Math.Clamp(py, mapY + 5, mapY + mapH - 5);
-    Raylib.DrawCircle(px, py, 6, Color.White);
-    Raylib.DrawCircleLines(px, py, 6, Color.Gold);
-    Program.DrawTextUI(playerName, px + 10, py - 8, 14, Color.White);
-
-    
-    // Biome labels
-    Program.DrawTextUI("FOREST",    mapX + mapW / 2 - 30, mapY + 8, 16, new Color((byte)150,(byte)255,(byte)150,(byte)255));
-    Program.DrawTextUI("DESERT",    Math.Clamp(cx + (int)(12000 * scale), mapX, mapX + mapW), cy, 16, new Color((byte)255,(byte)220,(byte)100,(byte)255));
-    Program.DrawTextUI("MOUNTAINS",      Math.Clamp(cx + (int)(-22000 * scale), mapX, mapX + mapW), cy, 16, new Color((byte)200,(byte)220,(byte)255,(byte)255));
-    Program.DrawTextUI("SAFE ZONE", szX + 4, szY + 10, 14, new Color((byte)100,(byte)255,(byte)100,(byte)255));
-    Program.DrawTextUI("SNOW",     Math.Clamp(cx + (int)(-44000 * scale), mapX, mapX + mapW), cy, 16, new Color((byte)200,(byte)235,(byte)255,(byte)255));
-    Program.DrawTextUI("SWAMP",    Math.Clamp(cx + (int)(-44000 * scale), mapX, mapX + mapW), cy + 20, 14, new Color((byte)100,(byte)130,(byte)60,(byte)255));
-    Program.DrawTextUI("VOLCANO",   Math.Clamp(cx + (int)(28000 * scale), mapX, mapX + mapW), mapY + 8, 14, new Color((byte)255,(byte)120,(byte)40,(byte)255));
-    Program.DrawTextUI("MOUNTAINS", mapX + 4, mapY + 8, 14, new Color((byte)200,(byte)195,(byte)185,(byte)255));
-    Program.DrawTextUI("BEACH",     Math.Clamp(cx + (int)(23000 * scale), mapX, mapX + mapW), cy + 20, 12, new Color((byte)240,(byte)220,(byte)150,(byte)255));
-    Program.DrawTextUI("OCEAN",     Math.Clamp(cx + (int)(31000 * scale), mapX, mapX + mapW), cy, 12, new Color((byte)100,(byte)180,(byte)255,(byte)255));
-    Program.DrawTextUI("FARM",      Math.Clamp(cx + (int)(-2000 * scale), mapX, mapX + mapW), Math.Clamp(cy + (int)(-8000 * scale), mapY, mapY + mapH), 14, new Color((byte)200,(byte)150,(byte)80,(byte)255));
+    // ── QUEST MARKERS & DISCOVERY OVERLAY ──
+    DrawWorldMapQuestMarkers(cx, cy, scale, mapX, mapY, mapW, mapH);
 
     // Legend
     int lx = mapX + 10;
@@ -5091,6 +5141,8 @@ static void DrawOptionsMenu()
         Raylib.SetSoundVolume(soundStickSwing,  soundVolume);
         Raylib.SetSoundVolume(soundDogHit,      soundVolume);
         Raylib.SetSoundVolume(soundDogDie,      soundVolume);
+        Raylib.SetSoundVolume(soundWolfHit,      soundVolume);
+        Raylib.SetSoundVolume(soundWolfDie,      soundVolume);
         Raylib.SetSoundVolume(soundHorseGallop, soundVolume);
         Raylib.SetSoundVolume(soundPauseOpen,   soundVolume);
         Raylib.SetSoundVolume(soundPauseClose,  soundVolume);
@@ -5106,6 +5158,8 @@ static void DrawOptionsMenu()
         Raylib.SetSoundVolume(soundStickSwing,  soundVolume);
         Raylib.SetSoundVolume(soundDogHit,      soundVolume);
         Raylib.SetSoundVolume(soundDogDie,      soundVolume);
+         Raylib.SetSoundVolume(soundWolfHit,      soundVolume);
+        Raylib.SetSoundVolume(soundWolfDie,      soundVolume);
         Raylib.SetSoundVolume(soundHorseGallop, soundVolume);
         Raylib.SetSoundVolume(soundPauseOpen,   soundVolume);
         Raylib.SetSoundVolume(soundPauseClose,  soundVolume);
@@ -5228,85 +5282,203 @@ static void DrawCheatsMenu()
             DrawTutorialWorld();
 
 // =====================
-// BASE & BIOMES
+// BASE & BIOMES  (500k × 500k world, 3×3 equal grid)
 // =====================
 
-// Base fallback (shouldn't be visible)
-Raylib.DrawRectangle(-55000, -40000, 95000, 80000, new Color((byte)90,(byte)170,(byte)90,(byte)255));
+// Base fallback — full world grassland
+Raylib.DrawRectangle(-250000, -250000, 500000, 500000, new Color((byte)90,(byte)170,(byte)90,(byte)255));
 
-// FOREST — top band (Y -40000 to -12000) full width
-Raylib.DrawRectangle(-55000, -40000, 95000, 28000, new Color((byte)40,(byte)100,(byte)40,(byte)255));
+// ── NW: SNOW (X -250k to -80k, Y -250k to -80k) ──
+Raylib.DrawRectangle(-250000, -250000, 170000, 170000, new Color((byte)220,(byte)235,(byte)255,(byte)255));
+// Sub: Tundra (X -250k to -180k)
+Raylib.DrawRectangle(-250000, -250000, 70000, 170000, new Color((byte)200,(byte)220,(byte)240,(byte)255));
+// Sub: Frozen Lake (X -180k to -140k, Y -180k to -140k)
+Raylib.DrawRectangle(-180000, -180000, 40000, 40000, new Color((byte)150,(byte)210,(byte)245,(byte)255));
+// Sub: Ice Caves (X -200k to -140k, Y -120k to -80k)
+Raylib.DrawRectangle(-200000, -120000, 60000, 40000, new Color((byte)170,(byte)195,(byte)225,(byte)255));
 
-// FOREST — bottom band (Y 12000 to 40000) full width
-Raylib.DrawRectangle(-55000, 12000, 95000, 28000, new Color((byte)40,(byte)100,(byte)40,(byte)255));
+// ── N: MOUNTAINS (X -80k to 80k, Y -250k to -80k) ──
+Raylib.DrawRectangle(-80000, -250000, 160000, 170000, new Color((byte)100,(byte)95,(byte)90,(byte)255));
+// Sub: Alpine Meadow (X -80k to -20k, Y -170k to -120k)
+Raylib.DrawRectangle(-80000, -170000, 60000, 50000, new Color((byte)95,(byte)160,(byte)80,(byte)255));
+// Sub: Cliffs (X 20k to 80k, Y -200k to -140k)
+Raylib.DrawRectangle(20000, -200000, 60000, 60000, new Color((byte)80,(byte)75,(byte)70,(byte)255));
+// Sub: Crystal Caves (X -60k to 20k, Y -250k to -200k)
+Raylib.DrawRectangle(-60000, -250000, 80000, 50000, new Color((byte)90,(byte)60,(byte)140,(byte)255));
 
-// SWAMP — far left (X -55000 to -30000, middle strip Y -12000 to 12000)
-Raylib.DrawRectangle(-55000, -12000, 25000, 24000, new Color((byte)55,(byte)75,(byte)35,(byte)255));
+// ── NE: VOLCANO (X 80k to 250k, Y -250k to -80k) ──
+Raylib.DrawRectangle(80000, -250000, 170000, 170000, new Color((byte)40,(byte)20,(byte)10,(byte)255));
+// Sub: Caldera (X 140k to 200k, Y -200k to -140k)
+Raylib.DrawRectangle(140000, -200000, 60000, 60000, new Color((byte)60,(byte)15,(byte)15,(byte)255));
+// Sub: Ashen Wastes (X 80k to 140k, Y -170k to -110k)
+Raylib.DrawRectangle(80000, -170000, 60000, 60000, new Color((byte)55,(byte)48,(byte)40,(byte)255));
+// Sub: Lava Fields (X 80k to 200k, Y -110k to -80k)
+Raylib.DrawRectangle(80000, -110000, 120000, 30000, new Color((byte)60,(byte)25,(byte)5,(byte)255));
 
-// SNOW — left (X -30000 to -10000, middle strip)
-Raylib.DrawRectangle(-60000, -15000, 30000, 30000, new Color((byte)220,(byte)235,(byte)255,(byte)255));
+// ── W: SWAMP (X -250k to -80k, Y -80k to 80k) ──
+Raylib.DrawRectangle(-250000, -80000, 170000, 160000, new Color((byte)55,(byte)75,(byte)35,(byte)255));
+// Sub: Mangrove (X -250k to -180k, Y -30k to 30k)
+Raylib.DrawRectangle(-250000, -30000, 70000, 60000, new Color((byte)40,(byte)65,(byte)28,(byte)255));
+// Sub: Bog (X -180k to -130k, Y -30k to 30k)
+Raylib.DrawRectangle(-180000, -30000, 50000, 60000, new Color((byte)45,(byte)58,(byte)25,(byte)255));
+// Sub: Dead Marsh (X -250k to -170k, Y 30k to 80k)
+Raylib.DrawRectangle(-250000, 30000, 80000, 50000, new Color((byte)48,(byte)52,(byte)30,(byte)255));
 
-// SAFE ZONE — centre-left (X -10000 to -3000, middle strip + safe zone overlay)
-//Raylib.DrawRectangle(-10, -12000, 7000, 24000, new Color((byte)90,(byte)170,(byte)90,(byte)255));
+// ── C: GRASSLANDS (X -80k to 80k, Y -80k to 80k) ──
+Raylib.DrawRectangle(-80000, -80000, 160000, 160000, new Color((byte)140,(byte)195,(byte)80,(byte)255));
 
-// GRASSLANDS — centre (X -3000 to 8000, middle strip)
-Raylib.DrawRectangle(-10000, -12000, 18000, 24000, new Color((byte)140, (byte)195, (byte)80, (byte)255));
+// ── E: DESERT (X 80k to 250k, Y -80k to 80k) ──
+Raylib.DrawRectangle(80000, -80000, 170000, 160000, new Color((byte)210,(byte)180,(byte)100,(byte)255));
+// Sub: Oasis (X 140k to 190k, Y -20k to 20k)
+Raylib.DrawRectangle(140000, -20000, 50000, 40000, new Color((byte)80,(byte)160,(byte)80,(byte)255));
+// Sub: Dunes (X 200k to 250k, Y -50k to 50k)
+Raylib.DrawRectangle(200000, -50000, 50000, 100000, new Color((byte)195,(byte)165,(byte)80,(byte)255));
+// Sub: Badlands (X 80k to 160k, Y 30k to 80k)
+Raylib.DrawRectangle(80000, 30000, 80000, 50000, new Color((byte)140,(byte)90,(byte)45,(byte)255));
 
-// DESERT — centre-right (X 8000 to 22000, middle strip)
-Raylib.DrawRectangle(8000, -12000, 14000, 24000, new Color((byte)210,(byte)180,(byte)100,(byte)255));
+// ── SW: FOREST (X -250k to -80k, Y 80k to 250k) ──
+Raylib.DrawRectangle(-250000, 80000, 170000, 170000, new Color((byte)40,(byte)100,(byte)40,(byte)255));
+// Sub: Dark Forest (X -250k to -170k, Y 80k to 170k)
+Raylib.DrawRectangle(-250000, 80000, 80000, 90000, new Color((byte)20,(byte)60,(byte)20,(byte)255));
+// Sub: Enchanted Woods (X -170k to -80k, Y 80k to 160k)
+Raylib.DrawRectangle(-170000, 80000, 90000, 80000, new Color((byte)45,(byte)115,(byte)55,(byte)255));
+// Sub: Mushroom Grove (X -250k to -160k, Y 170k to 250k)
+Raylib.DrawRectangle(-250000, 170000, 90000, 80000, new Color((byte)35,(byte)80,(byte)45,(byte)255));
 
-// BEACH — right (X 22000 to 28000, full height)
-Raylib.DrawRectangle(22000, -40000, 6000, 80000, new Color((byte)240,(byte)220,(byte)150,(byte)255));
+// ── S+SE: BEACH strip (X -80k to 250k, Y 80k to 115k) ──
+Raylib.DrawRectangle(-80000, 80000, 330000, 35000, new Color((byte)240,(byte)220,(byte)150,(byte)255));
 
-// OCEAN — far right (X 28000 to 40000, full height)
-Raylib.DrawRectangle(28000, -40000, 150, 80000, new Color((byte)230,(byte)210,(byte)160,(byte)255));   // sand/beach strip
-Raylib.DrawRectangle(28150, -40000, 11850, 80000, new Color((byte)30,(byte)100,(byte)180,(byte)255));
-// NEW — depth gradient: shallows → deep water
-Raylib.DrawRectangle(30500, -40000, 3500, 80000, new Color((byte)24,(byte)85,(byte)165,(byte)255));
-Raylib.DrawRectangle(34000, -40000, 6000, 80000, new Color((byte)17,(byte)62,(byte)140,(byte)255));
+// ── S+SE: OCEAN (X -80k to 250k, Y 115k to 250k) ──
+Raylib.DrawRectangle(-80000, 115000, 330000, 500, new Color((byte)230,(byte)210,(byte)160,(byte)255)); // sand strip
+Raylib.DrawRectangle(-80000, 115500, 330000, 134500, new Color((byte)30,(byte)100,(byte)180,(byte)255));
+// Depth gradient
+Raylib.DrawRectangle(-80000, 160000, 330000, 40000, new Color((byte)24,(byte)85,(byte)165,(byte)255));
+Raylib.DrawRectangle(-80000, 200000, 330000, 50000, new Color((byte)17,(byte)62,(byte)140,(byte)255));
+// Sub: Coral Reef (X -80k to 40k, Y 115k to 180k)
+Raylib.DrawRectangle(-80000, 115500, 120000, 64500, new Color((byte)25,(byte)110,(byte)160,(byte)255));
+// Sub: Islands — drawn as small land patches
+Raylib.DrawCircle(120000, 170000, 3000, new Color((byte)240,(byte)220,(byte)150,(byte)255));
+Raylib.DrawCircle(150000, 185000, 4500, new Color((byte)240,(byte)220,(byte)150,(byte)255));
+Raylib.DrawCircle(140000, 200000, 2500, new Color((byte)240,(byte)220,(byte)150,(byte)255));
+Raylib.DrawCircle(175000, 175000, 3500, new Color((byte)240,(byte)220,(byte)150,(byte)255));
 
-// NEW — animated shoreline foam + drifting wave crests (view-culled)
+// Animated shoreline foam (view-culled)
 {
     float t = (float)Raylib.GetTime();
     float ovT = camera.Target.Y - ScreenHeight, ovB = camera.Target.Y + ScreenHeight;
     float ovL = camera.Target.X - ScreenWidth,  ovR = camera.Target.X + ScreenWidth;
-    if (ovR > 28000)   // any water on screen at all
+    if (ovB > 115000 && ovT < 116000)
     {
-        for (int wy = ((int)ovT / 240) * 240; wy < ovB; wy += 240)
+        for (int wx = ((int)ovL / 240) * 240; wx < ovR; wx += 240)
         {
-            if (wy < -39800 || wy > 39800) continue;
-            float ph = MathF.Sin(t * 1.6f + wy * 0.013f);
-
-            // foam lapping the sand strip
-            int foamX = 28150 + (int)(ph * 14);
-            Raylib.DrawLineEx(new Vector2(foamX, wy), new Vector2(foamX + 10, wy + 60),
+            if (wx < -80000 || wx > 250000) continue;
+            float ph = MathF.Sin(t * 1.6f + wx * 0.013f);
+            int foamY = 115500 + (int)(ph * 14);
+            Raylib.DrawLineEx(new Vector2(wx, foamY), new Vector2(wx + 60, foamY + 10),
                 4, new Color((byte)235,(byte)245,(byte)255,(byte)150));
-
-            // two offshore crest lines, out of phase
-            int w1 = 28600 + (int)(ph * 50);
-            int w2 = 29600 - (int)(ph * 70);
-            if (w1 > ovL && w1 < ovR)
-                Raylib.DrawLineEx(new Vector2(w1, wy + 40), new Vector2(w1 + 110, wy + 55),
-                    3, new Color((byte)205,(byte)230,(byte)250,(byte)110));
-            if (w2 > ovL && w2 < ovR)
-                Raylib.DrawLineEx(new Vector2(w2, wy + 140), new Vector2(w2 + 90, wy + 150),
-                    2, new Color((byte)185,(byte)220,(byte)245,(byte)85));
         }
     }
 }
 
-// VOLCANO — top right (X 22000 to 40000, Y -40000 to -12000)
-Raylib.DrawRectangle(22000, -40000, 18000, 28000, new Color((byte)40,(byte)20,(byte)10,(byte)255));
-
-// MOUNTAINS — top left (X -30000 to -10000, Y -15000 to 23000)
-Raylib.DrawRectangle(-30000, -15000, 20000, 38000, new Color((byte)100,(byte)95,(byte)90,(byte)255));
-
-// SAFE ZONE overlay (exact safe zone bounds, sits on top of grasslands)
+// SAFE ZONE overlay (exact safe zone bounds — unchanged)
 Raylib.DrawRectangle(-3000, -1500, 7000, 4000, new Color((byte)90,(byte)170,(byte)90,(byte)255));
 
 // FARM ZONE (north of safe zone)
-Raylib.DrawRectangle(-3000, -10000, 3000, 4000, Color.Brown);
+{
+    int fzX = -3000, fzY = -10000, fzW = 3000, fzH = 4000;
 
+    // base soil — warm brown
+    Raylib.DrawRectangle(fzX, fzY, fzW, fzH, new Color((byte)120, (byte)85, (byte)45, (byte)255));
+
+    // darker ploughed field strips (horizontal bands across the zone)
+    for (int row = 0; row < fzH; row += 200)
+    {
+        // alternating dark/light furrow bands
+        Color band = (row / 200 % 2 == 0)
+            ? new Color((byte)100, (byte)70, (byte)35, (byte)255)
+            : new Color((byte)130, (byte)95, (byte)50, (byte)255);
+        Raylib.DrawRectangle(fzX, fzY + row, fzW, 100, band);
+
+        // furrow lines within each band
+        for (int f = 10; f < 100; f += 30)
+            Raylib.DrawRectangle(fzX, fzY + row + f, fzW, 3,
+                new Color((byte)80, (byte)55, (byte)25, (byte)120));
+    }
+
+    // dirt path running through the middle
+    int pathX = fzX + fzW / 2 - 40;
+    Raylib.DrawRectangle(pathX, fzY, 80, fzH,
+        new Color((byte)145, (byte)115, (byte)70, (byte)255));
+    // path edges — worn dirt
+    Raylib.DrawRectangle(pathX - 6, fzY, 6, fzH,
+        new Color((byte)130, (byte)100, (byte)55, (byte)150));
+    Raylib.DrawRectangle(pathX + 80, fzY, 6, fzH,
+        new Color((byte)130, (byte)100, (byte)55, (byte)150));
+
+    // fence post markers along the path
+    for (int fp = 0; fp < fzH; fp += 400)
+    {
+        // left post
+        Raylib.DrawRectangle(pathX - 10, fzY + fp, 6, 16,
+            new Color((byte)90, (byte)65, (byte)30, (byte)220));
+        Raylib.DrawRectangle(pathX - 10, fzY + fp, 6, 4,
+            new Color((byte)110, (byte)80, (byte)40, (byte)220));
+        // right post
+        Raylib.DrawRectangle(pathX + 84, fzY + fp, 6, 16,
+            new Color((byte)90, (byte)65, (byte)30, (byte)220));
+        Raylib.DrawRectangle(pathX + 84, fzY + fp, 6, 4,
+            new Color((byte)110, (byte)80, (byte)40, (byte)220));
+    }
+
+    // grass border around the farm zone edges
+    Raylib.DrawRectangle(fzX, fzY, fzW, 12,
+        new Color((byte)80, (byte)140, (byte)55, (byte)200));
+    Raylib.DrawRectangle(fzX, fzY + fzH - 12, fzW, 12,
+        new Color((byte)80, (byte)140, (byte)55, (byte)200));
+    Raylib.DrawRectangle(fzX, fzY, 12, fzH,
+        new Color((byte)80, (byte)140, (byte)55, (byte)200));
+    Raylib.DrawRectangle(fzX + fzW - 12, fzY, 12, fzH,
+        new Color((byte)80, (byte)140, (byte)55, (byte)200));
+
+    // scattered hay bales (decorative, deterministic positions)
+    int[] hayXOffsets = { 200, 800, 1400, 2200, 600, 1800 };
+    int[] hayYOffsets = { 300, 1200, 2500, 3200, 2000, 800 };
+    for (int i = 0; i < hayXOffsets.Length; i++)
+    {
+        int hx = fzX + hayXOffsets[i], hy = fzY + hayYOffsets[i];
+        // bale body
+        Raylib.DrawRectangle(hx, hy, 30, 20,
+            new Color((byte)200, (byte)175, (byte)90, (byte)255));
+        Raylib.DrawRectangle(hx + 2, hy + 2, 26, 16,
+            new Color((byte)210, (byte)185, (byte)100, (byte)255));
+        // straw lines
+        Raylib.DrawLineEx(new Vector2(hx + 4, hy + 6), new Vector2(hx + 26, hy + 6), 1f,
+            new Color((byte)180, (byte)155, (byte)70, (byte)150));
+        Raylib.DrawLineEx(new Vector2(hx + 4, hy + 12), new Vector2(hx + 26, hy + 12), 1f,
+            new Color((byte)180, (byte)155, (byte)70, (byte)150));
+    }
+
+    // puddle patches (darker damp soil)
+    Raylib.DrawEllipse(fzX + 500, fzY + 1800, 35, 12,
+        new Color((byte)75, (byte)55, (byte)25, (byte)100));
+    Raylib.DrawEllipse(fzX + 2100, fzY + 900, 28, 10,
+        new Color((byte)75, (byte)55, (byte)25, (byte)100));
+    Raylib.DrawEllipse(fzX + 1200, fzY + 3400, 32, 11,
+        new Color((byte)75, (byte)55, (byte)25, (byte)100));
+
+    // tractor wheel ruts along the path edges
+    for (int rut = 0; rut < fzH; rut += 60)
+    {
+        Raylib.DrawRectangle(pathX + 8, fzY + rut, 4, 20,
+            new Color((byte)100, (byte)75, (byte)35, (byte)80));
+        Raylib.DrawRectangle(pathX + 64, fzY + rut, 4, 20,
+            new Color((byte)100, (byte)75, (byte)35, (byte)80));
+    }
+}
+
+DrawSettlementGrounds();
+DrawBiomeGroundDetail();
+DrawBiomeGroundDetail(); 
 DrawSafeZoneTexture();
 DrawBiomeTextures();
 
@@ -5316,134 +5488,6 @@ Raylib.DrawRectangle(300, -1000, 700, 580, Color.DarkGray);
 // Roads draw
 RoadManager.DrawAll(camera.Target, ScreenWidth, ScreenHeight, camera.Zoom);
 CarparkManager.DrawAll(camera.Target, ScreenWidth, ScreenHeight, camera.Zoom);
-
-// desert/ocean side road (extended to ocean edge)
-Raylib.DrawRectangle(4000, 200, 51000, 120, Color.DarkGray);
-
-// snow/swamp side road (extended to swamp edge)
-Raylib.DrawRectangle(-55000, 200, 52000, 120, Color.DarkGray);
-
-// volcano access road (horizontal connector at Y -10200)
-Raylib.DrawRectangle(26000, -10200, 14000, 120, Color.DarkGray);
-
-// mountain access road (horizontal connector at Y -10200)
-Raylib.DrawRectangle(-55000, -10200, 29000, 120, Color.DarkGray);
-
-// north highway extension to volcano/mountain road (vertical connector)
-Raylib.DrawRectangle(200, -55000, 120, 44800, Color.DarkGray);
-
-// swamp vertical connector (links swamp side road to ring road)
-Raylib.DrawRectangle(-40000, -10200, 120, 10920, Color.DarkGray);
-Raylib.DrawRectangle(-50000, -10200, 120, 10920, Color.DarkGray);
-
-// ocean/beach vertical connector
-Raylib.DrawRectangle(28000, -10200, 120, 10920, Color.DarkGray);
-Raylib.DrawRectangle(35000, -10200, 120, 10920, Color.DarkGray);
-
-// ── CITY OF HAMILTRON (X 12000-18000, Y 3000-8000) ──────────────────────────
-
-// Main boulevard (horizontal spine)
-Raylib.DrawRectangle(11800, 5500, 6400, 160, Color.DarkGray);
-// North avenue (vertical spine)
-Raylib.DrawRectangle(14800, 3000, 160, 5200, Color.DarkGray);
-// East-west cross streets
-Raylib.DrawRectangle(11800, 3900, 6400, 120, Color.DarkGray);
-Raylib.DrawRectangle(11800, 7200, 6400, 120, Color.DarkGray);
-// North-south cross streets
-Raylib.DrawRectangle(12800, 3000, 120, 5200, Color.DarkGray);
-Raylib.DrawRectangle(16600, 3000, 120, 5200, Color.DarkGray);
-Raylib.DrawRectangle(17800, 3000, 120, 5200, Color.DarkGray);
-// Connector from main road (Y 200) down to city boulevard
-Raylib.DrawRectangle(14800, 200, 160, 3700, Color.DarkGray);
-// City ring loop
-Raylib.DrawRectangle(11800, 3000, 6200, 120, Color.DarkGray); // north ring
-Raylib.DrawRectangle(11800, 8100, 6200, 120, Color.DarkGray); // south ring
-Raylib.DrawRectangle(11800, 3000, 120, 5220, Color.DarkGray); // west ring
-Raylib.DrawRectangle(17880, 3000, 120, 5220, Color.DarkGray); // east ring
-
-// ── INTERSECTIONS — city (painted boxes + stop lines) ────────────────────────
-// Intersection: boulevard x north avenue
-Raylib.DrawRectangle(14800, 5500, 160, 160, Color.DarkGray);
-Raylib.DrawRectangle(14790, 5490, 180, 10, new Color((byte)220,(byte)220,(byte)60,(byte)255)); // stop N
-Raylib.DrawRectangle(14790, 5660, 180, 10, new Color((byte)220,(byte)220,(byte)60,(byte)255)); // stop S
-Raylib.DrawRectangle(14790, 5490, 10, 180, new Color((byte)220,(byte)220,(byte)60,(byte)255)); // stop W
-Raylib.DrawRectangle(14960, 5490, 10, 180, new Color((byte)220,(byte)220,(byte)60,(byte)255)); // stop E
-// Zebra crossing — boulevard x north avenue (east approach)
-for (int z = 0; z < 5; z++)
-    Raylib.DrawRectangle(14970 + z * 16, 5510, 10, 140, new Color((byte)240,(byte)240,(byte)240,(byte)200));
-
-// Intersection: east cross x north avenue
-Raylib.DrawRectangle(14800, 3900, 160, 120, Color.DarkGray);
-Raylib.DrawRectangle(14790, 3892, 180, 10, new Color((byte)220,(byte)220,(byte)60,(byte)255));
-Raylib.DrawRectangle(14790, 4012, 180, 10, new Color((byte)220,(byte)220,(byte)60,(byte)255));
-
-// Intersection: boulevard x west cross
-Raylib.DrawRectangle(12800, 5500, 120, 160, Color.DarkGray);
-Raylib.DrawRectangle(12792, 5490, 140, 10, new Color((byte)220,(byte)220,(byte)60,(byte)255));
-Raylib.DrawRectangle(12792, 5660, 140, 10, new Color((byte)220,(byte)220,(byte)60,(byte)255));
-// Zebra W
-for (int z = 0; z < 5; z++)
-    Raylib.DrawRectangle(12808 + z * 16, 5670, 10, 120, new Color((byte)240,(byte)240,(byte)240,(byte)200));
-
-// Intersection: south cross x north avenue
-Raylib.DrawRectangle(14800, 7200, 160, 120, Color.DarkGray);
-Raylib.DrawRectangle(14790, 7192, 180, 10, new Color((byte)220,(byte)220,(byte)60,(byte)255));
-Raylib.DrawRectangle(14790, 7312, 180, 10, new Color((byte)220,(byte)220,(byte)60,(byte)255));
-
-// ── COUNTRY TOWN OF ROTOAIRA (X -14000 to -18000, Y 3000-6000) ──────────────
-
-// Main street (horizontal)
-Raylib.DrawRectangle(-18000, 4400, 4200, 140, Color.DarkGray);
-// Two side streets (vertical)
-Raylib.DrawRectangle(-17200, 3200, 120, 3000, Color.DarkGray);
-Raylib.DrawRectangle(-15400, 3200, 120, 3000, Color.DarkGray);
-// Loop road around town
-Raylib.DrawRectangle(-18000, 3200, 4200, 120, Color.DarkGray); // north loop
-Raylib.DrawRectangle(-18000, 6100, 4200, 120, Color.DarkGray); // south loop
-Raylib.DrawRectangle(-18000, 3200, 120, 3020, Color.DarkGray); // west loop
-Raylib.DrawRectangle(-13920, 3200, 120, 3020, Color.DarkGray); // east loop
-// Connector from snow side road (Y 260) down to town
-Raylib.DrawRectangle(-16200, 260, 120, 3060, Color.DarkGray);
-
-// Town intersection: main street x left side street
-Raylib.DrawRectangle(-17200, 4400, 120, 140, Color.DarkGray);
-Raylib.DrawRectangle(-17210, 4392, 140, 10, new Color((byte)220,(byte)220,(byte)60,(byte)255));
-Raylib.DrawRectangle(-17210, 4534, 140, 10, new Color((byte)220,(byte)220,(byte)60,(byte)255));
-// Zebra
-for (int z = 0; z < 4; z++)
-    Raylib.DrawRectangle(-17192 + z * 16, 4545, 10, 100, new Color((byte)240,(byte)240,(byte)240,(byte)200));
-
-// Town intersection: main street x right side street
-Raylib.DrawRectangle(-15400, 4400, 120, 140, Color.DarkGray);
-Raylib.DrawRectangle(-15410, 4392, 140, 10, new Color((byte)220,(byte)220,(byte)60,(byte)255));
-Raylib.DrawRectangle(-15410, 4534, 140, 10, new Color((byte)220,(byte)220,(byte)60,(byte)255));
-
-// =====================
-// OUTER RING ROAD
-// =====================
-
-// outer ring road - top
-Raylib.DrawRectangle(-55000, -53000, 95000, 180, Color.DarkGray);
-
-// outer ring road - bottom
-Raylib.DrawRectangle(-55000, 53000, 95000, 180, Color.DarkGray);
-
-// outer ring road - left
-Raylib.DrawRectangle(-55000, -53000, 180, 106180, Color.DarkGray);
-
-// outer ring road - right
-Raylib.DrawRectangle(39820, -53000, 180, 106180, Color.DarkGray);
-
-// snow/swamp vertical connectors
-Raylib.DrawRectangle(-20000, -53000, 120, 106180, Color.DarkGray);
-Raylib.DrawRectangle(-10000, -53000, 120, 106180, Color.DarkGray);
-Raylib.DrawRectangle(-40000, -53000, 120, 106180, Color.DarkGray);
-Raylib.DrawRectangle(-50000, -53000, 120, 106180, Color.DarkGray);
-
-// desert/ocean vertical connectors
-Raylib.DrawRectangle(15000, -53000, 120, 106180, Color.DarkGray);
-Raylib.DrawRectangle(25000, -53000, 120, 106180, Color.DarkGray);
-Raylib.DrawRectangle(35000, -53000, 120, 106180, Color.DarkGray);
             
 DrawSplats();
 DrawDeathFx();
@@ -5478,12 +5522,7 @@ DrawDeathFx();
         }
     }
 
-            foreach (var ft in floatingTexts)
-            {
-            byte alpha = (byte)(255 * (ft.Timer / 1.2f));
-            Program.DrawTextUI(ft.Text, (int)ft.Position.X, (int)ft.Position.Y, 22,
-                new Color(ft.TextColor.R, ft.TextColor.G, ft.TextColor.B, alpha));
-            }
+           DrawEnhancedFloatingTexts();
 
             foreach (Building building in buildings)
             {
@@ -6894,53 +6933,171 @@ foreach (var entrance in dungeonEntrances)
         Program.DrawTextUI("E = Enter Dungeon", ex - pw2 / 2, ey - 75, 20, Color.Gold);
     }
 }
+            float cullLeft   = camera.Target.X - ScreenWidth / 2f / camera.Zoom - 80;
+            float cullRight  = camera.Target.X + ScreenWidth / 2f / camera.Zoom + 80;
+            float cullTop    = camera.Target.Y - ScreenHeight / 2f / camera.Zoom - 80;
+            float cullBottom = camera.Target.Y + ScreenHeight / 2f / camera.Zoom + 80;
+
             foreach (TreeObject tree in trees)
             {
-                tree.Draw();
+                if (tree.Position.X > cullLeft && tree.Position.X < cullRight &&
+                    tree.Position.Y > cullTop && tree.Position.Y < cullBottom)
+                    tree.Draw();
             }
             foreach (RockObject rock in rocks)
-            rock.Draw();
+            {
+                if (rock.Position.X > cullLeft && rock.Position.X < cullRight &&
+                    rock.Position.Y > cullTop && rock.Position.Y < cullBottom)
+                    rock.Draw();
+            }
 
             foreach (Lake lake in lakes)
             {
-                lake.Draw();
+                if (lake.Position.X > cullLeft - 140 && lake.Position.X < cullRight + 140 &&
+                    lake.Position.Y > cullTop - 140 && lake.Position.Y < cullBottom + 140)
+                    lake.Draw();
             }
 
      // Rivers
             foreach (var river in rivers)
             {
                 Rectangle rb = river.Bounds;
-                Raylib.DrawRectangleRec(rb, new Color((byte)40,(byte)110,(byte)180,(byte)255));
+                // cull check
+                if (rb.X + rb.Width < cullLeft || rb.X > cullRight ||
+                    rb.Y + rb.Height < cullTop || rb.Y > cullBottom) continue;
 
+                // river bed / muddy bottom layer
                 if (river.Vertical)
                 {
-                    // shimmer runs down the river
-                    for (int s = 0; s < rb.Height; s += 60)
-                    {
-                        float wobble = MathF.Sin((float)Raylib.GetTime() * 2f + s * 0.05f) * 6f;
-                        Raylib.DrawRectangle((int)(rb.X + 20 + wobble), (int)(rb.Y + s), 6, 30,
-                            new Color((byte)120,(byte)190,(byte)230,(byte)160));
-                        Raylib.DrawRectangle((int)(rb.X + 70 - wobble), (int)(rb.Y + s + 20), 6, 30,
-                            new Color((byte)120,(byte)190,(byte)230,(byte)160));
-                    }
-                    // banks (left/right edges)
-                    Raylib.DrawRectangle((int)rb.X - 4, (int)rb.Y, 4, (int)rb.Height, new Color((byte)90,(byte)70,(byte)40,(byte)255));
-                    Raylib.DrawRectangle((int)(rb.X + rb.Width), (int)rb.Y, 4, (int)rb.Height, new Color((byte)90,(byte)70,(byte)40,(byte)255));
+                    Raylib.DrawRectangle((int)rb.X - 6, (int)rb.Y, (int)rb.Width + 12, (int)rb.Height,
+                        new Color((byte)90, (byte)75, (byte)45, (byte)255));
                 }
                 else
                 {
-                    // shimmer runs across the river
-                    for (int s = 0; s < rb.Width; s += 60)
+                    Raylib.DrawRectangle((int)rb.X, (int)rb.Y - 6, (int)rb.Width, (int)rb.Height + 12,
+                        new Color((byte)90, (byte)75, (byte)45, (byte)255));
+                }
+
+                // main water body
+                Raylib.DrawRectangleRec(rb, new Color((byte)30, (byte)95, (byte)170, (byte)255));
+
+                // depth gradient — darker center strip
+                if (river.Vertical)
+                {
+                    Raylib.DrawRectangle((int)rb.X + 25, (int)rb.Y, (int)rb.Width - 50, (int)rb.Height,
+                        new Color((byte)20, (byte)75, (byte)150, (byte)120));
+                }
+                else
+                {
+                    Raylib.DrawRectangle((int)rb.X, (int)rb.Y + 25, (int)rb.Width, (int)rb.Height - 50,
+                        new Color((byte)20, (byte)75, (byte)150, (byte)120));
+                }
+
+                // shallow edge tint
+                if (river.Vertical)
+                {
+                    Raylib.DrawRectangle((int)rb.X, (int)rb.Y, 12, (int)rb.Height,
+                        new Color((byte)60, (byte)140, (byte)210, (byte)60));
+                    Raylib.DrawRectangle((int)(rb.X + rb.Width - 12), (int)rb.Y, 12, (int)rb.Height,
+                        new Color((byte)60, (byte)140, (byte)210, (byte)60));
+                }
+                else
+                {
+                    Raylib.DrawRectangle((int)rb.X, (int)rb.Y, (int)rb.Width, 12,
+                        new Color((byte)60, (byte)140, (byte)210, (byte)60));
+                    Raylib.DrawRectangle((int)rb.X, (int)(rb.Y + rb.Height - 12), (int)rb.Width, 12,
+                        new Color((byte)60, (byte)140, (byte)210, (byte)60));
+                }
+
+                float time = (float)Raylib.GetTime();
+
+                if (river.Vertical)
+                {
+                    // flowing shimmer lines
+                    for (int s = 0; s < rb.Height; s += 50)
                     {
-                        float wobble = MathF.Sin((float)Raylib.GetTime() * 2f + s * 0.05f) * 6f;
-                        Raylib.DrawRectangle((int)(rb.X + s), (int)(rb.Y + 20 + wobble), 30, 6,
-                            new Color((byte)120,(byte)190,(byte)230,(byte)160));
-                        Raylib.DrawRectangle((int)(rb.X + s + 20), (int)(rb.Y + 70 - wobble), 30, 6,
-                            new Color((byte)120,(byte)190,(byte)230,(byte)160));
+                        float wobble = MathF.Sin(time * 2f + s * 0.04f) * 8f;
+                        float alpha = 0.5f + 0.3f * MathF.Sin(time * 1.5f + s * 0.06f);
+                        byte a = (byte)(160 * alpha);
+
+                        Raylib.DrawRectangle((int)(rb.X + 16 + wobble), (int)(rb.Y + s), 4, 24,
+                            new Color((byte)130, (byte)200, (byte)240, a));
+                        Raylib.DrawRectangle((int)(rb.X + 55 - wobble), (int)(rb.Y + s + 25), 4, 24,
+                            new Color((byte)130, (byte)200, (byte)240, a));
+                        Raylib.DrawRectangle((int)(rb.X + 85 + wobble * 0.6f), (int)(rb.Y + s + 12), 3, 18,
+                            new Color((byte)120, (byte)190, (byte)230, (byte)(a / 2)));
                     }
-                    // banks (top/bottom edges)
-                    Raylib.DrawRectangle((int)rb.X, (int)rb.Y - 4, (int)rb.Width, 4, new Color((byte)90,(byte)70,(byte)40,(byte)255));
-                    Raylib.DrawRectangle((int)rb.X, (int)(rb.Y + rb.Height), (int)rb.Width, 4, new Color((byte)90,(byte)70,(byte)40,(byte)255));
+
+                    // surface light reflections
+                    for (int s = 0; s < rb.Height; s += 120)
+                    {
+                        float shimmer = MathF.Sin(time * 3f + s * 0.03f) * 0.4f + 0.5f;
+                        byte sa = (byte)(70 * shimmer);
+                        Raylib.DrawEllipse((int)(rb.X + 40), (int)(rb.Y + s + 30), 12, 5,
+                            new Color((byte)180, (byte)220, (byte)255, sa));
+                    }
+
+                    // muddy banks
+                    Raylib.DrawRectangle((int)rb.X - 6, (int)rb.Y, 6, (int)rb.Height,
+                        new Color((byte)80, (byte)65, (byte)35, (byte)255));
+                    Raylib.DrawRectangle((int)(rb.X + rb.Width), (int)rb.Y, 6, (int)rb.Height,
+                        new Color((byte)80, (byte)65, (byte)35, (byte)255));
+
+                    // reeds along banks
+                    for (int s = 0; s < rb.Height; s += 90)
+                    {
+                        float sway = MathF.Sin(time * 1.5f + s * 0.1f) * 3f;
+                        Raylib.DrawLineEx(new Vector2(rb.X - 4, rb.Y + s + 20),
+                            new Vector2(rb.X - 6 + sway, rb.Y + s + 2), 2f,
+                            new Color((byte)55, (byte)115, (byte)35, (byte)190));
+                        Raylib.DrawLineEx(new Vector2(rb.X + rb.Width + 4, rb.Y + s + 50),
+                            new Vector2(rb.X + rb.Width + 6 - sway, rb.Y + s + 32), 2f,
+                            new Color((byte)55, (byte)115, (byte)35, (byte)190));
+                    }
+                }
+                else
+                {
+                    // flowing shimmer lines (horizontal)
+                    for (int s = 0; s < rb.Width; s += 50)
+                    {
+                        float wobble = MathF.Sin(time * 2f + s * 0.04f) * 8f;
+                        float alpha = 0.5f + 0.3f * MathF.Sin(time * 1.5f + s * 0.06f);
+                        byte a = (byte)(160 * alpha);
+
+                        Raylib.DrawRectangle((int)(rb.X + s), (int)(rb.Y + 16 + wobble), 24, 4,
+                            new Color((byte)130, (byte)200, (byte)240, a));
+                        Raylib.DrawRectangle((int)(rb.X + s + 25), (int)(rb.Y + 55 - wobble), 24, 4,
+                            new Color((byte)130, (byte)200, (byte)240, a));
+                        Raylib.DrawRectangle((int)(rb.X + s + 12), (int)(rb.Y + 85 + wobble * 0.6f), 18, 3,
+                            new Color((byte)120, (byte)190, (byte)230, (byte)(a / 2)));
+                    }
+
+                    // surface reflections
+                    for (int s = 0; s < rb.Width; s += 120)
+                    {
+                        float shimmer = MathF.Sin(time * 3f + s * 0.03f) * 0.4f + 0.5f;
+                        byte sa = (byte)(70 * shimmer);
+                        Raylib.DrawEllipse((int)(rb.X + s + 30), (int)(rb.Y + 40), 12, 5,
+                            new Color((byte)180, (byte)220, (byte)255, sa));
+                    }
+
+                    // muddy banks
+                    Raylib.DrawRectangle((int)rb.X, (int)rb.Y - 6, (int)rb.Width, 6,
+                        new Color((byte)80, (byte)65, (byte)35, (byte)255));
+                    Raylib.DrawRectangle((int)rb.X, (int)(rb.Y + rb.Height), (int)rb.Width, 6,
+                        new Color((byte)80, (byte)65, (byte)35, (byte)255));
+
+                    // reeds along banks
+                    for (int s = 0; s < rb.Width; s += 90)
+                    {
+                        float sway = MathF.Sin(time * 1.5f + s * 0.1f) * 3f;
+                        Raylib.DrawLineEx(new Vector2(rb.X + s + 20, rb.Y - 4),
+                            new Vector2(rb.X + s + 18 + sway, rb.Y - 18), 2f,
+                            new Color((byte)55, (byte)115, (byte)35, (byte)190));
+                        Raylib.DrawLineEx(new Vector2(rb.X + s + 50, rb.Y + rb.Height + 4),
+                            new Vector2(rb.X + s + 52 - sway, rb.Y + rb.Height + 18), 2f,
+                            new Color((byte)55, (byte)115, (byte)35, (byte)190));
+                    }
                 }
             }
 
@@ -6976,31 +7133,82 @@ foreach (var plot in farmPlots)
 {
     int px = (int)plot.Position.X, py = (int)plot.Position.Y;
 
+    // cull — skip if off-screen
+    if (px + 24 < cullLeft || px - 24 > cullRight ||
+        py + 16 < cullTop || py - 40 > cullBottom) continue;
+
     if (!plot.Tilled)
     {
-        // untouched grass patch
-        Raylib.DrawRectangle(px - 24, py - 16, 48, 32, new Color((byte)70,(byte)140,(byte)60,(byte)255));
+        // untouched grass patch — with texture
+        Raylib.DrawRectangle(px - 24, py - 16, 48, 32, new Color((byte)70, (byte)140, (byte)60, (byte)255));
+        // darker grass tufts
+        Raylib.DrawRectangle(px - 18, py - 10, 6, 4, new Color((byte)55, (byte)120, (byte)45, (byte)180));
+        Raylib.DrawRectangle(px + 8, py - 6, 5, 4, new Color((byte)55, (byte)120, (byte)45, (byte)180));
+        Raylib.DrawRectangle(px - 8, py + 4, 7, 3, new Color((byte)55, (byte)120, (byte)45, (byte)180));
+        // tiny wildflowers
+        Raylib.DrawCircle(px - 12, py - 2, 2, new Color((byte)230, (byte)210, (byte)80, (byte)160));
+        Raylib.DrawCircle(px + 14, py + 6, 2, new Color((byte)220, (byte)120, (byte)180, (byte)140));
+        // grass blades poking up
+        Raylib.DrawLineEx(new Vector2(px - 16, py - 16), new Vector2(px - 18, py - 24), 1.5f, new Color((byte)60, (byte)130, (byte)50, (byte)180));
+        Raylib.DrawLineEx(new Vector2(px + 10, py - 16), new Vector2(px + 12, py - 24), 1.5f, new Color((byte)60, (byte)130, (byte)50, (byte)180));
+        Raylib.DrawLineEx(new Vector2(px, py - 16), new Vector2(px - 2, py - 22), 1.5f, new Color((byte)65, (byte)135, (byte)55, (byte)160));
+        // border
+        Raylib.DrawRectangleLines(px - 24, py - 16, 48, 32, new Color((byte)55, (byte)110, (byte)45, (byte)100));
         continue;
     }
 
-    // tilled soil — furrow rows
-    Raylib.DrawRectangle(px - 24, py - 16, 48, 32, new Color((byte)90,(byte)60,(byte)30,(byte)255));
+    // tilled soil — textured with furrows and dirt variation
+    Raylib.DrawRectangle(px - 24, py - 16, 48, 32, new Color((byte)90, (byte)60, (byte)30, (byte)255));
+    // furrow rows with depth
     for (int r = 0; r < 3; r++)
-        Raylib.DrawRectangle(px - 22, py - 12 + r * 10, 44, 4, new Color((byte)70,(byte)45,(byte)20,(byte)255));
+    {
+        int fy = py - 12 + r * 10;
+        Raylib.DrawRectangle(px - 22, fy, 44, 4, new Color((byte)70, (byte)45, (byte)20, (byte)255));
+        // lighter ridge between furrows
+        Raylib.DrawRectangle(px - 22, fy + 4, 44, 2, new Color((byte)110, (byte)75, (byte)40, (byte)120));
+    }
+    // soil variation — darker patches
+    Raylib.DrawCircle(px - 10, py - 4, 4, new Color((byte)70, (byte)45, (byte)20, (byte)80));
+    Raylib.DrawCircle(px + 12, py + 6, 3, new Color((byte)70, (byte)45, (byte)20, (byte)60));
+    // tiny pebbles in soil
+    Raylib.DrawCircle(px - 14, py + 8, 1, new Color((byte)140, (byte)130, (byte)110, (byte)120));
+    Raylib.DrawCircle(px + 6, py - 8, 1, new Color((byte)140, (byte)130, (byte)110, (byte)100));
+    Raylib.DrawCircle(px + 18, py + 2, 1, new Color((byte)130, (byte)120, (byte)100, (byte)110));
+    // border
+    Raylib.DrawRectangleLines(px - 24, py - 16, 48, 32, new Color((byte)60, (byte)40, (byte)18, (byte)150));
 
     if (plot.Watered && !plot.ReadyToHarvest)
-        Raylib.DrawRectangle(px - 24, py - 16, 48, 32, new Color((byte)40,(byte)60,(byte)120,(byte)70)); // damp overlay
+    {
+        // damp overlay with moisture sheen
+        Raylib.DrawRectangle(px - 24, py - 16, 48, 32, new Color((byte)40, (byte)60, (byte)120, (byte)70));
+        // water droplet highlights
+        Raylib.DrawCircle(px - 8, py - 6, 2, new Color((byte)120, (byte)180, (byte)230, (byte)60));
+        Raylib.DrawCircle(px + 10, py + 4, 2, new Color((byte)120, (byte)180, (byte)230, (byte)50));
+    }
 
     if (plot.Planted && !plot.ReadyToHarvest)
     {
         // young sprout — height grows with progress
         float growPct = Math.Clamp(plot.GrowTimer / plot.GrowDuration, 0f, 1f);
         int stalkH = (int)(6 + growPct * 18);
-        Raylib.DrawRectangle(px - 2, py - stalkH, 4, stalkH, new Color((byte)90,(byte)160,(byte)50,(byte)255));
+        // stem with slight thickness variation
+        Raylib.DrawRectangle(px - 2, py - stalkH, 4, stalkH, new Color((byte)90, (byte)160, (byte)50, (byte)255));
+        Raylib.DrawRectangle(px - 1, py - stalkH, 2, stalkH, new Color((byte)100, (byte)175, (byte)60, (byte)120));
         if (growPct > 0.4f)
         {
-            Raylib.DrawTriangle(new Vector2(px, py - stalkH), new Vector2(px - 6, py - stalkH + 8), new Vector2(px, py - stalkH + 4), new Color((byte)110,(byte)180,(byte)60,(byte)255));
-            Raylib.DrawTriangle(new Vector2(px, py - stalkH), new Vector2(px + 6, py - stalkH + 8), new Vector2(px, py - stalkH + 4), new Color((byte)110,(byte)180,(byte)60,(byte)255));
+            // leaves with highlight
+            Raylib.DrawTriangle(new Vector2(px, py - stalkH), new Vector2(px - 6, py - stalkH + 8), new Vector2(px, py - stalkH + 4), new Color((byte)110, (byte)180, (byte)60, (byte)255));
+            Raylib.DrawTriangle(new Vector2(px, py - stalkH), new Vector2(px + 6, py - stalkH + 8), new Vector2(px, py - stalkH + 4), new Color((byte)110, (byte)180, (byte)60, (byte)255));
+            // leaf vein highlight
+            Raylib.DrawLineEx(new Vector2(px, py - stalkH + 1), new Vector2(px - 4, py - stalkH + 6), 1f, new Color((byte)140, (byte)210, (byte)80, (byte)100));
+            Raylib.DrawLineEx(new Vector2(px, py - stalkH + 1), new Vector2(px + 4, py - stalkH + 6), 1f, new Color((byte)140, (byte)210, (byte)80, (byte)100));
+        }
+        if (growPct > 0.7f)
+        {
+            // second pair of leaves lower down
+            int leafY = py - (int)(stalkH * 0.5f);
+            Raylib.DrawTriangle(new Vector2(px, leafY), new Vector2(px - 5, leafY + 6), new Vector2(px, leafY + 3), new Color((byte)100, (byte)170, (byte)55, (byte)200));
+            Raylib.DrawTriangle(new Vector2(px, leafY), new Vector2(px + 5, leafY + 6), new Vector2(px, leafY + 3), new Color((byte)100, (byte)170, (byte)55, (byte)200));
         }
     }
 
@@ -7116,13 +7324,32 @@ foreach (var tree in fruitTrees)
 }
 
 
-            foreach (NPC npc in npcs)
+foreach (NPC npc in npcs)
             {
                 if (npc.Hidden) continue;
-                npc.DrawSprite(AssetManager.Get(npc.SpriteKey));   
-                if (Vector2.Distance(player.Center, npc.Position) < 150)
-                    DrawSpeechBubble(npc.Position, npc.Dialogue,
-                        new Color((byte)80,(byte)120,(byte)80,(byte)255));
+                npc.DrawSprite(AssetManager.Get(npc.SpriteKey));
+
+                float dist = Vector2.Distance(player.Center, npc.Position);
+
+                // show activity bubble if player pressed E on this NPC
+                if (npc == talkingToNpc && npcActivityBubbleTimer > 0f)
+                {
+                    string msg = npc.CurrentActivity != ""
+                        ? $"{npc.Name}: I'm busy {npc.CurrentActivity.ToLower()}."
+                        : $"{npc.Name}: Just resting.";
+                    DrawSpeechBubble(npc.Position, msg,
+                        new Color((byte)60,(byte)100,(byte)140,(byte)255));
+                }
+                // normal dialogue prompt when nearby (only for non-scheduled or when not talking)
+                else if (dist < 150)
+                {
+                    if (npc.DailySchedule != null && dist < 80)
+                        DrawSpeechBubble(npc.Position, $"E = Talk to {npc.Name}",
+                            Color.Gold);
+                    else
+                        DrawSpeechBubble(npc.Position, npc.Dialogue,
+                            new Color((byte)80,(byte)120,(byte)80,(byte)255));
+                }
             }
 
             foreach (var f in friendNPCs)
@@ -7137,7 +7364,24 @@ foreach (var tree in fruitTrees)
                     Raylib.DrawCircle((int)f.Npc.Position.X - 16 + h * 12, (int)f.Npc.Position.Y - 34, 4, hc);
                 }
                 if (Vector2.Distance(player.Center, f.Npc.Position) < 60)
-                    DrawSpeechBubble(f.Npc.Position, $"E = Talk  |  G = Gift ({f.FavoriteGift})", Color.Gold);
+                {
+                    string hint = f.Friendship >= 30
+                        ? $"E = Talk  |  G = Gift (loves {f.FavoriteGift}, likes {string.Join("/", f.Likes.Take(2))})"
+                        : $"E = Talk  |  G = Gift ({f.FavoriteGift})";
+                    if (f.ActiveFavor != null && !f.ActiveFavor.Completed)
+                    {
+                        int left = f.ActiveFavor.AmountNeeded - f.ActiveFavor.AmountDelivered;
+                        hint += $"\nF = Deliver {f.ActiveFavor.ItemNeeded} ({left} left)";
+                    }
+                    DrawSpeechBubble(f.Npc.Position, hint, Color.Gold);
+                }
+                // favor "!" marker above head
+                if (f.ActiveFavor != null && !f.ActiveFavor.Completed)
+                {
+                    float bob = MathF.Sin((float)Raylib.GetTime() * 3f) * 3f;
+                    Program.DrawTextUI("!", (int)f.Npc.Position.X + 14, (int)f.Npc.Position.Y - 48 + (int)bob, 24,
+                        new Color((byte)255,(byte)200,(byte)40,(byte)255));
+                }
             }
 
 rangerNpc.DrawSprite(AssetManager.Get(rangerNpc.SpriteKey));
@@ -7165,6 +7409,8 @@ foreach (var q in storyQuests)
             {
                 enemy.Draw();
             }
+
+            DrawWorldEventEffects(); 
 
             foreach (var w in placedWorkbenches)
 {
@@ -7740,6 +7986,7 @@ if (!tutorialChestOpened)
             DrawCollectables("World");
             worldBoss?.Draw();
             superBoss?.Draw();
+            DrawBiomeBosses();
             if (activePet != null) activePet.Draw();
             if (pendingPet != null)
             {
@@ -7778,6 +8025,8 @@ if (!tutorialChestOpened)
             player.Position = savedPosW;
 
             foreach (var rp in remotePlayers) rp.Draw();
+            DrawPolish2World();
+            DrawPolish3World();
 
             Raylib.EndMode2D();
 
@@ -7821,8 +8070,25 @@ if (!tutorialChestOpened)
 
             if (buildingPromptTimer > 0)
             {
-                byte alpha = (byte)(255 * Math.Min(1f, buildingPromptTimer));
-                Program.DrawTextUI(buildingPromptMessage, 480, 560, 30, Color.Yellow);
+                // detect which key the prompt refers to
+                string keyLabel = buildingPromptMessage.Contains("Press E") ? "E"
+                                : buildingPromptMessage.Contains("SPACE") ? "SPACE"
+                                : buildingPromptMessage.Contains("Press F") ? "F"
+                                : buildingPromptMessage.Contains("Press H") ? "H"
+                                : null;
+
+                if (keyLabel != null)
+                {
+                    // strip "Press X to " prefix for cleaner display
+                    string cleanMsg = buildingPromptMessage;
+                    int toIdx = cleanMsg.IndexOf("to ");
+                    if (toIdx > 0) cleanMsg = cleanMsg.Substring(toIdx + 3);
+                    DrawInteractPromptWithIcon(keyLabel, cleanMsg, 480, 560, Color.Yellow);
+                }
+                else
+                {
+                    Program.DrawTextUI(buildingPromptMessage, 480, 560, 30, Color.Yellow);
+                }
             }
 
             // ── incubator hint banner ──
@@ -7855,6 +8121,7 @@ if (!tutorialChestOpened)
     }
             
             DrawWeather();
+            DrawWorldEventOverlay();
             DrawHUD();
             DrawChestUI();
             DrawFurnaceUI();          
@@ -7862,6 +8129,8 @@ if (!tutorialChestOpened)
             DrawArmorUI();
             DrawLandForSaleUI();
             DrawBillboardUI();
+            DrawPolish2HUD();
+            DrawPolish3HUD();
 
             // ── HOUSE BUILDING ANIMATION ──────────────────────────────────────────────
     if (houseBuildingActive)

@@ -12,36 +12,70 @@ namespace OpenWorldRPG
         {
             if (!skillCheatOpen) return;
 
-            int rowH = 30;
-            int pw = 300;
-            int ph = cheatSkills.Length * rowH + 50;
+            int pw = 340;
             int px = ScreenWidth - pw - 20;
             int py = 60;
-
-            Raylib.DrawRectangle(px, py, pw, ph, new Color((byte)10,(byte)10,(byte)20,(byte)240));
-            Raylib.DrawRectangleLines(px, py, pw, ph, Color.Lime);
-            Program.DrawTextUI("SKILL CHEATS (F8)", px + 10, py + 8, 18, Color.Lime);
+            int visibleH = ScreenHeight - py - 20; // fill screen height
 
             Vector2 mouse = Raylib.GetMousePosition();
 
+            // calculate total content height
+            int rowH = 30;
+            int skillsH = cheatSkills.Length * rowH;
+            int togglesH = 26 + 34 * 3 + 6; // header + 3 buttons
+            int teleportHeaderH = 26;
+            int teleportCount = 19;
+            int teleportH = teleportCount * 26;
+            int totalH = 40 + skillsH + 16 + togglesH + 40 + teleportHeaderH + teleportH + 20;
+
+            float maxScroll = Math.Max(0, totalH - visibleH);
+
+            // scroll with mouse wheel when hovering panel
+            if (Raylib.CheckCollisionPointRec(mouse, new Rectangle(px, py, pw, visibleH)))
+                cheatScrollY = Math.Clamp(cheatScrollY - Raylib.GetMouseWheelMove() * 40f, 0f, maxScroll);
+            cheatScrollY = Math.Clamp(cheatScrollY, 0f, maxScroll);
+
+            // panel background
+            Raylib.DrawRectangle(px, py, pw, visibleH, new Color((byte)10, (byte)10, (byte)20, (byte)240));
+            Raylib.DrawRectangleLines(px, py, pw, visibleH, Color.Lime);
+
+            // scrollbar track
+            if (maxScroll > 0)
+            {
+                int trackX = px + pw - 10;
+                int trackH = visibleH - 4;
+                Raylib.DrawRectangle(trackX, py + 2, 8, trackH, new Color((byte)30, (byte)30, (byte)40, (byte)255));
+                float thumbRatio = (float)visibleH / totalH;
+                int thumbH = Math.Max(20, (int)(trackH * thumbRatio));
+                int thumbY = py + 2 + (int)((trackH - thumbH) * (cheatScrollY / maxScroll));
+                Raylib.DrawRectangle(trackX, thumbY, 8, thumbH, Color.Lime);
+            }
+
+            // clip content
+            Raylib.BeginScissorMode(px, py, pw, visibleH);
+
+            int cy = py + 10 - (int)cheatScrollY;
+
+            Program.DrawTextUI("DEBUG CHEATS (F8)", px + 10, cy, 18, Color.Lime);
+            cy += 30;
+
+            // ── SKILL CHEATS ──
             for (int i = 0; i < cheatSkills.Length; i++)
             {
                 var s = cheatSkills[i];
-                int ry = py + 40 + i * rowH;
+                int ry = cy + i * rowH;
 
                 Program.DrawTextUI($"{s.name}", px + 12, ry + 4, 16, Color.White);
                 Program.DrawTextUI($"{s.get()}", px + 150, ry + 4, 16, Color.Gold);
 
-                // minus button
                 Rectangle minus = new Rectangle(px + 200, ry, 26, 24);
                 bool hMinus = Raylib.CheckCollisionPointRec(mouse, minus);
-                Raylib.DrawRectangleRec(minus, hMinus ? new Color((byte)120,(byte)40,(byte)40,(byte)255) : new Color((byte)60,(byte)30,(byte)30,(byte)255));
+                Raylib.DrawRectangleRec(minus, hMinus ? new Color((byte)120, (byte)40, (byte)40, (byte)255) : new Color((byte)60, (byte)30, (byte)30, (byte)255));
                 Program.DrawTextUI("-", (int)minus.X + 9, (int)minus.Y + 3, 18, Color.White);
 
-                // plus button
                 Rectangle plus = new Rectangle(px + 234, ry, 26, 24);
                 bool hPlus = Raylib.CheckCollisionPointRec(mouse, plus);
-                Raylib.DrawRectangleRec(plus, hPlus ? new Color((byte)40,(byte)120,(byte)40,(byte)255) : new Color((byte)30,(byte)60,(byte)30,(byte)255));
+                Raylib.DrawRectangleRec(plus, hPlus ? new Color((byte)40, (byte)120, (byte)40, (byte)255) : new Color((byte)30, (byte)60, (byte)30, (byte)255));
                 Program.DrawTextUI("+", (int)plus.X + 7, (int)plus.Y + 3, 18, Color.White);
 
                 if (Raylib.IsMouseButtonPressed(MouseButton.Left))
@@ -51,6 +85,93 @@ namespace OpenWorldRPG
                     if (hMinus || hPlus) timesCheated++;
                 }
             }
+            cy += cheatSkills.Length * rowH + 16;
+
+            // ── TOGGLES ──
+            Program.DrawTextUI("─── TOGGLES ───", px + 10, cy, 16, Color.Lime);
+            cy += 26;
+
+            // Speed boost
+            Rectangle speedBtn = new Rectangle(px + 10, cy, pw - 30, 28);
+            bool hSpeed = Raylib.CheckCollisionPointRec(mouse, speedBtn);
+            Raylib.DrawRectangleRec(speedBtn, hSpeed ? new Color((byte)40, (byte)60, (byte)40, (byte)255) : new Color((byte)30, (byte)30, (byte)40, (byte)255));
+            Raylib.DrawRectangleLinesEx(speedBtn, 1, cheatSpeedBoost ? Color.Lime : Color.Gray);
+            Program.DrawTextUI($"Speed Boost (2000): {(cheatSpeedBoost ? "ON" : "OFF")}", px + 18, cy + 5, 16,
+                cheatSpeedBoost ? Color.Lime : Color.White);
+            if (hSpeed && Raylib.IsMouseButtonPressed(MouseButton.Left))
+                cheatSpeedBoost = !cheatSpeedBoost;
+            cy += 34;
+
+            // Noclip
+            Rectangle noclipBtn = new Rectangle(px + 10, cy, pw - 30, 28);
+            bool hNoclip = Raylib.CheckCollisionPointRec(mouse, noclipBtn);
+            Raylib.DrawRectangleRec(noclipBtn, hNoclip ? new Color((byte)40, (byte)60, (byte)40, (byte)255) : new Color((byte)30, (byte)30, (byte)40, (byte)255));
+            Raylib.DrawRectangleLinesEx(noclipBtn, 1, cheatNoclip ? Color.Lime : Color.Gray);
+            Program.DrawTextUI($"Noclip (No Collision): {(cheatNoclip ? "ON" : "OFF")}", px + 18, cy + 5, 16,
+                cheatNoclip ? Color.Lime : Color.White);
+            if (hNoclip && Raylib.IsMouseButtonPressed(MouseButton.Left))
+                cheatNoclip = !cheatNoclip;
+            cy += 34;
+
+            // Full heal
+            Rectangle healBtn = new Rectangle(px + 10, cy, pw - 30, 28);
+            bool hHeal = Raylib.CheckCollisionPointRec(mouse, healBtn);
+            Raylib.DrawRectangleRec(healBtn, hHeal ? new Color((byte)40, (byte)80, (byte)40, (byte)255) : new Color((byte)30, (byte)30, (byte)40, (byte)255));
+            Raylib.DrawRectangleLinesEx(healBtn, 1, Color.Green);
+            Program.DrawTextUI("Full Heal + Restore", px + 18, cy + 5, 16, hHeal ? Color.Lime : Color.White);
+            if (hHeal && Raylib.IsMouseButtonPressed(MouseButton.Left))
+            {
+                player.Health = player.MaxHealth;
+                player.Food = 100; player.Thirst = 100; player.Stamina = 100;
+                ShowNotification("Fully healed!");
+            }
+            cy += 40;
+
+            // ── TELEPORT ──
+            Program.DrawTextUI("─── TELEPORT ───", px + 10, cy, 16, Color.Lime);
+            cy += 26;
+
+            (string label, float tx, float ty)[] teleports =
+            {
+                ("Spawn / Safe Zone",     500,      0),
+                ("Farm Zone",            -1500,  -8000),
+                ("Hamiltron City",       14000,   5600),
+                ("Rotoaira Town",       -15800,   4700),
+                ("Frosthold (Snow)",    -140000, -140000),
+                ("Ironpeak (Mountain)", -10000,  -160000),
+                ("Cinderfall (Volcano)", 140000, -150000),
+                ("Murkwater (Swamp)",   -140000,  10000),
+                ("Sunhaven (Desert)",    140000,  10000),
+                ("Eldergrove (Forest)", -140000,  140000),
+                ("Tidecrest (Beach)",    20000,   95000),
+                ("Frost Wyrm Boss",     -160000, -160000),
+                ("Stone Guardian Boss",  -20000, -180000),
+                ("Infernal Golem Boss",  160000, -180000),
+                ("Sand King Boss",       160000,  20000),
+                ("Ancient Treant Boss", -160000,  160000),
+                ("Reef Leviathan Boss",  40000,   160000),
+                ("Colossus Boss",        5000,   -2000),
+                ("Titan Boss",          -8000,    4000),
+            };
+
+            for (int i = 0; i < teleports.Length; i++)
+            {
+                var tp = teleports[i];
+                Rectangle btn = new Rectangle(px + 10, cy, pw - 30, 24);
+                bool hover = Raylib.CheckCollisionPointRec(mouse, btn);
+                Raylib.DrawRectangleRec(btn, hover ? new Color((byte)50, (byte)40, (byte)20, (byte)255) : new Color((byte)25, (byte)25, (byte)35, (byte)255));
+                Program.DrawTextUI(tp.label, px + 18, cy + 4, 14, hover ? Color.Gold : Color.LightGray);
+
+                if (hover && Raylib.IsMouseButtonPressed(MouseButton.Left))
+                {
+                    player.Position = new Vector2(tp.tx, tp.ty);
+                    ShowNotification($"Teleported to {tp.label}");
+                    timesCheated++;
+                }
+                cy += 26;
+            }
+
+            Raylib.EndScissorMode();
         }
 
         static void DrawNotificationBanner()
@@ -69,7 +190,7 @@ namespace OpenWorldRPG
 static void DrawCashHUD()
 {
     int boxW = 150, boxH = 40;
-    int boxX = ScreenWidth - boxW - 12, boxY = 8 + 54 + 6;   // 6px gap below the calendar box
+    int boxX = ScreenWidth - boxW - 12, boxY = 8 + 54 + 20;   // 6px gap below the calendar box
     Raylib.DrawRectangle(boxX, boxY, boxW, boxH, new Color((byte)0,(byte)0,(byte)0,(byte)180));
     Raylib.DrawRectangleLines(boxX, boxY, boxW, boxH, Color.Gold);
     Program.DrawTextUI($"${player.Money}", boxX + 8, boxY + 8, 22, Color.Gold);
@@ -117,8 +238,7 @@ static void DrawCashHUD()
 
         public static void ShowNotification(string message)
         {
-            levelUpMessage = message;
-            levelUpTimer = 2.5f;
+            QueueNotification(message);
         }
 
         static void RegisterComboHit()
@@ -131,6 +251,7 @@ static void DrawCashHUD()
                     {
                     levelUpMessage = $"{skill} LEVEL UP! {level}";
                     levelUpTimer = 2.5f;
+                    TriggerScreenFlash(Color.Gold, 0.15f);
                     }
 
         static void UpdateQuests()
@@ -151,6 +272,7 @@ static void DrawCashHUD()
             quest.Completed = true;
             quest.Progress = quest.Target;
             player.Money += quest.Reward;
+            AddReputation(25, quest.Title);
             ShowLevelUp($"Quest Complete: {quest.Title}! +${quest.Reward}", 0);
         }
     }
@@ -158,6 +280,20 @@ static void DrawCashHUD()
 
             static void DrawQuestsUI()
 {
+    // 0. REPUTATION badge (above quest/skill buttons, left-aligned)
+    {
+        var (repTitle, _) = GetReputationTier(player.Reputation);
+        var (curThresh, nxtThresh) = GetReputationProgress(player.Reputation);
+        float repProg = nxtThresh > curThresh ? (float)(player.Reputation - curThresh) / (nxtThresh - curThresh) : 1f;
+        int repX = 170, repY = 38;
+        Raylib.DrawRectangle(repX, repY, 300, 32, new Color((byte)0,(byte)0,(byte)0,(byte)200));
+        Raylib.DrawRectangleLinesEx(new Rectangle(repX, repY, 300, 32), 1, new Color((byte)180,(byte)140,(byte)40,(byte)255));
+        Program.DrawTextUI($"{repTitle}", repX + 6, repY + 3, 14, new Color((byte)255,(byte)215,(byte)0,(byte)255));
+        Program.DrawTextUI($"{player.Reputation} rep", repX + 110, repY + 3, 14, Color.LightGray);
+        Raylib.DrawRectangle(repX + 6, repY + 22, 288, 6, new Color((byte)40,(byte)40,(byte)40,(byte)255));
+        Raylib.DrawRectangle(repX + 6, repY + 22, (int)(288 * repProg), 6, new Color((byte)255,(byte)215,(byte)0,(byte)255));
+    }
+
     // 1. QUESTS Toggle Button (Bottom Right)
     Rectangle questsBtn = new Rectangle(ScreenWidth - 320, ScreenHeight - 60, 140, 40);
     Raylib.DrawRectangleRec(questsBtn, new Color((byte)0, (byte)0, (byte)0, (byte)200));
@@ -180,7 +316,8 @@ static void DrawCashHUD()
 
     int contentTop = py + 44;
     int contentH = ph - 54;
-    int totalItems = quests.Count + storyQuests.Count(sq => sq != null && sq.Started && !sq.Completed && sq.Current != null);
+    int activeFavors = friendNPCs.Count(fn => fn.ActiveFavor != null && !fn.ActiveFavor.Completed);
+    int totalItems = quests.Count + storyQuests.Count(sq => sq != null && sq.Started && !sq.Completed && sq.Current != null) + activeFavors;
     int contentTotal = totalItems * 55;
     float maxScroll = Math.Max(0, contentTotal - contentH);
     if (Raylib.CheckCollisionPointRec(Raylib.GetMousePosition(), new Rectangle(px, py, pw, ph)))
@@ -220,6 +357,20 @@ static void DrawCashHUD()
         
         yOffset += 55; // Pushes down context steps for any additional listings
     }
+
+    // --- LOOP C: NPC Favors ---
+    foreach (var fn in friendNPCs)
+    {
+        if (fn.ActiveFavor == null || fn.ActiveFavor.Completed) continue;
+        var fav = fn.ActiveFavor;
+        int delivered = fav.AmountDelivered;
+        int needed = fav.AmountNeeded;
+
+        Program.DrawTextUI($"[FAVOR] {fn.Name}", px + 15, py + yOffset, 18, new Color((byte)255,(byte)200,(byte)40,(byte)255));
+        Program.DrawTextUI($"{fav.ItemNeeded}: {delivered}/{needed}  |  +${fav.RewardAmount}", px + 15, py + yOffset + 22, 16, Color.LightGray);
+        yOffset += 55;
+    }
+
     Raylib.EndScissorMode();
     if (maxScroll > 0)   
     {
@@ -281,6 +432,28 @@ static void DrawCashHUD()
                 skillDetailOpen = skillDetailOpen == "wc" ? "" : "wc";
             else if (Raylib.CheckCollisionPointRec(mouse, new Rectangle(ScreenWidth - 320, ScreenHeight - 380, 140, 40)))
                 skillDetailOpen = skillDetailOpen == "cards" ? "" : "cards";
+            else if (Raylib.CheckCollisionPointRec(mouse, fishBtn))
+                skillDetailOpen = skillDetailOpen == "fishing" ? "" : "fishing";
+            else if (Raylib.CheckCollisionPointRec(mouse, combatBtn))
+                skillDetailOpen = skillDetailOpen == "combat" ? "" : "combat";
+            else if (Raylib.CheckCollisionPointRec(mouse, miningBtn))
+                skillDetailOpen = skillDetailOpen == "mining" ? "" : "mining";
+            else if (Raylib.CheckCollisionPointRec(mouse, cookingBtn))
+                skillDetailOpen = skillDetailOpen == "cooking" ? "" : "cooking";
+            else if (Raylib.CheckCollisionPointRec(mouse, strengthBtn))
+                skillDetailOpen = skillDetailOpen == "strength" ? "" : "strength";
+            else if (Raylib.CheckCollisionPointRec(mouse, athleticsBtn))
+                skillDetailOpen = skillDetailOpen == "athletics" ? "" : "athletics";
+            else if (Raylib.CheckCollisionPointRec(mouse, drivingBtn))
+                skillDetailOpen = skillDetailOpen == "driving" ? "" : "driving";
+            else if (Raylib.CheckCollisionPointRec(mouse, rangedBtn))
+                skillDetailOpen = skillDetailOpen == "ranged" ? "" : "ranged";
+            else if (Raylib.CheckCollisionPointRec(mouse, ridingBtn))
+                skillDetailOpen = skillDetailOpen == "riding" ? "" : "riding";
+            else if (Raylib.CheckCollisionPointRec(mouse, swimmingBtn))
+                skillDetailOpen = skillDetailOpen == "swimming" ? "" : "swimming";
+            else if (Raylib.CheckCollisionPointRec(mouse, gamblingBtn))
+                skillDetailOpen = skillDetailOpen == "gambling" ? "" : "gambling";
             else if (skillDetailOpen != "" &&
                      !Raylib.CheckCollisionPointRec(mouse, new Rectangle(ScreenWidth/2 - 300, ScreenHeight/2 - 260, 600, 520)))
                 skillDetailOpen = "";
@@ -1116,7 +1289,95 @@ foreach (var s in newSkills)
             Raylib.DrawRectangle(mx + 430, ry + 20, 140, 8, new Color((byte)30,(byte)30,(byte)30,(byte)255));
             Raylib.DrawRectangle(mx + 430, ry + 20, (int)(140 * mP), 8, mCol);
         }
+        
+        if (skillDetailOpen == "fishing")
+            DrawSkillPerksPanel("Fishing", "FISHING", player.FishingLevel, player.FishingXP,
+                new Color((byte)0,(byte)150,(byte)255,(byte)255));
+        else if (skillDetailOpen == "combat")
+            DrawSkillPerksPanel("Combat", "COMBAT", player.CombatLevel, player.CombatXP,
+                new Color((byte)220,(byte)60,(byte)60,(byte)255));
+        else if (skillDetailOpen == "mining")
+            DrawSkillPerksPanel("Mining", "MINING", player.MiningLevel, player.MiningXP,
+                new Color((byte)180,(byte)160,(byte)120,(byte)255));
+        else if (skillDetailOpen == "cooking")
+            DrawSkillPerksPanel("Cooking", "COOKING", player.CookingLevel, player.CookingXP,
+                new Color((byte)240,(byte)160,(byte)40,(byte)255));
+        else if (skillDetailOpen == "strength")
+            DrawSkillPerksPanel("Strength", "STRENGTH", player.StrengthLevel, player.StrengthXP,
+                new Color((byte)200,(byte)80,(byte)80,(byte)255));
+        else if (skillDetailOpen == "athletics")
+            DrawSkillPerksPanel("Athletics", "ATHLETICS", player.AthleticsLevel, player.AthleticsXP,
+                new Color((byte)80,(byte)200,(byte)120,(byte)255));
+        else if (skillDetailOpen == "driving")
+            DrawSkillPerksPanel("Driving", "DRIVING", player.DrivingLevel, player.DrivingXP,
+                new Color((byte)100,(byte)160,(byte)220,(byte)255));
+        else if (skillDetailOpen == "ranged")
+            DrawSkillPerksPanel("Ranged", "RANGED", player.RangedLevel, player.RangedXP,
+                new Color((byte)200,(byte)150,(byte)50,(byte)255));
+        else if (skillDetailOpen == "riding")
+            DrawSkillPerksPanel("Riding", "RIDING", player.RidingLevel, player.RidingXP,
+                new Color((byte)180,(byte)120,(byte)60,(byte)255));
+        else if (skillDetailOpen == "swimming")
+            DrawSkillPerksPanel("Swimming", "SWIMMING", player.SwimmingLevel, player.SwimmingXP,
+                new Color((byte)60,(byte)180,(byte)220,(byte)255));
+        else if (skillDetailOpen == "gambling")
+            DrawSkillPerksPanel("Gambling", "GAMBLING", player.GamblingLevel, player.GamblingXP,
+                new Color((byte)220,(byte)180,(byte)40,(byte)255));
     }
+
+    static void DrawSkillPerksPanel(string skillKey, string title, int playerLevel, int playerXP, Color accent)
+{
+    int mx = ScreenWidth / 2 - 300;
+    int my = ScreenHeight / 2 - 260;
+    int mw = 600;
+    int mh = 520;
+
+    Raylib.DrawRectangle(0, 0, ScreenWidth, ScreenHeight, new Color((byte)0,(byte)0,(byte)0,(byte)110));
+    Raylib.DrawRectangle(mx, my, mw, mh, new Color((byte)10,(byte)14,(byte)22,(byte)248));
+    Raylib.DrawRectangleLines(mx, my, mw, mh, Color.Gold);
+    Program.DrawTextUI("Click outside to close", mx + mw - 172, my + 8, 13, Color.DarkGray);
+
+    Program.DrawTextUI(title, mx + 20, my + 14, 26, accent);
+
+    int req = playerLevel * playerLevel * 50;
+    Program.DrawTextUI($"Level {playerLevel}   XP: {playerXP} / {req}", mx + 20, my + 48, 17, Color.LightGray);
+
+    int pbW = mw - 40;
+    float pct = Math.Clamp((float)playerXP / Math.Max(1, req), 0f, 1f);
+    Raylib.DrawRectangle(mx + 20, my + 72, pbW, 10, new Color((byte)30,(byte)30,(byte)30,(byte)255));
+    Raylib.DrawRectangle(mx + 20, my + 72, (int)(pbW * pct), 10, accent);
+    Raylib.DrawRectangleLines(mx + 20, my + 72, pbW, 10, Color.DarkGray);
+
+    Raylib.DrawLine(mx + 10, my + 94, mx + mw - 10, my + 94, Color.DarkGray);
+
+    Program.DrawTextUI("Lv",   mx + 20,  my + 102, 15, Color.Gray);
+    Program.DrawTextUI("Perk", mx + 70,  my + 102, 15, Color.Gray);
+    Program.DrawTextUI("Effect",mx + 260, my + 102, 15, Color.Gray);
+    Program.DrawTextUI("Status",mx + 490, my + 102, 15, Color.Gray);
+    Raylib.DrawLine(mx + 10, my + 120, mx + mw - 10, my + 120, new Color((byte)50,(byte)50,(byte)50,(byte)255));
+
+    if (!skillPerks.TryGetValue(skillKey, out var perks)) return;
+
+    for (int i = 0; i < perks.Length; i++)
+    {
+        var p = perks[i];
+        int ry = my + 128 + i * 50;
+        bool unlocked = playerLevel >= p.Level;
+
+        if (unlocked)
+            Raylib.DrawRectangle(mx + 10, ry - 2, mw - 20, 46, new Color((byte)20,(byte)40,(byte)20,(byte)140));
+
+        Color nameCol = unlocked ? accent : new Color((byte)70,(byte)70,(byte)70,(byte)255);
+        Program.DrawTextUI($"{p.Level}", mx + 20, ry + 6, 17, unlocked ? Color.White : Color.DarkGray);
+        Program.DrawTextUI(p.Name, mx + 70, ry + 4, 17, nameCol);
+        Program.DrawTextUI(p.Description, mx + 70, ry + 24, 13, unlocked ? Color.LightGray : new Color((byte)60,(byte)60,(byte)60,(byte)255));
+
+        if (unlocked)
+            Program.DrawTextUI("UNLOCKED", mx + 490, ry + 8, 14, new Color((byte)80,(byte)220,(byte)80,(byte)255));
+        else
+            Program.DrawTextUI($"Need Lv {p.Level}", mx + 490, ry + 8, 13, new Color((byte)160,(byte)60,(byte)60,(byte)255));
+    }
+}
 
     static void DrawMinimap()
 {
@@ -1129,19 +1390,23 @@ foreach (var s in newSkills)
     // 1. Base grasslands
     Raylib.DrawRectangle(minimapX, minimapY, minimapSize, minimapSize, new Color((byte)140, (byte)195, (byte)80, (byte)255));;
 
-    // 2. Forest top band (Y < -12000)
-    int forestTopY = cy + (int)((-12000 - player.Position.Y) * minimapScale);
-    Raylib.DrawRectangle(minimapX, minimapY, minimapSize, Math.Clamp(forestTopY - minimapY, 0, minimapSize), new Color((byte)40,(byte)100,(byte)40,(byte)220));
-
-    // 3. Forest bottom band (Y > 12000)
-    int forestBotY = cy + (int)((12000 - player.Position.Y) * minimapScale);
-    Raylib.DrawRectangle(minimapX, forestBotY, minimapSize, Math.Clamp(minimapY + minimapSize - forestBotY, 0, minimapSize), new Color((byte)40,(byte)100,(byte)40,(byte)220));
+    // 2. Forest 
+    int forL = cx + (int)((-250000 - player.Position.X) * minimapScale);
+    int forR = cx + (int)((-80000 - player.Position.X) * minimapScale);
+    int forT = cy + (int)((80000 - player.Position.Y) * minimapScale);
+    int forB = cy + (int)((250000  - player.Position.Y) * minimapScale);
+    int frX  = Math.Clamp(forL, minimapX, minimapX + minimapSize);
+    int frX2 = Math.Clamp(forR, minimapX, minimapX + minimapSize);
+    int frY  = Math.Clamp(forT, minimapY, minimapY + minimapSize);
+    int frY2 = Math.Clamp(forB, minimapY, minimapY + minimapSize);
+    Raylib.DrawRectangle(frX, frY, frX2 - frX, frY2 - frY,
+    new Color((byte)40,(byte)100,(byte)40,(byte)220));
 
     // 4. Swamp (X -55000 to -30000, middle strip)
-    int swampL = cx + (int)((-55000 - player.Position.X) * minimapScale);
-    int swampR = cx + (int)((-30000 - player.Position.X) * minimapScale);
-    int swampT = cy + (int)((-12000 - player.Position.Y) * minimapScale);
-    int swampB = cy + (int)((12000  - player.Position.Y) * minimapScale);
+    int swampL = cx + (int)((-250000 - player.Position.X) * minimapScale);
+    int swampR = cx + (int)((-80000 - player.Position.X) * minimapScale);
+    int swampT = cy + (int)((-80000 - player.Position.Y) * minimapScale);
+    int swampB = cy + (int)((80000  - player.Position.Y) * minimapScale);
     int swX  = Math.Clamp(swampL, minimapX, minimapX + minimapSize);
     int swX2 = Math.Clamp(swampR, minimapX, minimapX + minimapSize);
     int swY  = Math.Clamp(swampT, minimapY, minimapY + minimapSize);
@@ -1150,10 +1415,10 @@ foreach (var s in newSkills)
         new Color((byte)55,(byte)75,(byte)35,(byte)220));
 
     // 5. Snow (X -30000 to -10000, middle strip)
-    int snowL = cx + (int)((-60000 - player.Position.X) * minimapScale);
-    int snowR = cx + (int)((-30000 - player.Position.X) * minimapScale);
-    int snowT = cy + (int)((-12000 - player.Position.Y) * minimapScale);
-    int snowB = cy + (int)((12000  - player.Position.Y) * minimapScale);
+    int snowL = cx + (int)((-250000 - player.Position.X) * minimapScale);
+    int snowR = cx + (int)((-80000- player.Position.X) * minimapScale);
+    int snowT = cy + (int)((-250000 - player.Position.Y) * minimapScale);
+    int snowB = cy + (int)((-80000  - player.Position.Y) * minimapScale);
     int snX  = Math.Clamp(snowL, minimapX, minimapX + minimapSize);
     int snX2 = Math.Clamp(snowR, minimapX, minimapX + minimapSize);
     int snY  = Math.Clamp(snowT, minimapY, minimapY + minimapSize);
@@ -1162,10 +1427,10 @@ foreach (var s in newSkills)
         new Color((byte)220,(byte)235,(byte)255,(byte)220));
 
     // 6. Desert (X 8000 to 22000, middle strip)
-    int desL = cx + (int)((8000  - player.Position.X) * minimapScale);
-    int desR = cx + (int)((22000 - player.Position.X) * minimapScale);
-    int desT = cy + (int)((-12000 - player.Position.Y) * minimapScale);
-    int desB = cy + (int)((12000  - player.Position.Y) * minimapScale);
+    int desL = cx + (int)((80000  - player.Position.X) * minimapScale);
+    int desR = cx + (int)((250000 - player.Position.X) * minimapScale);
+    int desT = cy + (int)((-80000 - player.Position.Y) * minimapScale);
+    int desB = cy + (int)((80000  - player.Position.Y) * minimapScale);
     int dX  = Math.Clamp(desL, minimapX, minimapX + minimapSize);
     int dX2 = Math.Clamp(desR, minimapX, minimapX + minimapSize);
     int dY  = Math.Clamp(desT, minimapY, minimapY + minimapSize);
@@ -1174,31 +1439,46 @@ foreach (var s in newSkills)
         new Color((byte)210,(byte)180,(byte)100,(byte)220));
 
     // 7. Beach (X 22000 to 28000, full height)
-    int beachX = cx + (int)((22000 - player.Position.X) * minimapScale);
-    int oceanX = cx + (int)((28000 - player.Position.X) * minimapScale);
-    Raylib.DrawRectangle(Math.Clamp(beachX, minimapX, minimapX + minimapSize), minimapY,
-        Math.Clamp(oceanX - beachX, 0, minimapSize), minimapSize,
+    int bchL = cx + (int)((-80000  - player.Position.X) * minimapScale);
+    int bchR = cx + (int)((250000 - player.Position.X) * minimapScale);
+    int bchT = cy + (int)((80000 - player.Position.Y) * minimapScale);
+    int bchB = cy + (int)((115000  - player.Position.Y) * minimapScale);
+    int bX  = Math.Clamp(bchL, minimapX, minimapX + minimapSize);
+    int bX2 = Math.Clamp(bchR, minimapX, minimapX + minimapSize);
+    int bY  = Math.Clamp(bchT, minimapY, minimapY + minimapSize);
+    int bY2 = Math.Clamp(bchB, minimapY, minimapY + minimapSize);
+    Raylib.DrawRectangle(bX, bY, bX2 - bX, bY2 - bY,
         new Color((byte)240,(byte)220,(byte)150,(byte)220));
 
     // 8. Ocean (X 28000+, full height)
-    Raylib.DrawRectangle(Math.Clamp(oceanX, minimapX, minimapX + minimapSize), minimapY,
-        Math.Clamp(minimapX + minimapSize - oceanX, 0, minimapSize), minimapSize,
+    int ocnL = cx + (int)((-80000  - player.Position.X) * minimapScale);
+    int ocnR = cx + (int)((250000 - player.Position.X) * minimapScale);
+    int ocnT = cy + (int)((115000 - player.Position.Y) * minimapScale);
+    int ocnB = cy + (int)((250000  - player.Position.Y) * minimapScale);
+    int oX  = Math.Clamp(ocnL, minimapX, minimapX + minimapSize);
+    int oX2 = Math.Clamp(ocnR, minimapX, minimapX + minimapSize);
+    int oY  = Math.Clamp(ocnT, minimapY, minimapY + minimapSize);
+    int oY2 = Math.Clamp(ocnB, minimapY, minimapY + minimapSize);
+    Raylib.DrawRectangle(oX, oY, oX2 - oX, oY2 - oY,
         new Color((byte)30,(byte)100,(byte)180,(byte)220));
 
     // 9. Volcano (X 22000+, Y above -12000)
-    int volL = cx + (int)((22000 - player.Position.X) * minimapScale);
-    int volB = cy + (int)((-12000 - player.Position.Y) * minimapScale);
+    int volL = cx + (int)((-80000 - player.Position.X) * minimapScale);
+    int volR = cx + (int)((80000 - player.Position.X) * minimapScale);
+    int volT = cy + (int)((-250000 - player.Position.Y) * minimapScale);
+    int volB = cy + (int)((-80000 - player.Position.Y) * minimapScale);
     int vX = Math.Clamp(volL, minimapX, minimapX + minimapSize);
-    Raylib.DrawRectangle(vX, minimapY,
-        Math.Clamp(minimapX + minimapSize - vX, 0, minimapSize),
-        Math.Clamp(volB - minimapY, 0, minimapSize),
+    int vX2 = Math.Clamp(volR, minimapX, minimapX + minimapSize);
+    int vY  = Math.Clamp(volT, minimapY, minimapY + minimapSize);
+    int vY2 = Math.Clamp(volB, minimapY, minimapY + minimapSize);
+    Raylib.DrawRectangle(vX, vY, vX2 - vX, vY2 - vY,
         new Color((byte)40,(byte)20,(byte)10,(byte)220));
 
     // 10. Mountains (X -30000 to -10000, Y -15000 to 23000)
-    int mtL = cx + (int)((-30000 - player.Position.X) * minimapScale);
-    int mtR = cx + (int)((-10000 - player.Position.X) * minimapScale);
-    int mtT = cy + (int)((-12000 - player.Position.Y) * minimapScale);
-    int mtB = cy + (int)((12000  - player.Position.Y) * minimapScale);
+    int mtL = cx + (int)((-80000 - player.Position.X) * minimapScale);
+    int mtR = cx + (int)((80000 - player.Position.X) * minimapScale);
+    int mtT = cy + (int)((-250000 - player.Position.Y) * minimapScale);
+    int mtB = cy + (int)((-80000  - player.Position.Y) * minimapScale);
     int mX  = Math.Clamp(mtL, minimapX, minimapX + minimapSize);
     int mX2 = Math.Clamp(mtR, minimapX, minimapX + minimapSize);
     int mY  = Math.Clamp(mtT, minimapY, minimapY + minimapSize);
@@ -1322,18 +1602,46 @@ foreach (var s in newSkills)
             new Vector2(x + 22, y - 26), Color.Red);                                                  // flag
     }
 
+    // ── QUEST WAYPOINT MARKERS ──
+    DrawQuestWaypoints(cx, cy, minimapScale);
+
     Raylib.EndScissorMode();
 
     Raylib.DrawRectangleLines(minimapX, minimapY, minimapSize, minimapSize, Color.White);
+
+    // biome label below minimap
+    Color biomeCol = currentBiome switch
+    {
+        "SNOW ZONE"  => new Color((byte)150, (byte)200, (byte)255, (byte)200),
+        "DESERT"     => new Color((byte)210, (byte)170, (byte)60,  (byte)200),
+        "FOREST"     => new Color((byte)80,  (byte)180, (byte)80,  (byte)200),
+        "SAFE ZONE"  => new Color((byte)100, (byte)200, (byte)100, (byte)200),
+        "BEACH"      => new Color((byte)220, (byte)200, (byte)120, (byte)200),
+        "VOLCANO"    => new Color((byte)220, (byte)100, (byte)40,  (byte)200),
+        _            => new Color((byte)200, (byte)200, (byte)200, (byte)200),
+    };
+    string biomeLabel = currentBiome ?? "UNKNOWN";
+    int labelW = Program.MeasureTextUI(biomeLabel, 14);
+    int labelX = minimapX + minimapSize / 2 - labelW / 2;
+    int labelY = minimapY + minimapSize + 6;
+    Raylib.DrawRectangle(labelX - 6, labelY - 2, labelW + 12, 20,
+        new Color((byte)0, (byte)0, (byte)0, (byte)160));
+    Program.DrawTextUI(biomeLabel, labelX, labelY, 14, biomeCol);
 }
+
 
         static void DrawHUD()
         {
             DrawSkillsUI();
             DrawQuestsUI();
+            DrawDailyChallengeHud();
             DrawAchievementsUI();
             DrawFishingUI();
             DrawTutorialHUD();
+            DrawDirectionHUD();
+            DrawDirection2HUD();
+            DrawToolbarTooltip();
+            DrawPerkFlash();
             DrawDropConfirm();
             DrawDropQuantity();
             DrawSkillCheatPanel();
@@ -1342,11 +1650,12 @@ foreach (var s in newSkills)
             multiplayer.DrawStatusOverlay();
             multiplayer.DrawChat();
 
-            // Coordinates display with background
             string coordText = $"X: {(int)player.Position.X}  Y: {(int)player.Position.Y}";
-            int coordWidth = Program.MeasureTextUI(coordText, 18);
-            Raylib.DrawRectangle(244, 6, coordWidth + 8, 26, new Color((byte)0, (byte)0, (byte)0, (byte)150));
-            Program.DrawTextUI(coordText, 250, 10, 18, Color.White);
+            int coordWidth = Program.MeasureTextUI(coordText, 14);
+            int coordX = ScreenWidth - coordWidth - 20;
+            int coordY = 8 + 54 + 6 + 56; 
+            Raylib.DrawRectangle(coordX, coordY, coordWidth + 12, 22, new Color((byte)0, (byte)0, (byte)0, (byte)150));
+            Program.DrawTextUI(coordText, coordX + 6, coordY + 3, 14, Color.LightGray);
 
             // ── combo counter ──
             if (comboCount > 1)
@@ -1453,31 +1762,11 @@ if (busMenuOpen && busOperating)
     }
 }
 
-            // health bar
-            int hbWidth = 300;
-            int hbX = ScreenWidth / 2 - hbWidth / 2;
-            Raylib.DrawRectangle(hbX, 10, hbWidth, 24, new Color((byte)40, (byte)40, (byte)40, (byte)220));
-            float healthPercent = (float)player.Health / player.MaxHealth;
-            Color hpColor = healthPercent > 0.5f ? Color.Green : healthPercent > 0.25f ? Color.Orange : Color.Red;
-            Raylib.DrawRectangle(hbX, 10, (int)(hbWidth * healthPercent), 24, hpColor);
-            Raylib.DrawRectangleLines(hbX, 10, hbWidth, 24, Color.White);
-            Program.DrawTextUI($"HP: {player.Health}/{player.MaxHealth}", hbX + hbWidth / 2 - 40, 13, 18, Color.White);
+DrawSmoothedHealthBar();
 
-            int sbW = 96, sbH = 10, sbY = 40;
-(string label, float val, Color col)[] survBars = {
-    ("FOOD",    player.Food,    new Color((byte)230,(byte)140,(byte)40,(byte)255)),
-    ("THIRST",  player.Thirst,  new Color((byte)60,(byte)150,(byte)240,(byte)255)),
-    ("STAMINA", player.Stamina, new Color((byte)230,(byte)210,(byte)60,(byte)255)),
-};
-for (int sb = 0; sb < survBars.Length; sb++)
-{
-    int sx = hbX + sb * (sbW + 6);
-    Raylib.DrawRectangle(sx, sbY, sbW, sbH, new Color((byte)40,(byte)40,(byte)40,(byte)220));
-    Raylib.DrawRectangle(sx, sbY, (int)(sbW * survBars[sb].val / 100f), sbH, survBars[sb].col);
-    Raylib.DrawRectangleLines(sx, sbY, sbW, sbH, Color.White);
-    Program.DrawTextUI(survBars[sb].label, sx + 2, sbY + 11, 12, Color.LightGray);
-}
-// mounted animal → show its stamina too
+int hbWidth = 300;
+int hbX = ScreenWidth / 2 - hbWidth / 2;
+
 var mount = rideables.FirstOrDefault(r => r.Riding);
 if (mount != null && mount.Type != Rideable.RideableType.MountainBike && mount.Type != Rideable.RideableType.BMX)
 {
@@ -1568,13 +1857,32 @@ if (player.DrunkLevel > 0)
             string season = GetSeasonString();
             string timeStr = GetTimeString();
             string line1 = $"{weekday} week {weekNum}   {timeStr}";
-            string line2 = $"{month}, {season}";
-            int boxW = 320, boxH = 54;
+
+            Color seasonCol = season switch
+            {
+                "Summer" => new Color((byte)255,(byte)200,(byte)40,(byte)255),
+                "Autumn" => new Color((byte)220,(byte)140,(byte)40,(byte)255),
+                "Winter" => new Color((byte)140,(byte)180,(byte)220,(byte)255),
+                "Spring" => new Color((byte)100,(byte)220,(byte)80,(byte)255),
+                _ => Color.LightGray,
+            };
+
+            // gather in-season crops for the hint line
+            var inSeason = cropSeasons
+                .Where(kv => kv.Value.Contains(season))
+                .Select(kv => kv.Key);
+            string cropHint = string.Join(", ", inSeason);
+
+            int boxW = 320, boxH = 70;
             int boxX = ScreenWidth - boxW - 12, boxY = 8;
             Raylib.DrawRectangle(boxX, boxY, boxW, boxH, new Color((byte)0,(byte)0,(byte)0,(byte)180));
-            Raylib.DrawRectangleLines(boxX, boxY, boxW, boxH, Color.White);
-            Program.DrawTextUI(line1, boxX + 8, boxY + 8,  20, Color.Gold);
-            Program.DrawTextUI(line2, boxX + 8, boxY + 28, 18, Color.LightGray);
+            Raylib.DrawRectangleLines(boxX, boxY, boxW, boxH, seasonCol);
+            Program.DrawTextUI(line1, boxX + 8, boxY + 6,  20, Color.Gold);
+            Program.DrawTextUI($"{month}, {season}", boxX + 8, boxY + 28, 18, seasonCol);
+            if (cropHint.Length > 0)
+                Program.DrawTextUI($"In season: {cropHint}", boxX + 8, boxY + 50, 12, new Color((byte)160,(byte)200,(byte)140,(byte)200));
+            else
+                Program.DrawTextUI("No crops in season", boxX + 8, boxY + 50, 12, new Color((byte)160,(byte)120,(byte)100,(byte)200));
         }
     }
 }

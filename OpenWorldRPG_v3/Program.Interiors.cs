@@ -4084,6 +4084,32 @@ if (currentBuilding != null)
     }
 }
 
+if (currentBuilding.BuildingName == "CASTLE")
+{
+    // Prince interaction
+    if (Vector2.Distance(player.Center, new Vector2(900, 240)) < 80)
+    {
+        if (Raylib.IsKeyPressed(KeyboardKey.E) && !chatInputOpen)
+            ShowNotification("Prince: \"The kingdom thrives under wise rule. Welcome, adventurer.\"");
+    }
+    // Princess interaction
+    if (Vector2.Distance(player.Center, new Vector2(1100, 240)) < 80)
+    {
+        if (Raylib.IsKeyPressed(KeyboardKey.E) && !chatInputOpen)
+            ShowNotification("Princess: \"Only the most dedicated earn the right to wear mastery garb.\"");
+    }
+    // Mastery Shop
+    if (Vector2.Distance(player.Center, new Vector2(1750, 340)) < 100)
+    {
+        Raylib.DrawRectangle(0, 620, 1280, 100, new Color((byte)0,(byte)0,(byte)0,(byte)180));
+        Program.DrawTextUI("HALL OF MASTERY", 20, 630, 28, new Color((byte)200,(byte)160,(byte)255,(byte)255));
+        Program.DrawTextUI("E = Browse mastery rewards (Lv 100 skills only)", 20, 668, 22, Color.White);
+        if (Raylib.IsKeyPressed(KeyboardKey.E) && !chatInputOpen)
+            masteryShopOpen = !masteryShopOpen;
+    }
+    if (masteryShopOpen && Raylib.IsKeyPressed(KeyboardKey.Q)) masteryShopOpen = false;
+}
+
    if (currentBuilding.BuildingName == "HALLENSTEINS")
     {
     if (Vector2.Distance(player.Center, new Vector2(310, 135)) < 150)
@@ -4153,7 +4179,9 @@ if (currentBuilding.BuildingName == "FARMING SHOP"
 {
     Raylib.DrawRectangle(0, 620, 1280, 100, new Color((byte)0,(byte)0,(byte)0,(byte)180));
     Program.DrawTextUI("FARMING SHOP", 20, 630, 28, new Color((byte)180,(byte)140,(byte)60,(byte)255));
-    Program.DrawTextUI("E = Browse tools & seeds", 20, 668, 22, Color.White);
+    var inSeasonCrops = cropSeasons.Where(kv => kv.Value.Contains(GetSeasonString())).Select(kv => kv.Key);
+    string seasonHint = inSeasonCrops.Any() ? $"In season: {string.Join(", ", inSeasonCrops)}" : "No crops in season";
+    Program.DrawTextUI($"E = Browse  |  {seasonHint}", 20, 668, 20, Color.White);
     if (Raylib.IsKeyPressed(KeyboardKey.E) && !chatInputOpen)
         farmingShopOpen = !farmingShopOpen;
 }
@@ -5362,6 +5390,7 @@ if (currentBuilding.BuildingName == "McDONALD'S" &&
     DrawBoatMenu();
     DrawBoatTheoryTest();       
     DrawHobbiesStoreUI();
+    DrawMasteryShopUI();
     DrawRangingShopUI();
     DrawGroceryShopPanel();
     DrawMcDonaldsMenu();

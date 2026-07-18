@@ -65,81 +65,215 @@ namespace OpenWorldRPG
     {
         if (Chopped)
         {
-            Raylib.DrawRectangle((int)Position.X + 12, (int)Position.Y + 55, 36, 18, Color.Brown);
+            int tx = (int)Position.X, ty = (int)Position.Y;
+            // stump base
+            Raylib.DrawEllipse(tx + 30, ty + 72, 22, 8, new Color((byte)70, (byte)50, (byte)25, (byte)200));
+            // stump body
+            Raylib.DrawRectangle(tx + 14, ty + 55, 32, 18, new Color((byte)110, (byte)75, (byte)35, (byte)255));
+            // bark edges
+            Raylib.DrawRectangle(tx + 14, ty + 55, 3, 18, new Color((byte)85, (byte)55, (byte)25, (byte)200));
+            Raylib.DrawRectangle(tx + 43, ty + 55, 3, 18, new Color((byte)85, (byte)55, (byte)25, (byte)200));
+            // tree rings on top
+            Raylib.DrawEllipse(tx + 30, ty + 55, 16, 5, new Color((byte)140, (byte)100, (byte)50, (byte)255));
+            Raylib.DrawEllipse(tx + 30, ty + 55, 12, 4, new Color((byte)160, (byte)120, (byte)65, (byte)255));
+            Raylib.DrawEllipse(tx + 30, ty + 55, 7, 3, new Color((byte)130, (byte)95, (byte)45, (byte)255));
+            Raylib.DrawEllipse(tx + 30, ty + 55, 3, 2, new Color((byte)100, (byte)70, (byte)30, (byte)255));
+            // wood chips scattered around
+            Raylib.DrawCircle(tx + 6, ty + 68, 2, new Color((byte)140, (byte)100, (byte)50, (byte)150));
+            Raylib.DrawCircle(tx + 48, ty + 70, 2, new Color((byte)130, (byte)90, (byte)45, (byte)140));
+            Raylib.DrawCircle(tx + 20, ty + 74, 2, new Color((byte)150, (byte)110, (byte)55, (byte)130));
             return;
         }
 
         switch (TreeType)
         {
             case "Normal":
-                // brown trunk, dark green leaves
-                Raylib.DrawRectangle((int)Position.X + 20, (int)Position.Y + 40, 20, 40, Color.DarkBrown);
-                Raylib.DrawCircle((int)Position.X + 30, (int)Position.Y + 25, 35, Color.DarkGreen);
+            {
+                int tx = (int)Position.X, ty = (int)Position.Y;
+                // trunk with bark texture
+                Raylib.DrawRectangle(tx + 20, ty + 40, 20, 40, new Color((byte)90, (byte)60, (byte)30, (byte)255));
+                Raylib.DrawRectangle(tx + 22, ty + 44, 3, 8, new Color((byte)70, (byte)45, (byte)20, (byte)120));
+                Raylib.DrawRectangle(tx + 33, ty + 52, 3, 10, new Color((byte)70, (byte)45, (byte)20, (byte)120));
+                Raylib.DrawRectangle(tx + 26, ty + 62, 4, 6, new Color((byte)70, (byte)45, (byte)20, (byte)100));
+                // roots
+                Raylib.DrawEllipse(tx + 22, ty + 78, 8, 4, new Color((byte)80, (byte)55, (byte)25, (byte)180));
+                Raylib.DrawEllipse(tx + 38, ty + 79, 7, 3, new Color((byte)80, (byte)55, (byte)25, (byte)180));
+                // layered canopy — multiple overlapping circles for depth
+                Raylib.DrawCircle(tx + 30, ty + 28, 34, new Color((byte)20, (byte)90, (byte)15, (byte)255));
+                Raylib.DrawCircle(tx + 20, ty + 22, 22, new Color((byte)30, (byte)110, (byte)25, (byte)255));
+                Raylib.DrawCircle(tx + 42, ty + 20, 20, new Color((byte)25, (byte)100, (byte)20, (byte)255));
+                Raylib.DrawCircle(tx + 30, ty + 14, 18, new Color((byte)40, (byte)130, (byte)30, (byte)255));
+                // highlights
+                Raylib.DrawCircle(tx + 24, ty + 12, 8, new Color((byte)60, (byte)150, (byte)40, (byte)100));
+                Raylib.DrawCircle(tx + 38, ty + 16, 6, new Color((byte)55, (byte)145, (byte)35, (byte)80));
+                // shadow underneath canopy
+                Raylib.DrawEllipse(tx + 30, ty + 38, 22, 6, new Color((byte)0, (byte)0, (byte)0, (byte)40));
                 break;
+            }
 
             case "Birch":
-                // white trunk, light green leaves
-                Raylib.DrawRectangle((int)Position.X + 20, (int)Position.Y + 40, 20, 40, Color.White);
-                Raylib.DrawRectangle((int)Position.X + 22, (int)Position.Y + 45, 4, 6, Color.DarkGray);
-                Raylib.DrawRectangle((int)Position.X + 22, (int)Position.Y + 58, 4, 6, Color.DarkGray);
-                Raylib.DrawCircle((int)Position.X + 30, (int)Position.Y + 25, 35, new Color((byte)144,(byte)238,(byte)144,(byte)255));
+            {
+                int tx = (int)Position.X, ty = (int)Position.Y;
+                // white trunk with dark knots
+                Raylib.DrawRectangle(tx + 20, ty + 40, 20, 40, new Color((byte)230, (byte)225, (byte)215, (byte)255));
+                Raylib.DrawRectangle(tx + 22, ty + 44, 5, 4, new Color((byte)60, (byte)60, (byte)55, (byte)180));
+                Raylib.DrawRectangle(tx + 30, ty + 54, 6, 3, new Color((byte)60, (byte)60, (byte)55, (byte)180));
+                Raylib.DrawRectangle(tx + 24, ty + 65, 4, 4, new Color((byte)60, (byte)60, (byte)55, (byte)160));
+                Raylib.DrawRectangle(tx + 32, ty + 70, 5, 3, new Color((byte)50, (byte)50, (byte)45, (byte)140));
+                // peeling bark strips
+                Raylib.DrawLineEx(new Vector2(tx + 20, ty + 48), new Vector2(tx + 18, ty + 55), 1.5f, new Color((byte)200, (byte)195, (byte)185, (byte)160));
+                Raylib.DrawLineEx(new Vector2(tx + 40, ty + 58), new Vector2(tx + 42, ty + 64), 1.5f, new Color((byte)200, (byte)195, (byte)185, (byte)160));
+                // roots
+                Raylib.DrawEllipse(tx + 23, ty + 79, 7, 3, new Color((byte)190, (byte)185, (byte)175, (byte)150));
+                Raylib.DrawEllipse(tx + 37, ty + 78, 6, 3, new Color((byte)190, (byte)185, (byte)175, (byte)150));
+                // layered light green canopy
+                Raylib.DrawCircle(tx + 30, ty + 26, 33, new Color((byte)120, (byte)200, (byte)100, (byte)255));
+                Raylib.DrawCircle(tx + 18, ty + 22, 20, new Color((byte)140, (byte)220, (byte)120, (byte)255));
+                Raylib.DrawCircle(tx + 44, ty + 20, 18, new Color((byte)130, (byte)210, (byte)110, (byte)255));
+                Raylib.DrawCircle(tx + 30, ty + 14, 16, new Color((byte)160, (byte)235, (byte)140, (byte)255));
+                // sunlight highlights
+                Raylib.DrawCircle(tx + 22, ty + 12, 7, new Color((byte)180, (byte)245, (byte)160, (byte)90));
+                Raylib.DrawCircle(tx + 36, ty + 10, 5, new Color((byte)180, (byte)245, (byte)160, (byte)70));
+                // shadow
+                Raylib.DrawEllipse(tx + 30, ty + 38, 20, 5, new Color((byte)0, (byte)0, (byte)0, (byte)35));
                 break;
+            }
 
             case "Oak":
-                // wide dark trunk, big deep green canopy
-                Raylib.DrawRectangle((int)Position.X + 18, (int)Position.Y + 40, 24, 40, new Color((byte)101,(byte)67,(byte)33,(byte)255));
-                Raylib.DrawCircle((int)Position.X + 30, (int)Position.Y + 20, 42, new Color((byte)0,(byte)100,(byte)0,(byte)255));
-                Raylib.DrawCircle((int)Position.X + 10, (int)Position.Y + 30, 28, new Color((byte)0,(byte)100,(byte)0,(byte)255));
-                Raylib.DrawCircle((int)Position.X + 50, (int)Position.Y + 30, 28, new Color((byte)0,(byte)100,(byte)0,(byte)255));
+            {
+                int tx = (int)Position.X, ty = (int)Position.Y;
+                // thick trunk with rough bark
+                Raylib.DrawRectangle(tx + 16, ty + 38, 28, 42, new Color((byte)85, (byte)55, (byte)25, (byte)255));
+                Raylib.DrawRectangle(tx + 18, ty + 42, 4, 6, new Color((byte)65, (byte)40, (byte)15, (byte)140));
+                Raylib.DrawRectangle(tx + 34, ty + 50, 5, 8, new Color((byte)65, (byte)40, (byte)15, (byte)140));
+                Raylib.DrawRectangle(tx + 24, ty + 60, 6, 5, new Color((byte)65, (byte)40, (byte)15, (byte)120));
+                // exposed root system
+                Raylib.DrawEllipse(tx + 18, ty + 79, 10, 5, new Color((byte)75, (byte)50, (byte)22, (byte)200));
+                Raylib.DrawEllipse(tx + 42, ty + 78, 9, 4, new Color((byte)75, (byte)50, (byte)22, (byte)200));
+                Raylib.DrawEllipse(tx + 30, ty + 81, 6, 3, new Color((byte)75, (byte)50, (byte)22, (byte)160));
+                // massive multi-lobe canopy
+                Raylib.DrawCircle(tx + 30, ty + 22, 40, new Color((byte)15, (byte)85, (byte)10, (byte)255));
+                Raylib.DrawCircle(tx + 8, ty + 30, 26, new Color((byte)20, (byte)95, (byte)15, (byte)255));
+                Raylib.DrawCircle(tx + 52, ty + 28, 24, new Color((byte)18, (byte)90, (byte)12, (byte)255));
+                Raylib.DrawCircle(tx + 20, ty + 14, 20, new Color((byte)30, (byte)110, (byte)20, (byte)255));
+                Raylib.DrawCircle(tx + 42, ty + 12, 18, new Color((byte)28, (byte)105, (byte)18, (byte)255));
+                Raylib.DrawCircle(tx + 30, ty + 6, 14, new Color((byte)40, (byte)125, (byte)28, (byte)255));
+                // depth clusters
+                Raylib.DrawCircle(tx + 14, ty + 18, 10, new Color((byte)10, (byte)70, (byte)8, (byte)100));
+                Raylib.DrawCircle(tx + 46, ty + 22, 8, new Color((byte)10, (byte)70, (byte)8, (byte)90));
+                // highlights
+                Raylib.DrawCircle(tx + 26, ty + 8, 7, new Color((byte)50, (byte)140, (byte)35, (byte)80));
+                // ground shadow
+                Raylib.DrawEllipse(tx + 30, ty + 40, 30, 8, new Color((byte)0, (byte)0, (byte)0, (byte)45));
                 break;
+            }
 
             case "Pine":
-                // thin trunk, triangular layers
-                Raylib.DrawRectangle((int)Position.X + 24, (int)Position.Y + 55, 12, 25, Color.Brown);
+            {
+                int tx = (int)Position.X, ty = (int)Position.Y;
+                // trunk with bark lines
+                Raylib.DrawRectangle(tx + 24, ty + 55, 12, 25, new Color((byte)100, (byte)65, (byte)30, (byte)255));
+                Raylib.DrawLineEx(new Vector2(tx + 26, ty + 57), new Vector2(tx + 26, ty + 75), 1f, new Color((byte)75, (byte)45, (byte)15, (byte)120));
+                Raylib.DrawLineEx(new Vector2(tx + 32, ty + 59), new Vector2(tx + 33, ty + 77), 1f, new Color((byte)75, (byte)45, (byte)15, (byte)120));
+                // back layer (darker)
                 Raylib.DrawTriangle(
-                    new Vector2(Position.X + 30, Position.Y),
-                    new Vector2(Position.X, Position.Y + 45),
-                    new Vector2(Position.X + 60, Position.Y + 45),
-                    new Color((byte)0,(byte)80,(byte)0,(byte)255)
-                );
+                    new Vector2(tx + 30, ty + 2),
+                    new Vector2(tx - 2, ty + 46),
+                    new Vector2(tx + 62, ty + 46),
+                    new Color((byte)5, (byte)65, (byte)5, (byte)255));
+                // front layer
                 Raylib.DrawTriangle(
-                    new Vector2(Position.X + 30, Position.Y + 15),
-                    new Vector2(Position.X + 5, Position.Y + 55),
-                    new Vector2(Position.X + 55, Position.Y + 55),
-                    new Color((byte)0,(byte)100,(byte)0,(byte)255)
-                );
+                    new Vector2(tx + 30, ty + 16),
+                    new Vector2(tx + 6, ty + 56),
+                    new Vector2(tx + 54, ty + 56),
+                    new Color((byte)10, (byte)85, (byte)10, (byte)255));
+                // mid layer for depth
+                Raylib.DrawTriangle(
+                    new Vector2(tx + 30, ty + 8),
+                    new Vector2(tx + 8, ty + 38),
+                    new Vector2(tx + 52, ty + 38),
+                    new Color((byte)15, (byte)100, (byte)15, (byte)255));
+                // branch texture lines
+                Raylib.DrawLineEx(new Vector2(tx + 14, ty + 40), new Vector2(tx + 30, ty + 30), 1.5f, new Color((byte)5, (byte)60, (byte)5, (byte)120));
+                Raylib.DrawLineEx(new Vector2(tx + 46, ty + 42), new Vector2(tx + 30, ty + 32), 1.5f, new Color((byte)5, (byte)60, (byte)5, (byte)120));
+                Raylib.DrawLineEx(new Vector2(tx + 18, ty + 52), new Vector2(tx + 30, ty + 44), 1.5f, new Color((byte)5, (byte)60, (byte)5, (byte)100));
+                // highlight at top
+                Raylib.DrawTriangle(
+                    new Vector2(tx + 30, ty + 4),
+                    new Vector2(tx + 20, ty + 18),
+                    new Vector2(tx + 40, ty + 18),
+                    new Color((byte)30, (byte)120, (byte)20, (byte)80));
                 break;
+            }
 
             case "Arctic":
-                // snow covered pine
-                Raylib.DrawRectangle((int)Position.X + 24, (int)Position.Y + 55, 12, 25, new Color((byte)100,(byte)70,(byte)40,(byte)255));
+            {
+                int tx = (int)Position.X, ty = (int)Position.Y;
+                // frosty trunk
+                Raylib.DrawRectangle(tx + 24, ty + 55, 12, 25, new Color((byte)90, (byte)65, (byte)40, (byte)255));
+                Raylib.DrawRectangle(tx + 26, ty + 58, 3, 6, new Color((byte)160, (byte)180, (byte)200, (byte)100));
+                // back layer — dark frosted green
                 Raylib.DrawTriangle(
-                    new Vector2(Position.X + 30, Position.Y),
-                    new Vector2(Position.X, Position.Y + 45),
-                    new Vector2(Position.X + 60, Position.Y + 45),
-                    new Color((byte)0,(byte)60,(byte)0,(byte)255)
-                );
+                    new Vector2(tx + 30, ty + 2),
+                    new Vector2(tx - 2, ty + 46),
+                    new Vector2(tx + 62, ty + 46),
+                    new Color((byte)10, (byte)55, (byte)15, (byte)255));
+                // front layer
                 Raylib.DrawTriangle(
-                    new Vector2(Position.X + 30, Position.Y + 15),
-                    new Vector2(Position.X + 5, Position.Y + 55),
-                    new Vector2(Position.X + 55, Position.Y + 55),
-                    new Color((byte)20,(byte)80,(byte)20,(byte)255)
-                );
-                // snow on top
+                    new Vector2(tx + 30, ty + 16),
+                    new Vector2(tx + 6, ty + 56),
+                    new Vector2(tx + 54, ty + 56),
+                    new Color((byte)20, (byte)70, (byte)25, (byte)255));
+                // mid layer
                 Raylib.DrawTriangle(
-                    new Vector2(Position.X + 30, Position.Y),
-                    new Vector2(Position.X + 8, Position.Y + 28),
-                    new Vector2(Position.X + 52, Position.Y + 28),
-                    new Color((byte)220,(byte)235,(byte)255,(byte)200)
-                );
+                    new Vector2(tx + 30, ty + 8),
+                    new Vector2(tx + 10, ty + 36),
+                    new Vector2(tx + 50, ty + 36),
+                    new Color((byte)25, (byte)80, (byte)30, (byte)255));
+                // snow cap — layered for depth
+                Raylib.DrawTriangle(
+                    new Vector2(tx + 30, ty),
+                    new Vector2(tx + 10, ty + 26),
+                    new Vector2(tx + 50, ty + 26),
+                    new Color((byte)220, (byte)235, (byte)250, (byte)200));
+                Raylib.DrawTriangle(
+                    new Vector2(tx + 30, ty + 2),
+                    new Vector2(tx + 16, ty + 18),
+                    new Vector2(tx + 44, ty + 18),
+                    new Color((byte)240, (byte)248, (byte)255, (byte)220));
+                // snow clumps on branches
+                Raylib.DrawEllipse(tx + 14, ty + 42, 10, 4, new Color((byte)210, (byte)225, (byte)240, (byte)160));
+                Raylib.DrawEllipse(tx + 46, ty + 40, 8, 3, new Color((byte)210, (byte)225, (byte)240, (byte)140));
+                Raylib.DrawEllipse(tx + 22, ty + 52, 8, 3, new Color((byte)210, (byte)225, (byte)240, (byte)120));
+                // icicle highlights
+                Raylib.DrawLineEx(new Vector2(tx + 18, ty + 26), new Vector2(tx + 16, ty + 34), 1.5f, new Color((byte)200, (byte)220, (byte)255, (byte)150));
+                Raylib.DrawLineEx(new Vector2(tx + 42, ty + 26), new Vector2(tx + 44, ty + 32), 1.5f, new Color((byte)200, (byte)220, (byte)255, (byte)150));
                 break;
+            }
 
             case "Dead":
-                // bare grey trunk with branches
-                Raylib.DrawRectangle((int)Position.X + 22, (int)Position.Y + 20, 16, 60, Color.DarkGray);
-                Raylib.DrawRectangle((int)Position.X + 10, (int)Position.Y + 28, 22, 6, Color.DarkGray);
-                Raylib.DrawRectangle((int)Position.X + 28, (int)Position.Y + 38, 20, 5, Color.DarkGray);
+            {
+                int tx = (int)Position.X, ty = (int)Position.Y;
+                // gnarled trunk with wood grain
+                Raylib.DrawRectangle(tx + 22, ty + 20, 16, 60, new Color((byte)95, (byte)85, (byte)75, (byte)255));
+                Raylib.DrawLineEx(new Vector2(tx + 25, ty + 22), new Vector2(tx + 24, ty + 78), 1f, new Color((byte)70, (byte)60, (byte)50, (byte)140));
+                Raylib.DrawLineEx(new Vector2(tx + 34, ty + 24), new Vector2(tx + 35, ty + 76), 1f, new Color((byte)70, (byte)60, (byte)50, (byte)140));
+                // knotholes
+                Raylib.DrawEllipse(tx + 28, ty + 45, 4, 5, new Color((byte)50, (byte)40, (byte)30, (byte)200));
+                Raylib.DrawEllipse(tx + 28, ty + 45, 2, 3, new Color((byte)30, (byte)20, (byte)10, (byte)200));
+                // branches — angled and gnarled
+                Raylib.DrawLineEx(new Vector2(tx + 22, ty + 30), new Vector2(tx + 6, ty + 18), 4f, new Color((byte)90, (byte)80, (byte)70, (byte)255));
+                Raylib.DrawLineEx(new Vector2(tx + 6, ty + 18), new Vector2(tx + 2, ty + 10), 2f, new Color((byte)85, (byte)75, (byte)65, (byte)230));
+                Raylib.DrawLineEx(new Vector2(tx + 38, ty + 38), new Vector2(tx + 52, ty + 28), 3.5f, new Color((byte)90, (byte)80, (byte)70, (byte)255));
+                Raylib.DrawLineEx(new Vector2(tx + 52, ty + 28), new Vector2(tx + 56, ty + 20), 2f, new Color((byte)85, (byte)75, (byte)65, (byte)230));
+                // smaller twigs
+                Raylib.DrawLineEx(new Vector2(tx + 6, ty + 18), new Vector2(tx + 10, ty + 8), 1.5f, new Color((byte)80, (byte)70, (byte)60, (byte)200));
+                Raylib.DrawLineEx(new Vector2(tx + 52, ty + 28), new Vector2(tx + 48, ty + 18), 1.5f, new Color((byte)80, (byte)70, (byte)60, (byte)200));
+                // broken stump at top
+                Raylib.DrawLineEx(new Vector2(tx + 22, ty + 20), new Vector2(tx + 26, ty + 14), 3f, new Color((byte)100, (byte)90, (byte)80, (byte)255));
+                Raylib.DrawLineEx(new Vector2(tx + 38, ty + 20), new Vector2(tx + 34, ty + 12), 3f, new Color((byte)100, (byte)90, (byte)80, (byte)255));
                 break;
+            }
         }
 
         // crack overlay based on damage taken
@@ -467,11 +601,52 @@ if (Health < MaxHealth)
         public Rectangle Bounds => new Rectangle(Position.X - 100, Position.Y - 100, 200, 200);
         public void Draw()
         {
-            Raylib.DrawCircle((int)Position.X, (int)Position.Y, 120, new Color(30, 100, 200, 255));
+            int cx = (int)Position.X, cy = (int)Position.Y;
+            float t = rippleTimer;
 
-            float ripple = MathF.Sin(rippleTimer * 2f) * 6f;
-            Raylib.DrawCircleLines((int)Position.X, (int)Position.Y, (int)(90 + ripple), Color.SkyBlue);
-            Raylib.DrawCircleLines((int)Position.X, (int)Position.Y, (int)(60 + ripple * 0.5f), Color.SkyBlue);
+            // sandy shore ring
+            Raylib.DrawCircle(cx, cy, 128, new Color((byte)160, (byte)140, (byte)90, (byte)255));
+            Raylib.DrawCircle(cx, cy, 124, new Color((byte)140, (byte)125, (byte)80, (byte)255));
+
+            // deep water base
+            Raylib.DrawCircle(cx, cy, 120, new Color((byte)25, (byte)80, (byte)170, (byte)255));
+
+            // depth gradient — darker center
+            Raylib.DrawCircle(cx, cy, 80, new Color((byte)20, (byte)65, (byte)150, (byte)255));
+            Raylib.DrawCircle(cx, cy, 45, new Color((byte)15, (byte)50, (byte)130, (byte)255));
+
+            // shallow edge tint
+            Raylib.DrawCircleLines(cx, cy, 115, new Color((byte)60, (byte)140, (byte)210, (byte)120));
+            Raylib.DrawCircleLines(cx, cy, 112, new Color((byte)70, (byte)150, (byte)220, (byte)80));
+
+            // animated ripples
+            float r1 = MathF.Sin(t * 2f) * 6f;
+            float r2 = MathF.Sin(t * 1.5f + 1.2f) * 5f;
+            float r3 = MathF.Sin(t * 2.5f + 2.5f) * 4f;
+            Raylib.DrawCircleLines(cx, cy, (int)(90 + r1), new Color((byte)120, (byte)190, (byte)240, (byte)100));
+            Raylib.DrawCircleLines(cx, cy, (int)(65 + r2), new Color((byte)110, (byte)180, (byte)230, (byte)80));
+            Raylib.DrawCircleLines(cx, cy, (int)(40 + r3), new Color((byte)100, (byte)170, (byte)220, (byte)60));
+
+            // surface light reflections
+            float shimmer1 = MathF.Sin(t * 3f) * 0.4f + 0.6f;
+            float shimmer2 = MathF.Sin(t * 2.2f + 1f) * 0.3f + 0.5f;
+            byte s1a = (byte)(80 * shimmer1);
+            byte s2a = (byte)(60 * shimmer2);
+            Raylib.DrawEllipse(cx - 30, cy - 20, 18, 6, new Color((byte)180, (byte)220, (byte)255, s1a));
+            Raylib.DrawEllipse(cx + 25, cy + 10, 14, 5, new Color((byte)180, (byte)220, (byte)255, s2a));
+            Raylib.DrawEllipse(cx + 5, cy - 35, 10, 4, new Color((byte)200, (byte)230, (byte)255, (byte)(s1a / 2)));
+
+            // small pebbles/stones on the shore
+            Raylib.DrawCircle(cx + 105, cy - 30, 4, new Color((byte)130, (byte)120, (byte)90, (byte)180));
+            Raylib.DrawCircle(cx - 100, cy + 40, 3, new Color((byte)140, (byte)125, (byte)95, (byte)180));
+            Raylib.DrawCircle(cx + 80, cy + 90, 3, new Color((byte)120, (byte)110, (byte)85, (byte)160));
+            Raylib.DrawCircle(cx - 90, cy - 70, 4, new Color((byte)135, (byte)120, (byte)90, (byte)170));
+
+            // reeds/grass tufts at water edge
+            Raylib.DrawLineEx(new Vector2(cx + 110, cy - 10), new Vector2(cx + 108, cy - 28), 2f, new Color((byte)60, (byte)120, (byte)40, (byte)200));
+            Raylib.DrawLineEx(new Vector2(cx + 114, cy - 8), new Vector2(cx + 116, cy - 24), 2f, new Color((byte)50, (byte)110, (byte)35, (byte)180));
+            Raylib.DrawLineEx(new Vector2(cx - 108, cy + 20), new Vector2(cx - 112, cy + 4), 2f, new Color((byte)60, (byte)120, (byte)40, (byte)200));
+            Raylib.DrawLineEx(new Vector2(cx - 104, cy + 22), new Vector2(cx - 102, cy + 6), 2f, new Color((byte)50, (byte)110, (byte)35, (byte)180));
         }
     }
 

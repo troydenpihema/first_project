@@ -30,8 +30,13 @@ static float FriendDiscount(string buildingName)
     return f.Friendship >= 90 ? 0.15f : f.Friendship >= 60 ? 0.10f : f.Friendship >= 30 ? 0.05f : 0f;
 }
 
-static int DiscountedPrice(int basePrice) =>
-    (int)MathF.Ceiling(basePrice * (1f - FriendDiscount(currentBuilding?.BuildingName ?? "")));
+static int DiscountedPrice(int basePrice)
+{
+    float friendDisc = FriendDiscount(currentBuilding?.BuildingName ?? "");
+    float repDisc = GetReputationShopDiscount();
+    float totalDisc = MathF.Min(friendDisc + repDisc, 0.35f); // cap at 35%
+    return (int)MathF.Ceiling(basePrice * (1f - totalDisc));
+}
 
     public static void DrawTextUI(string text, int x, int y, int fontSize, Color color)
     => Raylib.DrawTextEx(uiFont, text, new Vector2(x, y), fontSize, fontSize / 16f, color);
@@ -561,7 +566,7 @@ if (gearTestMode)
 
             if (hover && Raylib.IsMouseButtonPressed(MouseButton.Left))
             {
-                if (gearTestMode)
+             // delete   if (gearTestMode)
                     TryEquipItem(item);              // test mode equips anything
             }
         }
@@ -1683,6 +1688,225 @@ static void DrawBurgerKingMenu()
     Program.DrawTextUI("Q = Close", panelX + 300, panelY + 500, 20, Color.LightGray);
 }
 
+static void DrawMasteryShopUI()
+{
+    if (!masteryShopOpen || currentBuilding?.BuildingName != "CASTLE") return;
+
+    int px = ScreenWidth / 2 - 440;
+    int py = 40;
+    int pw = 880;
+    int ph = 620;
+    Color accent = new Color((byte)200,(byte)160,(byte)255,(byte)255);
+    Color gold = new Color((byte)220,(byte)180,(byte)40,(byte)255);
+
+    Raylib.DrawRectangle(px, py, pw, ph, new Color((byte)12,(byte)8,(byte)20,(byte)248));
+    Raylib.DrawRectangleLines(px, py, pw, ph, accent);
+    Program.DrawTextUI("HALL OF MASTERY", px + pw / 2 - 100, py + 12, 28, accent);
+    Program.DrawTextUI("Reach Lv 100 in any skill to claim its legendary cape & crown — FREE",
+        px + 20, py + 46, 15, Color.LightGray);
+
+    Vector2 mouse = Raylib.GetMousePosition();
+
+    // scroll
+    int visibleRows = 7;
+    int rowH = 74;
+    int contentTop = py + 70;
+    int maxScroll = Math.Max(0, masteryItems.Length - visibleRows);
+    float wheel = Raylib.GetMouseWheelMove();
+    if (wheel != 0) masteryShopScroll = Math.Clamp(masteryShopScroll - (int)wheel, 0, maxScroll);
+
+    Raylib.BeginScissorMode(px, contentTop, pw, visibleRows * rowH);
+
+    for (int i = 0; i < masteryItems.Length; i++)
+    {
+        var m = masteryItems[i];
+        int ry = contentTop + (i - masteryShopScroll) * rowH;
+        if (ry < contentTop - rowH || ry > contentTop + visibleRows * rowH) continue;
+
+        int lvl = m.GetLevel();
+        bool mastered = lvl >= 100;
+        bool capeClaimed = player.OwnedGear.Contains(m.Cape);
+        bool crownClaimed = player.OwnedGear.Contains(m.Headpiece);
+
+        // row background
+        Color rowBg = mastered
+            ? new Color((byte)30,(byte)20,(byte)45,(byte)200)
+            : new Color((byte)20,(byte)20,(byte)25,(byte)200);
+        Raylib.DrawRectangle(px + 10, ry, pw - 20, rowH - 4, rowBg);
+        Raylib.DrawRectangleLinesEx(new Rectangle(px + 10, ry, pw - 20, rowH - 4), 1,
+            mastered ? accent : new Color((byte)50,(byte)50,(byte)60,(byte)255));
+
+        // colour swatch
+        Raylib.DrawRectangle(px + 18, ry + 8, 8, rowH - 20, m.ThemeA);
+        Raylib.DrawRectangle(px + 26, ry + 8, 8, rowH - 20, m.ThemeB);
+
+        // mannequin preview
+        DrawMasteryPreview(px + 44, ry + 2, m.ThemeA, m.ThemeB, m.Headpiece, mastered);
+
+        // skill name + level — was px + 44, now shifted right for mannequin
+        Program.DrawTextUI(m.Skill, px + 100, ry + 6, 18,
+            mastered ? Color.White : Color.DarkGray);
+        Program.DrawTextUI($"Lv {lvl}/100", px + 100, ry + 28, 14,
+            mastered ? gold : new Color((byte)100,(byte)100,(byte)100,(byte)255));
+
+        // progress bar — was px + 44, now shifted
+        Raylib.DrawRectangle(px + 100, ry + 48, 120, 8, new Color((byte)30,(byte)30,(byte)30,(byte)255));
+        Raylib.DrawRectangle(px + 100, ry + 48, (int)(120 * Math.Min(1f, lvl / 100f)), 8,
+            mastered ? accent : new Color((byte)80,(byte)80,(byte)100,(byte)255));
+
+        // cape
+        int capeX = px + 320;
+        Program.DrawTextUI(m.Cape, capeX, ry + 6, 15,
+            mastered ? m.ThemeA : new Color((byte)60,(byte)60,(byte)60,(byte)255));
+        if (mastered && !capeClaimed)
+        {
+            Rectangle claimCape = new Rectangle(capeX, ry + 28, 100, 26);
+            bool hCape = Raylib.CheckCollisionPointRec(mouse, claimCape);
+            Raylib.DrawRectangleRec(claimCape, hCape ? gold : new Color((byte)60,(byte)50,(byte)20,(byte)255));
+            Raylib.DrawRectangleLinesEx(claimCape, 1, gold);
+            Program.DrawTextUI("CLAIM", (int)claimCape.X + 28, (int)claimCape.Y + 5, 16,
+                hCape ? Color.Black : gold);
+            if (hCape && Raylib.IsMouseButtonPressed(MouseButton.Left))
+            {
+                player.OwnedGear.Add(m.Cape);
+                ShowNotification($"Claimed {m.Cape}! Equip it from your wardrobe.");
+            }
+        }
+        else if (capeClaimed)
+            Program.DrawTextUI("OWNED", capeX, ry + 32, 14, new Color((byte)80,(byte)220,(byte)80,(byte)255));
+        else
+            Program.DrawTextUI("LOCKED", capeX, ry + 32, 14, new Color((byte)120,(byte)50,(byte)50,(byte)255));
+
+        // headpiece
+        int crownX = px + 620;
+        Program.DrawTextUI(m.Headpiece, crownX, ry + 6, 15,
+            mastered ? m.ThemeB : new Color((byte)60,(byte)60,(byte)60,(byte)255));
+        if (mastered && !crownClaimed)
+        {
+            Rectangle claimCrown = new Rectangle(crownX, ry + 28, 100, 26);
+            bool hCrown = Raylib.CheckCollisionPointRec(mouse, claimCrown);
+            Raylib.DrawRectangleRec(claimCrown, hCrown ? gold : new Color((byte)60,(byte)50,(byte)20,(byte)255));
+            Raylib.DrawRectangleLinesEx(claimCrown, 1, gold);
+            Program.DrawTextUI("CLAIM", (int)claimCrown.X + 28, (int)claimCrown.Y + 5, 16,
+                hCrown ? Color.Black : gold);
+            if (hCrown && Raylib.IsMouseButtonPressed(MouseButton.Left))
+            {
+                player.OwnedGear.Add(m.Headpiece);
+                ShowNotification($"Claimed {m.Headpiece}! Equip it from your wardrobe.");
+            }
+        }
+        else if (crownClaimed)
+            Program.DrawTextUI("OWNED", crownX, ry + 32, 14, new Color((byte)80,(byte)220,(byte)80,(byte)255));
+        else
+            Program.DrawTextUI("LOCKED", crownX, ry + 32, 14, new Color((byte)120,(byte)50,(byte)50,(byte)255));
+    }
+
+    Raylib.EndScissorMode();
+
+    // scroll indicator
+    if (maxScroll > 0)
+    {
+        float barH = Math.Max(30f, (visibleRows * rowH) * (visibleRows / (float)masteryItems.Length));
+        float barY = contentTop + ((float)masteryShopScroll / maxScroll) * (visibleRows * rowH - barH);
+        Raylib.DrawRectangle(px + pw - 14, contentTop, 8, visibleRows * rowH, new Color((byte)30,(byte)30,(byte)30,(byte)200));
+        Raylib.DrawRectangle(px + pw - 14, (int)barY, 8, (int)barH, accent);
+    }
+
+    // mastered count
+    int masteredCount = masteryItems.Count(m => m.GetLevel() >= 100);
+    Program.DrawTextUI($"Skills Mastered: {masteredCount}/{masteryItems.Length}",
+        px + 20, py + ph - 24, 16, gold);
+
+    Program.DrawTextUI("Q = Close", px + pw - 90, py + ph - 24, 16, Color.DarkGray);
+}
+
+static void DrawMasteryPreview(int x, int y, Color capeCol, Color crownCol, string skill, bool mastered)
+{
+    // mini mannequin: 40px wide, 70px tall
+    byte alpha = mastered ? (byte)255 : (byte)90;
+    Color skin = new Color((byte)220,(byte)190,(byte)160, alpha);
+    Color body = new Color((byte)60,(byte)60,(byte)70, alpha);
+    Color cA = new Color(capeCol.R, capeCol.G, capeCol.B, alpha);
+    Color cB = new Color(crownCol.R, crownCol.G, crownCol.B, alpha);
+
+    // cape (behind body)
+    Raylib.DrawRectangle(x + 10, y + 26, 20, 38, cA);
+    // shimmer stripe on cape
+    if (mastered)
+        Raylib.DrawRectangle(x + 18, y + 28, 4, 34, new Color(
+            (byte)Math.Min(255, cA.R + 50), (byte)Math.Min(255, cA.G + 50),
+            (byte)Math.Min(255, cA.B + 50), (byte)140));
+
+    // body
+    Raylib.DrawRectangle(x + 12, y + 24, 16, 26, body);
+    // arms
+    Raylib.DrawRectangle(x + 6, y + 26, 6, 16, skin);
+    Raylib.DrawRectangle(x + 28, y + 26, 6, 16, skin);
+    // legs
+    Raylib.DrawRectangle(x + 13, y + 50, 6, 14, body);
+    Raylib.DrawRectangle(x + 21, y + 50, 6, 14, body);
+    // head
+    Raylib.DrawCircle(x + 20, y + 14, 10, skin);
+
+    // ── HEADPIECE — unique per skill type ──
+    if (skill.Contains("Crown") || skill.Contains("Wreath"))
+    {
+        // crown: base band + 3 points
+        Raylib.DrawRectangle(x + 10, y + 5, 20, 6, cB);
+        Raylib.DrawTriangle(new Vector2(x + 12, y + 5), new Vector2(x + 16, y + 5),
+            new Vector2(x + 14, y - 2), cB);
+        Raylib.DrawTriangle(new Vector2(x + 18, y + 5), new Vector2(x + 22, y + 5),
+            new Vector2(x + 20, y - 4), cB);
+        Raylib.DrawTriangle(new Vector2(x + 24, y + 5), new Vector2(x + 28, y + 5),
+            new Vector2(x + 26, y - 2), cB);
+        // gem on centre point
+        if (mastered)
+            Raylib.DrawCircle(x + 20, y - 1, 2, new Color((byte)255,(byte)255,(byte)200,(byte)255));
+    }
+    else if (skill.Contains("Hat"))
+    {
+        // top hat / chef hat: tall rectangle + brim
+        Raylib.DrawRectangle(x + 12, y - 6, 16, 14, cB);
+        Raylib.DrawRectangle(x + 8, y + 5, 24, 4, cB);
+        if (mastered)
+            Raylib.DrawRectangle(x + 12, y - 4, 16, 3, new Color(
+                (byte)Math.Min(255, cB.R + 40), (byte)Math.Min(255, cB.G + 40),
+                (byte)Math.Min(255, cB.B + 40), (byte)200));
+    }
+    else if (skill.Contains("Hood") || skill.Contains("Helm"))
+    {
+        // hood/helmet: rounded cap covering top of head
+        Raylib.DrawCircle(x + 20, y + 8, 12, cB);
+        Raylib.DrawRectangle(x + 8, y + 8, 24, 6, cB);
+        // visor slit for helmets
+        if (skill.Contains("Helm"))
+            Raylib.DrawRectangle(x + 12, y + 10, 16, 3, new Color((byte)20,(byte)20,(byte)20,(byte)200));
+    }
+    else if (skill.Contains("Mortarboard"))
+    {
+        // academic cap
+        Raylib.DrawRectangle(x + 6, y + 2, 28, 4, cB);
+        Raylib.DrawRectangle(x + 14, y + 4, 12, 5, cB);
+        // tassel
+        Raylib.DrawLine(x + 8, y + 2, x + 4, y + 12, new Color((byte)220,(byte)180,(byte)40,(byte)255));
+        Raylib.DrawCircle(x + 4, y + 13, 2, new Color((byte)220,(byte)180,(byte)40,(byte)255));
+    }
+    else
+    {
+        // default crown
+        Raylib.DrawRectangle(x + 10, y + 5, 20, 6, cB);
+        Raylib.DrawTriangle(new Vector2(x + 14, y + 5), new Vector2(x + 18, y + 5),
+            new Vector2(x + 16, y - 2), cB);
+        Raylib.DrawTriangle(new Vector2(x + 22, y + 5), new Vector2(x + 26, y + 5),
+            new Vector2(x + 24, y - 2), cB);
+    }
+
+    // mastery glow ring
+    if (mastered)
+        Raylib.DrawCircleLines(x + 20, y + 32, 30, new Color(
+            cA.R, cA.G, cA.B, (byte)(80 + (int)(40 * MathF.Sin((float)Raylib.GetTime() * 3f)))));
+}
+
 static void DrawFarmingShopUI()
 {
     if (!farmingShopOpen) return;
@@ -1727,6 +1951,14 @@ static void DrawFarmingShopUI()
     Program.DrawTextUI(name, px + 32, startY + i * rowH + 10, 20, locked ? Color.DarkGray : (alreadyOwned ? Color.Gray : Color.White));
     string rightLabel = locked ? $"Lv {reqLv} req." : alreadyOwned ? "OWNED" : $"${price}";
     Program.DrawTextUI(rightLabel, px + pw - 110, startY + i * rowH + 12, 16, locked ? Color.Red : (alreadyOwned ? Color.Gray : (canAfford ? Color.Gold : Color.Red)));
+
+    // season tag for seeds
+    if (!isTool && seedToCrop.TryGetValue(name, out string cropName))
+    {
+        bool inSeason = IsCropInSeason(cropName);
+        Program.DrawTextUI(inSeason ? "IN SEASON" : "OFF SEASON", px + 32, startY + i * rowH + 34, 12,
+            inSeason ? new Color((byte)80,(byte)200,(byte)80,(byte)255) : new Color((byte)200,(byte)120,(byte)40,(byte)200));
+    }
 
     if (hover && !alreadyOwned && Raylib.IsMouseButtonPressed(MouseButton.Left))
     {

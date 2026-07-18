@@ -1477,6 +1477,9 @@ static void AddCastle(float x, float y)
     // braziers flanking throne
     castle.InteriorObjects.Add(new Rectangle(760, 180, 50, 50));
     castle.InteriorObjects.Add(new Rectangle(1190, 180, 50, 50));
+    
+    // ── Mastery Shop counter (right side of throne room) ──
+    castle.InteriorObjects.Add(new Rectangle(1600, 300, 300, 60));
 
     buildings.Add(castle);
 }

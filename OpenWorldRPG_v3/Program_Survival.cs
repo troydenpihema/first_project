@@ -102,58 +102,39 @@ static void CheckZoneMusic()
 {
     Music zoneMusic;
 
-    // Define your zones by coordinate ranges
+    // Exact zones (unchanged positions)
     if (player.Position.X > -3000 && player.Position.X < 0 &&
         player.Position.Y > -10000 && player.Position.Y < -6000)
-    {
         zoneMusic = musicFarm;
-    }
     else if (player.Position.X > -3000 && player.Position.X < 4000 &&
              player.Position.Y > -1500 && player.Position.Y < 2500)
-    {
         zoneMusic = musicCity;
-    }
-    else if (player.Position.X > -10000 && player.Position.X < 8000 &&
-             player.Position.Y > -12000 && player.Position.Y < 12000)
-    {
+    // Grid sectors
+    else if (player.Position.X > -80000 && player.Position.X < 80000 &&
+             player.Position.Y > -80000 && player.Position.Y < 80000)
         zoneMusic = musicMeadowlands;
-    }
-    else if (player.Position.X > 8000 && player.Position.X < 22000 &&
-             player.Position.Y > -12000 && player.Position.Y < 12000)
-    {
+    else if (player.Position.X >= 80000 &&
+             player.Position.Y > -80000 && player.Position.Y < 80000)
         zoneMusic = musicDesert;
-    }
-    else if (player.Position.X > -10000 && player.Position.X < 22000 &&
-         player.Position.Y > -38000 && player.Position.Y < -12000)
-    {
-        zoneMusic = musicForest;
-    }
-    else if (player.Position.X > 22000 && player.Position.X < 40000 &&
-         player.Position.Y > -40000 && player.Position.Y < -12000)
-    {
+    else if (player.Position.X < -80000 && player.Position.Y < -80000)
+        zoneMusic = musicSnow;      // add musicSnow or reuse existing
+    else if (player.Position.X >= -80000 && player.Position.X < 80000 &&
+             player.Position.Y < -80000)
+        zoneMusic = musicSnow;   // add musicMountain or reuse existing
+    else if (player.Position.X >= 80000 && player.Position.Y < -80000)
         zoneMusic = musicVolcano;
-    }
-     else if (player.Position.X > 22000 && player.Position.X < 28000 &&
-         player.Position.Y > -12000 && player.Position.Y < 38000)
-    {
-        zoneMusic = musicBeach;
-    }
-    else if (player.Position.X > 28000 && player.Position.X < 50000 &&
-             player.Position.Y > -12000 && player.Position.Y < 38000)
-    {
-        zoneMusic = musicOcean;
-    }
-    else if (player.Position.X > -10000 && player.Position.X < 8000 &&
-             player.Position.Y > 12000 && player.Position.Y < 38000)
-    {
+    else if (player.Position.X < -80000 &&
+             player.Position.Y >= -80000 && player.Position.Y < 80000)
+        zoneMusic = musicSnow;      // add musicSwamp or reuse existing
+    else if (player.Position.X < -80000 && player.Position.Y >= 80000)
         zoneMusic = musicForest;
-    }
+    else if (player.Position.Y >= 80000 && player.Position.Y < 115000)
+        zoneMusic = musicBeach;
+    else if (player.Position.Y >= 115000)
+        zoneMusic = musicOcean;
     else
-    {
-        zoneMusic = musicMainMenu; // default overworld track
-    }
+        zoneMusic = musicMainMenu;
 
-    // Only switch if the zone has changed
     if (zoneMusic.Stream.Buffer != lastZoneMusic.Stream.Buffer)
     {
         SwitchMusic(zoneMusic);
@@ -349,12 +330,13 @@ static FishSpecies RollFish(string water, string tool)
     var pool = fishTypes.Where(f => f.Water == water && (f.Tool == "Any" || f.Tool == tool)).ToList();
     if (pool.Count == 0) return null;
 
-    int totalWeight = pool.Sum(f => f.Weight);
+    // seasonal weighting: in-season fish get full weight, out-of-season get halved
+    int totalWeight = pool.Sum(f => IsFishInSeason(f.Name) ? f.Weight : Math.Max(1, f.Weight / 2));
     int roll = Raylib.GetRandomValue(1, totalWeight);
     int acc = 0;
     foreach (var f in pool)
     {
-        acc += f.Weight;
+        acc += IsFishInSeason(f.Name) ? f.Weight : Math.Max(1, f.Weight / 2);
         if (roll <= acc) return f;
     }
     return pool[0];
@@ -653,17 +635,10 @@ static void DrawTutorialHUD()
             // snow side road
             if (pos.Y >= 188 && pos.Y <= 333 && pos.X <= -3000) return true;
 
-            // ring road top
-            if (pos.Y >= -38020 && pos.Y <= -37820) return true;
-
-            // ring road bottom
-            if (pos.Y >= 38000 && pos.Y <= 38200) return true;
-
-            // ring road left
-            if (pos.X >= -40000 && pos.X <= -39820) return true;
-
-            // ring road right
-            if (pos.X >= 39820 && pos.X <= 40000) return true;
+            if (pos.Y >= -245020 && pos.Y <= -244820) return true; // ring road top
+            if (pos.Y >= 245000 && pos.Y <= 245200) return true;   // ring road bottom
+            if (pos.X >= -245000 && pos.X <= -244820) return true;  // ring road left
+            if (pos.X >= 244820 && pos.X <= 245000) return true;    // ring road right
 
             // snow vertical connectors - scoped to Y range between side road and ring road
             if (pos.X >= -20015 && pos.X <= -19865 && (pos.Y <= 188 || pos.Y >= 333)) return true;
@@ -676,6 +651,586 @@ static void DrawTutorialHUD()
 
             return false;
         }
+
+static void DrawBiomeGroundDetail()
+{
+    float vL = camera.Target.X - ScreenWidth;
+    float vR = camera.Target.X + ScreenWidth;
+    float vT = camera.Target.Y - ScreenHeight;
+    float vB = camera.Target.Y + ScreenHeight;
+
+    // tile size — each tile gets a few detail elements
+    const int tile = 80;
+
+    int startX = ((int)vL / tile) * tile;
+    int startY = ((int)vT / tile) * tile;
+
+    for (int tx = startX; tx < vR; tx += tile)
+    {
+        for (int ty = startY; ty < vB; ty += tile)
+        {
+            // deterministic hash from tile position (stable as camera moves)
+            int h = HashTile(tx, ty);
+            int h2 = HashTile(tx + 7, ty + 13);
+            int h3 = HashTile(tx + 31, ty + 3);
+
+            string biome = GetBiomeAt(tx, ty);
+
+            switch (biome)
+            {
+                case "GRASSLANDS":
+                case "SAFE ZONE":
+                    DrawGrassDetail(tx, ty, h, h2, h3);
+                    break;
+                case "DESERT":
+                case "OASIS":
+                case "DUNES":
+                case "BADLANDS":
+                    DrawSandDetail(tx, ty, h, h2, h3, biome);
+                    break;
+                case "BEACH":
+                    DrawBeachDetail(tx, ty, h, h2, h3);
+                    break;
+                case "OCEAN":
+                case "CORAL REEF":
+                case "DEEP OCEAN":
+                case "ISLANDS":
+                    DrawOceanDetail(tx, ty, h, h2, h3, biome);
+                    break;
+                case "SNOW ZONE":
+                case "TUNDRA":
+                case "FROZEN LAKE":
+                case "ICE CAVES":
+                    DrawSnowDetail(tx, ty, h, h2, h3, biome);
+                    break;
+                case "FOREST":
+                case "DARK FOREST":
+                case "ENCHANTED WOODS":
+                case "MUSHROOM GROVE":
+                    DrawForestFloorDetail(tx, ty, h, h2, h3, biome);
+                    break;
+                case "SWAMP":
+                case "MANGROVE":
+                case "BOG":
+                case "DEAD MARSH":
+                    DrawSwampDetail(tx, ty, h, h2, h3, biome);
+                    break;
+                case "VOLCANO":
+                case "CALDERA":
+                case "ASHEN WASTES":
+                case "LAVA FIELDS":
+                    DrawVolcanoDetail(tx, ty, h, h2, h3, biome);
+                    break;
+                case "MOUNTAINS":
+                case "ALPINE MEADOW":
+                case "CLIFFS":
+                case "CRYSTAL CAVES":
+                    DrawMountainDetail(tx, ty, h, h2, h3, biome);
+                    break;
+            }
+        }
+    }
+}
+
+// ── Deterministic hash for stable patterns ──
+static int HashTile(int x, int y)
+{
+    int n = x * 374761393 + y * 668265263;
+    n = (n ^ (n >> 13)) * 1274126177;
+    return n ^ (n >> 16);
+}
+
+// ── Lightweight biome lookup by coordinate (no player dependency) ──
+static string GetBiomeAt(float x, float y)
+{
+    // exact zones
+    if (x >= -3000 && x <= 4000 && y >= -1500 && y <= 2500) return "SAFE ZONE";
+    if (x >= -3000 && x <= 0 && y >= -10000 && y <= -6000) return "FARM";
+
+    // 3×3 grid
+    if (x < -80000 && y < -80000)
+    {
+        if (x < -180000) return "TUNDRA";
+        if (x >= -180000 && x < -140000 && y >= -180000 && y < -140000) return "FROZEN LAKE";
+        if (x >= -200000 && x < -140000 && y >= -120000) return "ICE CAVES";
+        return "SNOW ZONE";
+    }
+    if (x >= -80000 && x < 80000 && y < -80000)
+    {
+        if (x >= -80000 && x < -20000 && y >= -170000 && y < -120000) return "ALPINE MEADOW";
+        if (x >= 20000 && y >= -200000 && y < -140000) return "CLIFFS";
+        if (x >= -60000 && x < 20000 && y < -200000) return "CRYSTAL CAVES";
+        return "MOUNTAINS";
+    }
+    if (x >= 80000 && y < -80000)
+    {
+        if (x >= 140000 && x < 200000 && y >= -200000 && y < -140000) return "CALDERA";
+        if (x < 140000 && y >= -170000 && y < -110000) return "ASHEN WASTES";
+        if (y >= -110000) return "LAVA FIELDS";
+        return "VOLCANO";
+    }
+    if (x < -80000 && y >= -80000 && y < 80000)
+    {
+        if (x < -180000 && y >= -30000 && y < 30000) return "MANGROVE";
+        if (x >= -180000 && x < -130000 && y >= -30000 && y < 30000) return "BOG";
+        if (x < -170000 && y >= 30000) return "DEAD MARSH";
+        return "SWAMP";
+    }
+    if (x >= 80000 && y >= -80000 && y < 80000)
+    {
+        if (x >= 140000 && x < 190000 && y >= -20000 && y < 20000) return "OASIS";
+        if (x >= 200000 && y >= -50000 && y < 50000) return "DUNES";
+        if (x < 160000 && y >= 30000) return "BADLANDS";
+        return "DESERT";
+    }
+    if (x < -80000 && y >= 80000)
+    {
+        if (x < -170000 && y < 170000) return "DARK FOREST";
+        if (x >= -170000 && y < 160000) return "ENCHANTED WOODS";
+        if (x < -160000 && y >= 170000) return "MUSHROOM GROVE";
+        return "FOREST";
+    }
+    if (y >= 80000)
+    {
+        if (y < 115000) return "BEACH";
+        if (x >= -80000 && x < 40000 && y < 180000) return "CORAL REEF";
+        if (x >= -80000 && x < 40000 && y >= 180000) return "DEEP OCEAN";
+        if (x >= 80000 && x < 200000 && y >= 150000 && y < 220000) return "ISLANDS";
+        return "OCEAN";
+    }
+    return "GRASSLANDS";
+}
+
+// ══════════════════════════════════════════════════════════════
+//  BIOME-SPECIFIC GROUND DETAIL DRAWERS
+// ══════════════════════════════════════════════════════════════
+
+// ── GRASSLANDS: individual grass blades + clover tufts ──
+static void DrawGrassDetail(int tx, int ty, int h, int h2, int h3)
+{
+    // 2-3 grass blade tufts per tile
+    int bladeCount = 2 + (Math.Abs(h) % 2);
+    for (int i = 0; i < bladeCount; i++)
+    {
+        int bx = tx + ((h + i * 17) & 0x7F) % 70 + 5;
+        int by = ty + ((h2 + i * 23) & 0x7F) % 70 + 5;
+        int height = 8 + (Math.Abs(h + i) % 8);
+        int lean = ((h3 + i) % 7) - 3;
+        byte green = (byte)(100 + Math.Abs(h + i * 31) % 80);
+        Color blade = new Color((byte)30, green, (byte)20, (byte)160);
+
+        // blade = thin line from base upward with slight lean
+        Raylib.DrawLineEx(
+            new Vector2(bx, by),
+            new Vector2(bx + lean, by - height),
+            1.5f, blade);
+        // second blade slightly offset
+        Raylib.DrawLineEx(
+            new Vector2(bx + 3, by),
+            new Vector2(bx + 3 - lean, by - height + 2),
+            1.5f, blade);
+    }
+
+    // occasional clover patch (1 in 5 tiles)
+    if ((h & 0xF) < 3)
+    {
+        int cx = tx + (Math.Abs(h2) % 50) + 15;
+        int cy = ty + (Math.Abs(h3) % 50) + 15;
+        Color clover = new Color((byte)50, (byte)140, (byte)40, (byte)100);
+        Raylib.DrawCircle(cx, cy, 3, clover);
+        Raylib.DrawCircle(cx + 4, cy - 2, 3, clover);
+        Raylib.DrawCircle(cx + 2, cy + 3, 3, clover);
+    }
+}
+
+// ── DESERT / DUNES / BADLANDS: sand grain + wind ripples ──
+static void DrawSandDetail(int tx, int ty, int h, int h2, int h3, string sub)
+{
+    // sand grain dots
+    int grainCount = 3 + (Math.Abs(h) % 3);
+    for (int i = 0; i < grainCount; i++)
+    {
+        int gx = tx + ((h + i * 19) & 0x7F) % 74 + 3;
+        int gy = ty + ((h2 + i * 29) & 0x7F) % 74 + 3;
+        byte shade = (byte)(180 + Math.Abs(h + i * 7) % 50);
+        Raylib.DrawCircle(gx, gy, 1, new Color(shade, (byte)(shade - 30), (byte)(shade - 70), (byte)120));
+    }
+
+    // wind ripple lines (every ~3 tiles)
+    if ((h & 0x7) < 3)
+    {
+        int ry = ty + (Math.Abs(h2) % 60) + 10;
+        int rx = tx + 5;
+        byte alpha = (byte)(60 + Math.Abs(h) % 40);
+        Color ripple = sub == "DUNES"
+            ? new Color((byte)170,(byte)145,(byte)60,(byte)alpha)
+            : new Color((byte)190,(byte)165,(byte)90,(byte)alpha);
+        // gentle wavy line
+        Raylib.DrawLineEx(new Vector2(rx, ry), new Vector2(rx + 30, ry + 2), 1.5f, ripple);
+        Raylib.DrawLineEx(new Vector2(rx + 30, ry + 2), new Vector2(rx + 60, ry - 1), 1.5f, ripple);
+    }
+
+    // Badlands: occasional cracked earth
+    if (sub == "BADLANDS" && (h & 0xF) < 4)
+    {
+        int cx = tx + (Math.Abs(h3) % 40) + 20;
+        int cy = ty + (Math.Abs(h2) % 40) + 20;
+        Color crack = new Color((byte)100,(byte)65,(byte)30,(byte)90);
+        Raylib.DrawLineEx(new Vector2(cx, cy), new Vector2(cx + 12, cy + 8), 1, crack);
+        Raylib.DrawLineEx(new Vector2(cx + 12, cy + 8), new Vector2(cx + 8, cy + 20), 1, crack);
+        Raylib.DrawLineEx(new Vector2(cx + 12, cy + 8), new Vector2(cx + 24, cy + 5), 1, crack);
+    }
+
+    // Oasis: tiny green tufts
+    if (sub == "OASIS" && (h & 0x7) < 2)
+    {
+        int gx = tx + (Math.Abs(h) % 60) + 10;
+        int gy = ty + (Math.Abs(h2) % 60) + 10;
+        Raylib.DrawCircle(gx, gy, 3, new Color((byte)60,(byte)130,(byte)50,(byte)130));
+        Raylib.DrawCircle(gx + 5, gy - 3, 2, new Color((byte)50,(byte)120,(byte)40,(byte)110));
+    }
+}
+
+// ── BEACH: sand texture + footprint impressions + pebbles ──
+static void DrawBeachDetail(int tx, int ty, int h, int h2, int h3)
+{
+    // sand grain
+    int grains = 3 + (Math.Abs(h) % 3);
+    for (int i = 0; i < grains; i++)
+    {
+        int gx = tx + ((h + i * 13) & 0x7F) % 74 + 3;
+        int gy = ty + ((h2 + i * 37) & 0x7F) % 74 + 3;
+        byte s = (byte)(210 + Math.Abs(h + i) % 35);
+        Raylib.DrawCircle(gx, gy, 1, new Color(s, (byte)(s - 20), (byte)(s - 60), (byte)100));
+    }
+
+    // pebbles (1 in 4 tiles)
+    if ((h & 0x7) < 2)
+    {
+        int px = tx + (Math.Abs(h3) % 50) + 15;
+        int py = ty + (Math.Abs(h2) % 50) + 15;
+        byte ps = (byte)(140 + Math.Abs(h) % 60);
+        Raylib.DrawEllipse(px, py, 3, 2, new Color(ps, ps, (byte)(ps - 10), (byte)180));
+    }
+
+    // wet sand patches near water edge (darker)
+    if ((h & 0xF) < 3)
+    {
+        int wx = tx + (Math.Abs(h) % 40) + 20;
+        int wy = ty + (Math.Abs(h2) % 40) + 20;
+        Raylib.DrawCircle(wx, wy, 6, new Color((byte)190,(byte)170,(byte)110,(byte)50));
+    }
+}
+
+// ── OCEAN: gentle wave shimmer + bubbles ──
+static void DrawOceanDetail(int tx, int ty, int h, int h2, int h3, string sub)
+{
+    // wave shimmer highlights
+    if ((h & 0x7) < 3)
+    {
+        int wx = tx + (Math.Abs(h) % 50) + 15;
+        int wy = ty + (Math.Abs(h2) % 50) + 15;
+        float t = (float)Raylib.GetTime();
+        float shimmer = MathF.Sin(t * 2f + wx * 0.01f + wy * 0.008f);
+        byte alpha = (byte)(30 + (int)(shimmer * 20));
+        Raylib.DrawLineEx(
+            new Vector2(wx, wy),
+            new Vector2(wx + 20 + shimmer * 5, wy + 3),
+            1.5f, new Color((byte)180,(byte)220,(byte)255, alpha));
+    }
+
+    // coral reef: colourful dots
+    if (sub == "CORAL REEF" && (h & 0x7) < 4)
+    {
+        int cx = tx + (Math.Abs(h3) % 60) + 10;
+        int cy = ty + (Math.Abs(h) % 60) + 10;
+        byte r = (byte)(150 + Math.Abs(h2) % 100);
+        byte g = (byte)(80 + Math.Abs(h) % 80);
+        byte b = (byte)(100 + Math.Abs(h3) % 100);
+        Raylib.DrawCircle(cx, cy, 2 + Math.Abs(h) % 3, new Color(r, g, b, (byte)130));
+    }
+
+    // deep ocean: darker shimmer
+    if (sub == "DEEP OCEAN" && (h & 0xF) < 3)
+    {
+        int bx = tx + (Math.Abs(h2) % 60) + 10;
+        int by = ty + (Math.Abs(h3) % 60) + 10;
+        Raylib.DrawCircle(bx, by, 2, new Color((byte)100,(byte)160,(byte)220,(byte)50));
+    }
+}
+
+// ── SNOW: snowdrift mounds + sparkle dots + frost lines ──
+static void DrawSnowDetail(int tx, int ty, int h, int h2, int h3, string sub)
+{
+    // snowdrift mounds (soft ellipses)
+    if ((h & 0x7) < 3)
+    {
+        int dx = tx + (Math.Abs(h) % 50) + 15;
+        int dy = ty + (Math.Abs(h2) % 50) + 15;
+        byte white = (byte)(230 + Math.Abs(h) % 25);
+        Raylib.DrawEllipse(dx, dy, 10 + Math.Abs(h3) % 8, 4 + Math.Abs(h) % 4,
+            new Color(white, white, (byte)Math.Min(255, white + 5), (byte)60));
+    }
+
+    // sparkle dots (glinting ice crystals)
+    if ((h2 & 0xF) < 5)
+    {
+        int sx = tx + (Math.Abs(h3) % 70) + 5;
+        int sy = ty + (Math.Abs(h) % 70) + 5;
+        float t = (float)Raylib.GetTime();
+        float sparkle = MathF.Sin(t * 4f + sx * 0.1f) * 0.5f + 0.5f;
+        byte sa = (byte)(80 * sparkle);
+        Raylib.DrawCircle(sx, sy, 1, new Color((byte)255,(byte)255,(byte)255, sa));
+    }
+
+    // frost lines (Tundra gets more)
+    if (sub == "TUNDRA" && (h & 0x3) == 0)
+    {
+        int fx = tx + (Math.Abs(h) % 30) + 10;
+        int fy = ty + (Math.Abs(h2) % 50) + 15;
+        Color frost = new Color((byte)200,(byte)220,(byte)245,(byte)50);
+        Raylib.DrawLineEx(new Vector2(fx, fy), new Vector2(fx + 18, fy + 4), 1, frost);
+        Raylib.DrawLineEx(new Vector2(fx + 8, fy + 2), new Vector2(fx + 14, fy - 6), 1, frost);
+    }
+
+    // Frozen Lake: ice crack lines
+    if (sub == "FROZEN LAKE" && (h & 0x7) < 3)
+    {
+        int cx = tx + (Math.Abs(h) % 40) + 20;
+        int cy = ty + (Math.Abs(h2) % 40) + 20;
+        Color ice = new Color((byte)160,(byte)200,(byte)240,(byte)70);
+        Raylib.DrawLineEx(new Vector2(cx, cy), new Vector2(cx + 15, cy + 10), 1, ice);
+        Raylib.DrawLineEx(new Vector2(cx + 15, cy + 10), new Vector2(cx + 10, cy + 22), 1, ice);
+    }
+}
+
+// ── FOREST: leaf litter + roots + undergrowth ──
+static void DrawForestFloorDetail(int tx, int ty, int h, int h2, int h3, string sub)
+{
+    // leaf litter — small coloured dots
+    int leafCount = 2 + (Math.Abs(h) % 3);
+    for (int i = 0; i < leafCount; i++)
+    {
+        int lx = tx + ((h + i * 11) & 0x7F) % 74 + 3;
+        int ly = ty + ((h2 + i * 27) & 0x7F) % 74 + 3;
+        bool autumn = (Math.Abs(h + i) % 4 == 0);
+        Color leaf = autumn
+            ? new Color((byte)(140 + Math.Abs(h) % 60),(byte)(80 + Math.Abs(h2) % 40),(byte)20,(byte)120)
+            : new Color((byte)25,(byte)(60 + Math.Abs(h) % 40),(byte)18,(byte)100);
+        Raylib.DrawCircle(lx, ly, 2, leaf);
+    }
+
+    // root lines across forest floor
+    if ((h & 0x7) < 2)
+    {
+        int rx = tx + (Math.Abs(h3) % 30) + 10;
+        int ry = ty + (Math.Abs(h) % 50) + 15;
+        Color root = new Color((byte)55,(byte)35,(byte)15,(byte)80);
+        Raylib.DrawLineEx(new Vector2(rx, ry), new Vector2(rx + 25, ry + 6), 2, root);
+    }
+
+    // Dark Forest: extra dense undergrowth
+    if (sub == "DARK FOREST" && (h & 0x3) < 2)
+    {
+        int ux = tx + (Math.Abs(h2) % 50) + 15;
+        int uy = ty + (Math.Abs(h3) % 50) + 15;
+        Color dark = new Color((byte)12,(byte)40,(byte)12,(byte)100);
+        Raylib.DrawCircle(ux, uy, 5, dark);
+        Raylib.DrawCircle(ux + 8, uy - 3, 4, dark);
+    }
+
+    // Enchanted Woods: faint glow spots
+    if (sub == "ENCHANTED WOODS" && (h2 & 0xF) < 3)
+    {
+        int gx = tx + (Math.Abs(h) % 60) + 10;
+        int gy = ty + (Math.Abs(h2) % 60) + 10;
+        float t = (float)Raylib.GetTime();
+        float pulse = MathF.Sin(t * 1.5f + gx * 0.05f) * 0.5f + 0.5f;
+        byte ga = (byte)(40 * pulse);
+        Raylib.DrawCircle(gx, gy, 4, new Color((byte)120,(byte)220,(byte)140, ga));
+    }
+
+    // Mushroom Grove: tiny mushroom caps
+    if (sub == "MUSHROOM GROVE" && (h & 0x7) < 3)
+    {
+        int mx = tx + (Math.Abs(h3) % 50) + 15;
+        int my = ty + (Math.Abs(h) % 50) + 15;
+        byte mr = (byte)(150 + Math.Abs(h2) % 100);
+        byte mg = (byte)(40 + Math.Abs(h) % 60);
+        // stem
+        Raylib.DrawRectangle(mx, my, 2, 5, new Color((byte)200,(byte)190,(byte)170,(byte)150));
+        // cap
+        Raylib.DrawCircle(mx + 1, my - 1, 4, new Color(mr, mg, (byte)40, (byte)160));
+    }
+}
+
+// ── SWAMP: bubbles + mud splatters + scum film ──
+static void DrawSwampDetail(int tx, int ty, int h, int h2, int h3, string sub)
+{
+    // murky water film
+    if ((h & 0x3) < 2)
+    {
+        int wx = tx + (Math.Abs(h) % 40) + 20;
+        int wy = ty + (Math.Abs(h2) % 40) + 20;
+        Raylib.DrawEllipse(wx, wy, 8, 5, new Color((byte)35,(byte)55,(byte)25,(byte)60));
+    }
+
+    // mud splatters
+    int mudCount = 1 + (Math.Abs(h) % 2);
+    for (int i = 0; i < mudCount; i++)
+    {
+        int mx = tx + ((h + i * 23) & 0x7F) % 70 + 5;
+        int my = ty + ((h2 + i * 17) & 0x7F) % 70 + 5;
+        Raylib.DrawCircle(mx, my, 2 + Math.Abs(h3 + i) % 3,
+            new Color((byte)50,(byte)40,(byte)20,(byte)80));
+    }
+
+    // bubbles (animated)
+    if ((h2 & 0xF) < 3)
+    {
+        float t = (float)Raylib.GetTime();
+        int bx = tx + (Math.Abs(h3) % 60) + 10;
+        int by = ty + (Math.Abs(h) % 60) + 10;
+        float bob = MathF.Sin(t * 3f + bx * 0.1f) * 2f;
+        Raylib.DrawCircleLines(bx, (int)(by + bob), 2,
+            new Color((byte)80,(byte)100,(byte)60,(byte)100));
+    }
+
+    // Dead Marsh: bone-white sticks
+    if (sub == "DEAD MARSH" && (h & 0x7) < 2)
+    {
+        int sx = tx + (Math.Abs(h) % 40) + 20;
+        int sy = ty + (Math.Abs(h2) % 40) + 20;
+        Color bone = new Color((byte)180,(byte)175,(byte)160,(byte)90);
+        Raylib.DrawLineEx(new Vector2(sx, sy), new Vector2(sx + 10, sy - 8), 1.5f, bone);
+        Raylib.DrawLineEx(new Vector2(sx + 4, sy), new Vector2(sx + 14, sy + 6), 1.5f, bone);
+    }
+}
+
+// ── VOLCANO: cracked earth + embers + ash particles ──
+static void DrawVolcanoDetail(int tx, int ty, int h, int h2, int h3, string sub)
+{
+    // cracked earth lines
+    if ((h & 0x3) < 2)
+    {
+        int cx = tx + (Math.Abs(h) % 40) + 20;
+        int cy = ty + (Math.Abs(h2) % 40) + 20;
+        Color crack = new Color((byte)70,(byte)35,(byte)10,(byte)120);
+        Raylib.DrawLineEx(new Vector2(cx, cy), new Vector2(cx + 14, cy + 9), 1, crack);
+        Raylib.DrawLineEx(new Vector2(cx + 14, cy + 9), new Vector2(cx + 22, cy + 4), 1, crack);
+        Raylib.DrawLineEx(new Vector2(cx + 14, cy + 9), new Vector2(cx + 11, cy + 22), 1, crack);
+    }
+
+    // glowing embers
+    if ((h2 & 0x7) < 3)
+    {
+        int ex = tx + (Math.Abs(h3) % 60) + 10;
+        int ey = ty + (Math.Abs(h) % 60) + 10;
+        float t = (float)Raylib.GetTime();
+        float glow = MathF.Sin(t * 2.5f + ex * 0.05f) * 0.5f + 0.5f;
+        byte er = (byte)(200 + (int)(55 * glow));
+        byte eg = (byte)(60 + (int)(80 * glow));
+        Raylib.DrawCircle(ex, ey, 2, new Color(er, eg, (byte)0, (byte)(100 + (int)(60 * glow))));
+    }
+
+    // ash particles (fine grey dots)
+    int ashCount = 2 + (Math.Abs(h) % 2);
+    for (int i = 0; i < ashCount; i++)
+    {
+        int ax = tx + ((h + i * 31) & 0x7F) % 74 + 3;
+        int ay = ty + ((h2 + i * 19) & 0x7F) % 74 + 3;
+        byte ag = (byte)(50 + Math.Abs(h + i) % 30);
+        Raylib.DrawCircle(ax, ay, 1, new Color(ag, ag, ag, (byte)70));
+    }
+
+    // Caldera: intense red cracks
+    if (sub == "CALDERA" && (h & 0x3) == 0)
+    {
+        int lx = tx + (Math.Abs(h) % 30) + 20;
+        int ly = ty + (Math.Abs(h2) % 30) + 20;
+        Color lava = new Color((byte)255,(byte)80,(byte)0,(byte)90);
+        Raylib.DrawLineEx(new Vector2(lx, ly), new Vector2(lx + 16, ly + 10), 2, lava);
+        Raylib.DrawLineEx(new Vector2(lx + 16, ly + 10), new Vector2(lx + 12, ly + 24), 2, lava);
+    }
+
+    // Lava Fields: molten pools
+    if (sub == "LAVA FIELDS" && (h & 0x7) < 2)
+    {
+        int px = tx + (Math.Abs(h3) % 40) + 20;
+        int py = ty + (Math.Abs(h) % 40) + 20;
+        float t = (float)Raylib.GetTime();
+        float pulse = MathF.Sin(t * 1.8f + px * 0.03f) * 0.3f + 0.7f;
+        byte pa = (byte)(80 * pulse);
+        Raylib.DrawEllipse(px, py, 7, 4, new Color((byte)255,(byte)120,(byte)0, pa));
+    }
+}
+
+// ── MOUNTAINS: gravel dots + crag lines + lichen patches ──
+static void DrawMountainDetail(int tx, int ty, int h, int h2, int h3, string sub)
+{
+    // gravel dots
+    int gravelCount = 3 + (Math.Abs(h) % 3);
+    for (int i = 0; i < gravelCount; i++)
+    {
+        int gx = tx + ((h + i * 17) & 0x7F) % 74 + 3;
+        int gy = ty + ((h2 + i * 23) & 0x7F) % 74 + 3;
+        byte gs = (byte)(70 + Math.Abs(h + i) % 40);
+        Raylib.DrawCircle(gx, gy, 1 + Math.Abs(h3 + i) % 2,
+            new Color(gs, (byte)(gs - 5), (byte)(gs - 10), (byte)120));
+    }
+
+    // crag/rock edge lines
+    if ((h & 0x7) < 3)
+    {
+        int rx = tx + (Math.Abs(h) % 30) + 10;
+        int ry = ty + (Math.Abs(h2) % 50) + 15;
+        byte rs = (byte)(60 + Math.Abs(h3) % 30);
+        Color rock = new Color(rs, (byte)(rs - 5), (byte)(rs - 8), (byte)100);
+        Raylib.DrawLineEx(new Vector2(rx, ry), new Vector2(rx + 20, ry + 5), 1.5f, rock);
+    }
+
+    // Alpine Meadow: tiny wildflowers
+    if (sub == "ALPINE MEADOW" && (h & 0x7) < 4)
+    {
+        int fx = tx + (Math.Abs(h3) % 60) + 10;
+        int fy = ty + (Math.Abs(h) % 60) + 10;
+        Color[] alpine = {
+            new Color((byte)220,(byte)180,(byte)60,(byte)140),
+            new Color((byte)180,(byte)80,(byte)180,(byte)140),
+            new Color((byte)255,(byte)255,(byte)255,(byte)140)
+        };
+        Raylib.DrawCircle(fx, fy, 2, alpine[Math.Abs(h2) % alpine.Length]);
+        // grass blade next to flower
+        Raylib.DrawLineEx(new Vector2(fx + 5, fy + 2), new Vector2(fx + 7, fy - 6), 1, 
+            new Color((byte)60,(byte)140,(byte)50,(byte)130));
+    }
+
+    // Crystal Caves: glowing crystal dots
+    if (sub == "CRYSTAL CAVES" && (h2 & 0x7) < 4)
+    {
+        int cx = tx + (Math.Abs(h) % 60) + 10;
+        int cy = ty + (Math.Abs(h2) % 60) + 10;
+        float t = (float)Raylib.GetTime();
+        float pulse = MathF.Sin(t * 2f + cx * 0.08f) * 0.5f + 0.5f;
+        byte ca = (byte)(60 + (int)(80 * pulse));
+        byte cr = (byte)(120 + Math.Abs(h3) % 80);
+        byte cb = (byte)(180 + Math.Abs(h) % 75);
+        Raylib.DrawCircle(cx, cy, 2, new Color(cr, (byte)60, cb, ca));
+        // tiny crystal shard line
+        Raylib.DrawLineEx(new Vector2(cx, cy), new Vector2(cx + 3, cy - 6), 1,
+            new Color(cr, (byte)100, cb, (byte)(ca - 20)));
+    }
+
+    // Cliffs: strong horizontal strata lines
+    if (sub == "CLIFFS" && (h & 0x3) < 2)
+    {
+        int sx = tx + 5;
+        int sy = ty + (Math.Abs(h) % 50) + 15;
+        byte ss = (byte)(55 + Math.Abs(h2) % 25);
+        Raylib.DrawLineEx(new Vector2(sx, sy), new Vector2(sx + 70, sy + 2), 2,
+            new Color(ss, (byte)(ss - 3), (byte)(ss - 8), (byte)80));
+    }
+}
 
         static void GenerateSafeZoneTexture()
         {
@@ -704,12 +1259,12 @@ static void DrawTutorialHUD()
             }
         }
 
-        static void GenerateBiomeTextures()
+static void GenerateBiomeTextures()
 {
-    // DESERT patches
-    for (int x = 8000; x < 21800; x += 500)
+    // ── DESERT patches (X 80k–250k, Y -80k–80k) ──
+    for (int x = 80000; x < 249000; x += 2000)
     {
-        for (int y = -11800; y < 11800; y += 500)
+        for (int y = -79000; y < 79000; y += 2000)
         {
             Vector2 pos = new Vector2(x + 80, y + 80);
             if (IsNearRoad(pos)) continue;
@@ -720,11 +1275,11 @@ static void DrawTutorialHUD()
             desertPatches.Add((pos, radius, new Color(r, g, b, (byte)90)));
         }
     }
-
+ 
     // DESERT rocks
-    for (int x = 8000; x < 21800; x += 900)
+    for (int x = 80000; x < 249000; x += 3600)
     {
-        for (int y = -11800; y < 11800; y += 900)
+        for (int y = -79000; y < 79000; y += 3600)
         {
             Vector2 pos = new Vector2(x + 150, y + 150);
             if (IsNearRoad(pos)) continue;
@@ -732,11 +1287,11 @@ static void DrawTutorialHUD()
             desertRocks.Add((pos, new Color(shade, shade, (byte)Math.Max(0, shade - 25), (byte)255)));
         }
     }
-
-    // SNOW patches
-    for (int x = -42400; x < -30000; x += 500)
+ 
+    // ── SNOW patches (X -250k–-80k, Y -250k–-80k) ──
+    for (int x = -249000; x < -81000; x += 2000)
     {
-        for (int y = -11800; y < 11800; y += 500)
+        for (int y = -249000; y < -81000; y += 2000)
         {
             Vector2 pos = new Vector2(x + 80, y + 80);
             if (IsNearRoad(pos)) continue;
@@ -744,11 +1299,11 @@ static void DrawTutorialHUD()
             snowPatches.Add((pos, radius));
         }
     }
-
+ 
     // SNOW rocks
-    for (int x = -42400; x < -30000; x += 1000)
+    for (int x = -249000; x < -81000; x += 4000)
     {
-        for (int y = -11800; y < 11800; y += 1000)
+        for (int y = -249000; y < -81000; y += 4000)
         {
             Vector2 pos = new Vector2(x + 200, y + 200);
             if (IsNearRoad(pos)) continue;
@@ -756,11 +1311,11 @@ static void DrawTutorialHUD()
             snowRocks.Add((pos, new Color(shade, shade, (byte)Math.Min(255, shade + 12), (byte)255)));
         }
     }
-
-    // FOREST TOP patches
-    for (int x = -39000; x < 21800; x += 550)
+ 
+    // ── FOREST patches (X -250k–-80k, Y 80k–250k) ──
+    for (int x = -249000; x < -81000; x += 2200)
     {
-        for (int y = -39000; y < -12200; y += 550)
+        for (int y = 81000; y < 249000; y += 2200)
         {
             Vector2 pos = new Vector2(x + 100, y + 100);
             if (IsNearRoad(pos)) continue;
@@ -769,67 +1324,51 @@ static void DrawTutorialHUD()
             forestPatches.Add((pos, radius, new Color((byte)18, green, (byte)18, (byte)110)));
         }
     }
-
-    // FOREST BOTTOM patches
-    for (int x = -39000; x < 21800; x += 550)
-    {
-        for (int y = 12200; y < 39000; y += 550)
-        {
-            Vector2 pos = new Vector2(x + 100, y + 100);
-            if (IsNearRoad(pos)) continue;
-            float radius = 22 + (Math.Abs(x * y) % 40);
-            byte green = (byte)(55 + Math.Abs(x + y) % 50);
-            forestPatches.Add((pos, radius, new Color((byte)18, green, (byte)18, (byte)110)));
-        }
-    }
-
+ 
     // FOREST mushrooms
     Color[] mushroomColors = { Color.Red, Color.Orange, Color.Purple, Color.White };
-    for (int x = -39000; x < 21800; x += 1200)
+    for (int x = -249000; x < -81000; x += 4800)
     {
-        for (int y = -39000; y < -12200; y += 1200)
-        {
-            Vector2 pos = new Vector2(x + 300, y + 300);
-            if (IsNearRoad(pos)) continue;
-            forestMushrooms.Add((pos, mushroomColors[Math.Abs(x + y) % mushroomColors.Length]));
-        }
-        for (int y = 12200; y < 39000; y += 1200) 
+        for (int y = 81000; y < 249000; y += 4800)
         {
             Vector2 pos = new Vector2(x + 300, y + 300);
             if (IsNearRoad(pos)) continue;
             forestMushrooms.Add((pos, mushroomColors[Math.Abs(x + y) % mushroomColors.Length]));
         }
     }
-
-    // GRASSLANDS patches
-    for (int x = 4000; x < 14000; x += 400)
+ 
+    // ── GRASSLANDS patches (X -80k–80k, Y -80k–80k, excluding safe zone core) ──
+    for (int x = -78000; x < 78000; x += 1600)
     {
-        for (int y = -400; y < 1000; y += 400)
+        for (int y = -78000; y < 78000; y += 1600)
         {
             Vector2 pos = new Vector2(x + 80, y + 80);
             if (IsNearRoad(pos)) continue;
+            // skip the safe-zone / farm core area — those have their own textures
+            if (pos.X >= -3500 && pos.X <= 4500 && pos.Y >= -10500 && pos.Y <= 3000) continue;
             float radius = 12 + (Math.Abs(x * y) % 24);
             byte green = (byte)(125 + Math.Abs(x + y) % 40);
             grasslandPatches.Add((pos, radius, new Color((byte)75, green, (byte)55, (byte)95)));
         }
     }
-
+ 
     // GRASSLANDS flowers
     Color[] flowerColors = { Color.Red, Color.Yellow, Color.White, Color.Pink, Color.Orange, Color.Purple };
-    for (int x = 4000; x < 14000; x += 340)
+    for (int x = -78000; x < 78000; x += 1400)
     {
-        for (int y = -400; y < 1000; y += 340)
+        for (int y = -78000; y < 78000; y += 1400)
         {
             Vector2 pos = new Vector2(x + 50, y + 50);
             if (IsNearRoad(pos)) continue;
+            if (pos.X >= -3500 && pos.X <= 4500 && pos.Y >= -10500 && pos.Y <= 3000) continue;
             grasslandFlowers.Add((pos, flowerColors[Math.Abs(x + y) % flowerColors.Length]));
         }
     }
-
-    // OCEAN/BEACH sand ripples
-    for (int x = 26000; x < 28100; x += 400)
+ 
+    // ── BEACH sand ripples (X -80k–250k, Y 80k–115k) ──
+    for (int x = -79000; x < 249000; x += 1600)
     {
-        for (int y = -39000; y < 39000; y += 400)
+        for (int y = 81000; y < 114000; y += 1600)
         {
             Vector2 pos = new Vector2(x + 80, y + 80);
             float radius = 20 + (Math.Abs(x * y) % 30);
@@ -838,41 +1377,41 @@ static void DrawTutorialHUD()
             oceanPatches.Add((pos, radius, new Color(r, g, (byte)110, (byte)100)));
         }
     }
-
-    // OCEAN shells
+ 
+    // BEACH shells
     Color[] shellColors = {
         new Color((byte)240,(byte)220,(byte)200,(byte)255),
         new Color((byte)220,(byte)180,(byte)160,(byte)255),
         new Color((byte)200,(byte)150,(byte)130,(byte)255)
     };
-    for (int x = 26200; x < 30000; x += 350)
+    for (int x = -79000; x < 249000; x += 1400)
     {
-        for (int y = -39000; y < 39000; y += 300)
+        for (int y = 81000; y < 114000; y += 1200)
         {
             Vector2 pos = new Vector2(x + 60, y + 60);
             oceanShells.Add((pos, shellColors[Math.Abs(x + y) % shellColors.Length]));
         }
     }
-
-    // OCEAN coral
+ 
+    // OCEAN coral (Coral Reef sub-biome: X -80k–40k, Y 115k–180k)
     Color[] coralColors = {
         new Color((byte)220,(byte)90,(byte)90,(byte)200),
         new Color((byte)255,(byte)160,(byte)60,(byte)200),
         new Color((byte)180,(byte)80,(byte)180,(byte)200)
     };
-    for (int x = 30000; x < 60000; x += 600)
+    for (int x = -79000; x < 39000; x += 2400)
     {
-        for (int y = -39000; y < 39000; y += 550)
+        for (int y = 116000; y < 179000; y += 2200)
         {
             Vector2 pos = new Vector2(x + 100, y + 100);
             oceanCoral.Add((pos, coralColors[Math.Abs(x + y) % coralColors.Length]));
         }
     }
-
-    // SWAMP murky patches
-    for (int x = -55000; x < -42600; x += 450)
+ 
+    // ── SWAMP murky patches (X -250k–-80k, Y -80k–80k) ──
+    for (int x = -249000; x < -81000; x += 1800)
     {
-        for (int y = -11800; y < 11800; y += 450)
+        for (int y = -79000; y < 79000; y += 1800)
         {
             Vector2 pos = new Vector2(x + 80, y + 80);
             float radius = 25 + (Math.Abs(x * y) % 35);
@@ -880,22 +1419,22 @@ static void DrawTutorialHUD()
             swampPatches.Add((pos, radius, new Color((byte)30, g, (byte)25, (byte)160)));
         }
     }
-
+ 
     // SWAMP reeds
-    for (int x = -55000; x < -42600; x += 280)
+    for (int x = -249000; x < -81000; x += 1120)
     {
-        for (int y = -11800; y < 11800; y += 280)
+        for (int y = -79000; y < 79000; y += 1120)
         {
             Vector2 pos = new Vector2(x + 50, y + 50);
             Color reedColor = new Color((byte)50, (byte)90, (byte)30, (byte)220);
             swampReeds.Add((pos, reedColor));
         }
     }
-
+ 
     // SWAMP lily pads
-    for (int x = -54000; x < -42600; x += 600) 
+    for (int x = -248000; x < -81000; x += 2400)
     {
-        for (int y = -11800; y < 11800; y += 600)
+        for (int y = -79000; y < 79000; y += 2400)
         {
             Vector2 pos = new Vector2(x + 120, y + 120);
             bool hasFlower = (Math.Abs(x + y) % 3 == 0);
@@ -905,11 +1444,11 @@ static void DrawTutorialHUD()
             swampLilies.Add((pos, lilyColor));
         }
     }
-
-    // VOLCANO lava patches
-    for (int x = 24000; x < 39000; x += 500)
+ 
+    // ── VOLCANO lava patches (X 80k–250k, Y -250k–-80k) ──
+    for (int x = 81000; x < 249000; x += 2000)
     {
-        for (int y = -38000; y < -13200; y += 500)
+        for (int y = -249000; y < -81000; y += 2000)
         {
             Vector2 pos = new Vector2(x + 80, y + 80);
             float radius = 15 + (Math.Abs(x * y) % 25);
@@ -920,21 +1459,21 @@ static void DrawTutorialHUD()
             volcanoPatches.Add((pos, radius, lavaColor));
         }
     }
-
+ 
     // VOLCANO steam vents
-    for (int x = 24000; x < 39000; x += 1000)
+    for (int x = 81000; x < 249000; x += 4000)
     {
-        for (int y = -38000; y < -13200; y += 900)
+        for (int y = -249000; y < -81000; y += 3600)
         {
             Vector2 pos = new Vector2(x + 200, y + 200);
             lavaVents.Add((pos, new Color((byte)80,(byte)70,(byte)65,(byte)180)));
         }
     }
-
-    // MOUNTAIN rocky patches
-    for (int x = -29800; x < -10200; x += 420)
+ 
+    // ── MOUNTAIN rocky patches (X -80k–80k, Y -250k–-80k) ──
+    for (int x = -79000; x < 79000; x += 1680)
     {
-        for (int y = -11800; y < 11800; y += 400)
+        for (int y = -249000; y < -81000; y += 1600)
         {
             Vector2 pos = new Vector2(x + 80, y + 80);
             float radius = 10 + (Math.Abs(x * y) % 20);
@@ -942,13 +1481,13 @@ static void DrawTutorialHUD()
             mountainPatches.Add((pos, radius, new Color(shade, (byte)(shade - 5), (byte)(shade - 10), (byte)255)));
         }
     }
-
+ 
     // MOUNTAIN pine trees
-    for (int x = -29800; x < -10200; x += 420)
+    for (int x = -79000; x < 79000; x += 1680)
     {
-        for (int y = -11800; y < 11800; y += 400)
+        for (int y = -249000; y < -81000; y += 1600)
         {
-            if (Math.Abs(x + y) % 3 != 0) continue; // keep sparse
+            if (Math.Abs(x + y) % 3 != 0) continue;
             Vector2 pos = new Vector2(x + 100, y + 100);
             mountainTrees.Add((pos, new Color((byte)25,(byte)55,(byte)30,(byte)255)));
         }
@@ -1309,30 +1848,75 @@ static void DrawIncubatorMenu()
     float x = player.Position.X;
     float y = player.Position.Y;
 
+    // ── Exact zones inside grasslands (checked first) ──
     if (x >= -3000 && x <= 4000 && y >= -1500 && y <= 2500)
         return "SAFE ZONE";
     if (x >= -3000 && x <= 0 && y >= -10000 && y <= -6000)
         return "FARM";
-    if (x < -30000 && y > -12000 && y < 12000)
-        return "SNOW ZONE";
-    if (x >= -30000 && x < -10000 && y > -12000 && y < 12000)
-        return "MOUNTAINS";
-    if (x >= 8000 && x < 22000 && y > -12000 && y < 12000)
-        return "DESERT";
-    if (x >= 22000 && x < 28000)
-        return "BEACH";
-    if (x >= 28000)
-        return "OCEAN";
-    if (x < -30000 && y <= -12000)
-        return "MOUNTAINS";
-    if (x >= 22000 && y <= -12000)
-        return "VOLCANO";
-    if (y < -12000 || y > 12000)
-        return "FOREST";
     if (x >= 11800 && x <= 18200 && y >= 3000 && y <= 8200)
-    return "HAMILTRON CITY";
+        return "HAMILTRON CITY";
     if (x >= -18000 && x <= -13800 && y >= 3200 && y <= 6200)
-    return "ROTOAIRA";
+        return "ROTOAIRA";
+
+    // ── 3×3 grid sectors ──
+    // NW: Snow (X -250k to -80k, Y -250k to -80k)
+    if (x < -80000 && y < -80000)
+    {
+        if (x < -180000) return "TUNDRA";
+        if (x >= -180000 && x < -140000 && y >= -180000 && y < -140000) return "FROZEN LAKE";
+        if (x >= -200000 && x < -140000 && y >= -120000) return "ICE CAVES";
+        return "SNOW ZONE";
+    }
+    // N: Mountains (X -80k to 80k, Y -250k to -80k)
+    if (x >= -80000 && x < 80000 && y < -80000)
+    {
+        if (x >= -80000 && x < -20000 && y >= -170000 && y < -120000) return "ALPINE MEADOW";
+        if (x >= 20000 && y >= -200000 && y < -140000) return "CLIFFS";
+        if (x >= -60000 && x < 20000 && y < -200000) return "CRYSTAL CAVES";
+        return "MOUNTAINS";
+    }
+    // NE: Volcano (X 80k to 250k, Y -250k to -80k)
+    if (x >= 80000 && y < -80000)
+    {
+        if (x >= 140000 && x < 200000 && y >= -200000 && y < -140000) return "CALDERA";
+        if (x < 140000 && y >= -170000 && y < -110000) return "ASHEN WASTES";
+        if (y >= -110000) return "LAVA FIELDS";
+        return "VOLCANO";
+    }
+    // W: Swamp (X -250k to -80k, Y -80k to 80k)
+    if (x < -80000 && y >= -80000 && y < 80000)
+    {
+        if (x < -180000 && y >= -30000 && y < 30000) return "MANGROVE";
+        if (x >= -180000 && x < -130000 && y >= -30000 && y < 30000) return "BOG";
+        if (x < -170000 && y >= 30000) return "DEAD MARSH";
+        return "SWAMP";
+    }
+    // E: Desert (X 80k to 250k, Y -80k to 80k)
+    if (x >= 80000 && y >= -80000 && y < 80000)
+    {
+        if (x >= 140000 && x < 190000 && y >= -20000 && y < 20000) return "OASIS";
+        if (x >= 200000 && y >= -50000 && y < 50000) return "DUNES";
+        if (x < 160000 && y >= 30000) return "BADLANDS";
+        return "DESERT";
+    }
+    // SW: Forest (X -250k to -80k, Y 80k to 250k)
+    if (x < -80000 && y >= 80000)
+    {
+        if (x < -170000 && y < 170000) return "DARK FOREST";
+        if (x >= -170000 && y < 160000) return "ENCHANTED WOODS";
+        if (x < -160000 && y >= 170000) return "MUSHROOM GROVE";
+        return "FOREST";
+    }
+    // S+SE: Beach / Ocean (X -80k to 250k, Y 80k to 250k)
+    if (y >= 80000)
+    {
+        if (y < 115000) return "BEACH";
+        if (x >= -80000 && x < 40000 && y < 180000) return "CORAL REEF";
+        if (x >= -80000 && x < 40000 && y >= 180000) return "DEEP OCEAN";
+        if (x >= 80000 && x < 200000 && y >= 150000 && y < 220000) return "ISLANDS";
+        return "OCEAN";
+    }
+    // C: Grasslands (fallback for X -80k to 80k, Y -80k to 80k)
     return "GRASSLANDS";
 }
 

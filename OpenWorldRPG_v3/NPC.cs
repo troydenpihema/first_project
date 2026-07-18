@@ -33,6 +33,22 @@ namespace OpenWorldRPG
     public bool DrawInsideNow = false;
     public string HomeBuilding = "DAYCARE";
     public string SpriteKey = "villager";
+    // ── LIVING WORLD SCHEDULE ──
+    public enum NpcRole { None, Farmer, Guard, Fisherman, Lumberjack, Shopkeeper, TavernPatron, Citizen }
+    public NpcRole Role = NpcRole.None;
+    public List<ScheduleSlot> DailySchedule = null; // null = use legacy HasSchedule or wander
+    public string CurrentActivity = "";              // readable label: "Farming", "Patrolling", etc.
+    int _currentSlotIndex = -1;
+
+    public struct ScheduleSlot
+    {
+        public float StartHour;   // e.g. 6.0 = 6:00 AM
+        public float EndHour;     // e.g. 12.0 = noon
+        public Vector2 Destination;
+        public string Activity;   // "Farming", "Eating lunch", "Sleeping"
+        public bool HideNpc;      // true = indoors / asleep (not drawn in world)
+        public float WanderRadius; // how far to roam around Destination (0 = stand still)
+    }
     bool wasHidden = false;
     public enum Dir { North, West, South, East }
     public Dir Facing = Dir.South;
@@ -64,6 +80,72 @@ if (moving)
 }
 else _animFrame = 0;
 _lastPos = Position;
+
+  if (DailySchedule != null && DailySchedule.Count > 0)
+    {
+        float hour = Program.GetCurrentHour();
+        DrawInsideNow = false;
+
+        // find which slot we're in
+        int slotIdx = -1;
+        for (int s = 0; s < DailySchedule.Count; s++)
+        {
+            var sl = DailySchedule[s];
+            if (hour >= sl.StartHour && hour < sl.EndHour) { slotIdx = s; break; }
+        }
+
+        if (slotIdx == -1) // no slot covers this hour → sleep at home
+        {
+            if (!wasHidden) Position = HomeAnchor;
+            Hidden = true; CurrentActivity = "Sleeping"; wasHidden = true;
+            return;
+        }
+
+        if (wasHidden) Position = HomeAnchor; // snap home before walking out
+        wasHidden = false;
+
+        var slot = DailySchedule[slotIdx];
+        CurrentActivity = slot.Activity;
+
+        if (slot.HideNpc)
+        {
+            Hidden = true; DrawInsideNow = true;
+            Position = slot.Destination;
+            return;
+        }
+        Hidden = false;
+
+        // reset wander target when slot changes
+        if (slotIdx != _currentSlotIndex)
+        {
+            _currentSlotIndex = slotIdx;
+            wanderTarget = slot.Destination;
+            wanderTimer = 0f;
+        }
+
+        Vector2 goal = slot.Destination;
+        float dist = Vector2.Distance(Position, goal);
+
+        if (dist > 60f)
+        {
+            Position += Vector2.Normalize(goal - Position) * ScheduleSpeed * dt;
+        }
+        else if (slot.WanderRadius > 1f)
+        {
+            wanderTimer -= dt;
+            if (wanderTimer <= 0)
+            {
+                wanderTarget = goal + new Vector2(
+                    Raylib.GetRandomValue((int)-slot.WanderRadius, (int)slot.WanderRadius),
+                    Raylib.GetRandomValue((int)-slot.WanderRadius, (int)slot.WanderRadius));
+                wanderTimer = Raylib.GetRandomValue(2, 5);
+            }
+            Position = Vector2.Lerp(Position, wanderTarget, dt * 1.5f);
+        }
+        // else stand still at destination
+
+        return;
+    }
 
     if (HasSchedule)
     {

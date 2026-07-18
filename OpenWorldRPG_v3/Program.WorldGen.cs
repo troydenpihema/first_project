@@ -12,6 +12,166 @@ namespace OpenWorldRPG
         {
             var rng = new Random(12345);
 
+static void SpawnLivingWorldNPCs()
+{
+    // ── Reference points — adjust to match your world layout ──
+    // Grab building positions dynamically where possible
+    Vector2 farmArea   = new Vector2(-2000, -8000);
+    Vector2 dockArea   = new Vector2(24000, 0);       // beach/ocean edge
+    Vector2 forestArea = new Vector2(-5000, -14000);
+    Vector2 townCenter = new Vector2(500, 0);
+    Vector2 tavernPos  = Vector2.Zero;
+    Vector2 superPos   = Vector2.Zero;
+
+    foreach (var b in buildings)
+    {
+        if (b.BuildingName == "DBar")
+            tavernPos = new Vector2(b.Bounds.X + 40, b.Bounds.Y + 60);
+        if (b.BuildingName == "SUPERMARKET")
+            superPos = new Vector2(b.Bounds.X + 40, b.Bounds.Y + 60);
+    }
+
+    // ── FARMERS (3) — leave home 6AM, farm until noon, lunch, farm again, home by 6PM ──
+    string[] farmerNames = { "Hemi", "Ngaire", "Wiremu" };
+    for (int i = 0; i < farmerNames.Length; i++)
+    {
+        Vector2 home = farmArea + new Vector2(i * 300, 200);
+        Vector2 field = farmArea + new Vector2(i * 300, -200);
+        Vector2 lunch = farmArea + new Vector2(500, 100);
+
+        var npc = new NPC(home, farmerNames[i], "Crops won't tend themselves!")
+        {
+            SpriteKey = "villager", Role = NPC.NpcRole.Farmer,
+            HomeAnchor = home, ScheduleSpeed = 80f,
+            DailySchedule = new List<NPC.ScheduleSlot>
+            {
+                new() { StartHour = 6f,  EndHour = 12f, Destination = field, Activity = "Farming",     WanderRadius = 40f },
+                new() { StartHour = 12f, EndHour = 13f, Destination = lunch, Activity = "Eating lunch", WanderRadius = 15f },
+                new() { StartHour = 13f, EndHour = 18f, Destination = field, Activity = "Farming",     WanderRadius = 40f },
+                // 18–6 = no slot → sleeps at HomeAnchor
+            }
+        };
+        npcs.Add(npc);
+    }
+
+    // ── FISHERMEN (2) — leave dock at dawn, fish all morning, back by afternoon ──
+    string[] fisherNames = { "Rangi", "Moana" };
+    for (int i = 0; i < fisherNames.Length; i++)
+    {
+        Vector2 home = dockArea + new Vector2(-400, i * 120);
+        Vector2 dock = dockArea + new Vector2(i * 80, -60);
+
+        var npc = new NPC(home, fisherNames[i], "The sea provides, if you're patient.")
+        {
+            SpriteKey = "villager", Role = NPC.NpcRole.Fisherman,
+            HomeAnchor = home, ScheduleSpeed = 70f,
+            DailySchedule = new List<NPC.ScheduleSlot>
+            {
+                new() { StartHour = 5f,  EndHour = 13f, Destination = dock,  Activity = "Fishing",      WanderRadius = 30f },
+                new() { StartHour = 13f, EndHour = 14f, Destination = home,  Activity = "Eating lunch",  WanderRadius = 10f },
+                new() { StartHour = 14f, EndHour = 17f, Destination = dock,  Activity = "Mending nets",  WanderRadius = 20f },
+                new() { StartHour = 19f, EndHour = 22f, Destination = tavernPos, Activity = "At the tavern", WanderRadius = 25f },
+            }
+        };
+        npcs.Add(npc);
+    }
+
+    // ── LUMBERJACKS (2) — chop trees in the forest ──
+    string[] lumberNames = { "Tama", "Kahu" };
+    for (int i = 0; i < lumberNames.Length; i++)
+    {
+        Vector2 home = forestArea + new Vector2(300, i * 200);
+        Vector2 woods = forestArea + new Vector2(-200, i * 150);
+
+        var npc = new NPC(home, lumberNames[i], "Nothing beats the sound of an axe at dawn.")
+        {
+            SpriteKey = "villager", Role = NPC.NpcRole.Lumberjack,
+            HomeAnchor = home, ScheduleSpeed = 75f,
+            DailySchedule = new List<NPC.ScheduleSlot>
+            {
+                new() { StartHour = 7f,  EndHour = 12f, Destination = woods, Activity = "Chopping trees", WanderRadius = 50f },
+                new() { StartHour = 12f, EndHour = 13f, Destination = home,  Activity = "Eating lunch",   WanderRadius = 10f },
+                new() { StartHour = 13f, EndHour = 17f, Destination = woods, Activity = "Chopping trees", WanderRadius = 50f },
+                new() { StartHour = 20f, EndHour = 22f, Destination = tavernPos, Activity = "At the tavern", WanderRadius = 25f },
+            }
+        };
+        npcs.Add(npc);
+    }
+
+    // ── GUARDS (3) — patrol the town, day and night shifts ──
+    string[] guardNames = { "Rawiri", "Anika", "Tane" };
+    Vector2[] patrolPoints = {
+        townCenter + new Vector2(-500, -200),
+        townCenter + new Vector2(800, 300),
+        townCenter + new Vector2(-100, 600),
+    };
+    for (int i = 0; i < guardNames.Length; i++)
+    {
+        Vector2 home = townCenter + new Vector2(-800 + i * 200, -600);
+        bool nightShift = i == 2; // Tane does nights
+
+        var npc = new NPC(home, guardNames[i], "Stay out of trouble.")
+        {
+            SpriteKey = "cop", Role = NPC.NpcRole.Guard,
+            HomeAnchor = home, ScheduleSpeed = 65f,
+            DailySchedule = nightShift
+                ? new List<NPC.ScheduleSlot>
+                {
+                    new() { StartHour = 20f, EndHour = 24f, Destination = patrolPoints[i], Activity = "Patrolling", WanderRadius = 120f },
+                    new() { StartHour = 0f,  EndHour = 6f,  Destination = patrolPoints[(i+1)%3], Activity = "Patrolling", WanderRadius = 120f },
+                }
+                : new List<NPC.ScheduleSlot>
+                {
+                    new() { StartHour = 6f,  EndHour = 12f, Destination = patrolPoints[i], Activity = "Patrolling",  WanderRadius = 120f },
+                    new() { StartHour = 12f, EndHour = 13f, Destination = superPos,        Activity = "Eating lunch", WanderRadius = 15f },
+                    new() { StartHour = 13f, EndHour = 18f, Destination = patrolPoints[(i+1)%3], Activity = "Patrolling", WanderRadius = 120f },
+                }
+        };
+        npcs.Add(npc);
+    }
+
+    // ── TAVERN REGULARS (3) — work odd jobs during day, fill the tavern at night ──
+    string[] patronNames = { "Hone", "Mere", "Paora" };
+    for (int i = 0; i < patronNames.Length; i++)
+    {
+        Vector2 home = townCenter + new Vector2(200 + i * 100, 400);
+
+        var npc = new NPC(home, patronNames[i], "Pull up a chair, bro!")
+        {
+            SpriteKey = "villager", Role = NPC.NpcRole.TavernPatron,
+            HomeAnchor = home, ScheduleSpeed = 60f,
+            DailySchedule = new List<NPC.ScheduleSlot>
+            {
+                new() { StartHour = 9f,  EndHour = 16f, Destination = townCenter + new Vector2(i * 60 - 60, 0), Activity = "Wandering town", WanderRadius = 80f },
+                new() { StartHour = 17f, EndHour = 23f, Destination = tavernPos, Activity = "Drinking",   WanderRadius = 30f },
+            }
+        };
+        npcs.Add(npc);
+    }
+
+    // ── TOWN CITIZENS (4) — general daily routine ──
+    string[] citizenNames = { "Aroha", "Matiu", "Ria", "Kiri" };
+    for (int i = 0; i < citizenNames.Length; i++)
+    {
+        Vector2 home = townCenter + new Vector2(-300 + i * 200, -400 + (i % 2) * 300);
+
+        var npc = new NPC(home, citizenNames[i], "Lovely day for a walk.")
+        {
+            SpriteKey = "villager", Role = NPC.NpcRole.Citizen,
+            HomeAnchor = home, ScheduleSpeed = 55f,
+            DailySchedule = new List<NPC.ScheduleSlot>
+            {
+                new() { StartHour = 7f,  EndHour = 8f,  Destination = home,      Activity = "Morning routine", WanderRadius = 20f },
+                new() { StartHour = 8f,  EndHour = 12f, Destination = superPos,  Activity = "Shopping",       WanderRadius = 60f },
+                new() { StartHour = 12f, EndHour = 13f, Destination = home,      Activity = "Eating lunch",    WanderRadius = 10f },
+                new() { StartHour = 13f, EndHour = 17f, Destination = townCenter, Activity = "Walking around",  WanderRadius = 100f },
+                new() { StartHour = 19f, EndHour = 21.5f, Destination = tavernPos, Activity = "At the tavern",  WanderRadius = 25f },
+            }
+        };
+        npcs.Add(npc);
+    }
+}
+
 // Forest top - Oak trees
 for (int i = -30000; i < 30000; i += 200)
 {
@@ -141,12 +301,12 @@ AddFountain(2280, -580);
 AddBench(-2150, 220);
 AddBench(-2000, 220);
 AddPicnicTable(-1300, 820);
-AddSwingSet(-460, 1130);
+AddSwingSet(-146, 1620);
 AddSwingSet(3035, -1170);
 AddSandbox(-370, -50);
 AddLamppost(990, -1100);
 AddLamppost(350, -1100);
-AddPostbox(-1100, 430);
+AddPostbox(-1100, 260);
 
 // farm area
 AddBarnHouse(-1075, -9700);
@@ -192,7 +352,7 @@ AddFarmingShop(420, -11200);
 
 //Dbars
 AddDBar(1540, 650);
-AddDBar(-4000, 410);
+AddDBar(-4000, 210);
 
 //AA buildings
 AddAA(-1430, 100);       // safe zone
@@ -273,8 +433,8 @@ AddMyHouse(-2090, -9855);
 AddMailbox(-2050, -9705, -1);
 
 AddGasStation(300, -420);
-AddGasStation(7000, 540);
-AddGasStation(-9000, 540);
+AddGasStation(7000, 310);
+AddGasStation(-9000, 310);
 
 AddMarae(-6900, -230);
 AddMarae(-2050, -300);
@@ -285,7 +445,7 @@ AddSupermarket(3600, 200);
 
 AddSwimmingComplex(1480, -1000);
 
-AddTennisCourt(1975, 1588);
+AddTennisCourt(-1162, 1447);
 
 AddBasketballCourt(3680, -920);
 
@@ -311,8 +471,8 @@ AddMcDonalds(13600, 4100);
 AddCasino(13600, 5800);
 
 // Central (north avenue corridor)
-AddAirport(15100, 3200);          // large footprint north of boulevard
-AddGasStation(15100, 5800);
+AddAirport(15400, 3200);         
+AddGasStation(15100, 5360);
 AddHallensteins(15500, 4100);
 AddKiwiCuts(15900, 4100);
 AddDropZone(16000, 5800);
@@ -323,10 +483,6 @@ AddStore(17000, 4100);
 AddDBar(17000, 5800);
 AddWeapons(17400, 4100);
 AddBurgerKing(17400, 5800);
-
-// Extra houses — residential block south
-for (int hx = 12100; hx < 17800; hx += 300)
-    AddMyHouse(hx, 7400);
 
 // ── COUNTRY TOWN OF ROTOAIRA ─────────────────────────────────────────────────
 AddStore(-17600, 3400);
@@ -999,6 +1155,8 @@ multiplayer.CardActionReceived += (fromId, action) =>
     }
 };
 
+InitBiomeContent();
+
 // Dealer options: specific mapping (horses -> barn, BMX/Mountain -> bike, Sedan/Truck/SUV -> car)
 dealerBikeOptions.Clear();
 dealerBarnOptions.Clear();
@@ -1047,6 +1205,7 @@ foreach (var v in vehicles.Take(4))
 
             GenerateSafeZoneTexture();
             GenerateBiomeTextures();
+            SpawnLivingWorldNPCs(); 
 
                     }
     }

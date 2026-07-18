@@ -114,9 +114,9 @@ namespace OpenWorldRPG
 
         if (Fuel <= 0) move = Vector2.Zero;
 
-        float speedMultiplier = OnRoad ? 1f + (Program.player.DrivingLevel * 0.01f) : 0.4f;
+        float speedMultiplier = OnRoad ? 1f + (Program.player.DrivingLevel * 0.01f) : 0.2f;
         Vector2 targetVelocity = move * speed * speedMultiplier;
-        velocity = Vector2.Lerp(velocity, targetVelocity, dt * (OnRoad ? 5f : 2f));
+        velocity = Vector2.Lerp(velocity, targetVelocity, dt * (OnRoad ? 5f : 1.2f));
 
         if (isMoving)
         {

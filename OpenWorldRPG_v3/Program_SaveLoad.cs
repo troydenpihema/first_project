@@ -137,7 +137,10 @@ namespace OpenWorldRPG
     // Relationships
     foreach (var f in friendNPCs)
     { S("friend." + f.Name, f.Friendship); SB("friend." + f.Name + ".talked", f.TalkedToday);
-    SB("friend." + f.Name + ".gifted", f.GiftedToday); SB("friend." + f.Name + ".reward", f.RewardGiven); }
+    SB("friend." + f.Name + ".gifted", f.GiftedToday); SB("friend." + f.Name + ".reward", f.RewardGiven);
+    SB("friend." + f.Name + ".m30", f.Milestone30);
+    SB("friend." + f.Name + ".m60", f.Milestone60);
+    SB("friend." + f.Name + ".m90", f.Milestone90); }
 
     // Banking
     S("bankSigned", bankSignedUp ? 1 : 0); S("bankBal", bankBalance);
@@ -430,6 +433,56 @@ for (int i = 0; i < livestockPens.Count; i++)
         SB("ach." + achievements[i].Id, achievements[i].Unlocked);
     S("ach.visitedBiomes", string.Join("|", achievementVisited));
 
+    // ── NPC Favors ──
+    for (int i = 0; i < friendNPCs.Count; i++)
+    {
+        var fn = friendNPCs[i];
+        S("favor." + i + ".cd", fn.FavorCooldownDays);
+        S("favor." + i + ".done", fn.FavorsCompleted);
+        SB("favor." + i + ".has", fn.ActiveFavor != null && !fn.ActiveFavor.Completed);
+        if (fn.ActiveFavor != null && !fn.ActiveFavor.Completed)
+        {
+            var fav = fn.ActiveFavor;
+            S("favor." + i + ".item", fav.ItemNeeded);
+            S("favor." + i + ".need", fav.AmountNeeded);
+            S("favor." + i + ".gave", fav.AmountDelivered);
+            S("favor." + i + ".reward", fav.RewardAmount);
+            S("favor." + i + ".fgain", fav.FriendshipGain);
+            S("favor." + i + ".desc", fav.Description);
+            S("favor." + i + ".dlg", fav.Dialogue);
+        }
+    }
+
+    // ── Reputation ──
+    S("reputation", player.Reputation);
+
+    // ── Synergies ──
+    S("synNotified", string.Join("|", notifiedSynergies));
+
+    // ── Daily Challenges ──
+    S("dc.count", dailyChallenges.Count);
+    SB("dc.bonus", dailyBonusClaimed);
+    for (int i = 0; i < dailyChallenges.Count; i++)
+    {
+        var c = dailyChallenges[i];
+        S("dc." + i + ".title", c.Title);
+        S("dc." + i + ".cat", c.Category);
+        S("dc." + i + ".base", c.Baseline);
+        S("dc." + i + ".target", c.Target);
+        S("dc." + i + ".reward", c.Reward);
+        SB("dc." + i + ".done", c.Completed);
+    }
+
+    // ── Zone Discovery ──
+    S("disc.count", discoveredZones.Count);
+    int dzi = 0;
+    foreach (var z in discoveredZones) { S("disc." + dzi, z); dzi++; }
+
+    // ── Milestone notifications ──
+    S("milestones.count", notifiedMilestones.Count);
+    int mli = 0;
+    foreach (var m in notifiedMilestones) { S("milestone." + mli, m); mli++; }
+
     // ── Fog of War ──
     byte[] fogBytes = new byte[(FogCols * FogRows + 7) / 8];
     for (int i = 0; i < FogCols * FogRows; i++)
@@ -592,7 +645,10 @@ static void LoadGame()
     // Relationships
     foreach (var f in friendNPCs)
     { f.Friendship = GI("friend." + f.Name); f.TalkedToday = GB("friend." + f.Name + ".talked");
-    f.GiftedToday = GB("friend." + f.Name + ".gifted"); f.RewardGiven = GB("friend." + f.Name + ".reward"); }
+    f.GiftedToday = GB("friend." + f.Name + ".gifted"); f.RewardGiven = GB("friend." + f.Name + ".reward");
+    f.Milestone30 = GB("friend." + f.Name + ".m30");
+    f.Milestone60 = GB("friend." + f.Name + ".m60");
+    f.Milestone90 = GB("friend." + f.Name + ".m90"); }
 
     // Banking load
     bankSignedUp = GI("bankSigned") == 1; bankBalance = GI("bankBal");
@@ -966,6 +1022,80 @@ for (int i = 0; i < penCount; i++)
     if (visitedStr.Length > 0)
         foreach (string b in visitedStr.Split('|'))
             if (b.Length > 0) achievementVisited.Add(b);
+
+    // ── NPC Favors ──
+    for (int i = 0; i < friendNPCs.Count; i++)
+    {
+        var fn = friendNPCs[i];
+        fn.FavorCooldownDays = GI("favor." + i + ".cd");
+        fn.FavorsCompleted = GI("favor." + i + ".done");
+        fn.ActiveFavor = null;
+        if (GB("favor." + i + ".has"))
+        {
+            fn.ActiveFavor = new NpcFavor
+            {
+                ItemNeeded = GS("favor." + i + ".item", ""),
+                AmountNeeded = GI("favor." + i + ".need"),
+                AmountDelivered = GI("favor." + i + ".gave"),
+                RewardAmount = GI("favor." + i + ".reward"),
+                FriendshipGain = GI("favor." + i + ".fgain"),
+                Description = GS("favor." + i + ".desc", ""),
+                Dialogue = GS("favor." + i + ".dlg", ""),
+                Completed = false,
+            };
+        }
+    }
+
+    // ── Reputation ──
+    player.Reputation = GI("reputation");
+
+    // ── Synergies ──
+    notifiedSynergies.Clear();
+    string synStr = GS("synNotified", "");
+    if (synStr.Length > 0)
+        foreach (string s in synStr.Split('|'))
+            if (s.Length > 0) notifiedSynergies.Add(s);
+
+    // ── Daily Challenges ──
+    dailyChallenges.Clear();
+    dailyBonusClaimed = GB("dc.bonus");
+    int dcCount = GI("dc.count");
+    for (int i = 0; i < dcCount; i++)
+    {
+        string title = GS("dc." + i + ".title", "");
+        string cat = GS("dc." + i + ".cat", "");
+        int baseline = GI("dc." + i + ".base");
+        int target = GI("dc." + i + ".target");
+        int reward = GI("dc." + i + ".reward");
+        bool done = GB("dc." + i + ".done");
+
+        // reconnect the Progress function by matching the title prefix to the pool
+        string prefix = title.Contains(" x") ? title.Substring(0, title.LastIndexOf(" x")) : title;
+        var poolMatch = challengePool.FirstOrDefault(p => p.title == prefix);
+        if (poolMatch.title == null) continue;
+
+        dailyChallenges.Add(new DailyChallenge
+        {
+            Title = title,
+            Category = cat,
+            Progress = poolMatch.progress,
+            Baseline = baseline,
+            Target = target,
+            Reward = reward,
+            Completed = done,
+        });
+    }
+    dailyChallengesCompletedToday = dailyChallenges.Count(c => c.Completed);
+
+    // ── Zone Discovery ──
+    discoveredZones.Clear();
+    int dzCount = GI("disc.count");
+    for (int i = 0; i < dzCount; i++) { string z = GS("disc." + i, ""); if (z != "") discoveredZones.Add(z); }
+
+    // ── Milestone notifications ──
+    notifiedMilestones.Clear();
+    int mlCount = GI("milestones.count");
+    for (int i = 0; i < mlCount; i++) { string m = GS("milestone." + i, ""); if (m != "") notifiedMilestones.Add(m); }
 
     // ── Fog of War ──
     ResetFogOfWar();

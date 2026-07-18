@@ -247,7 +247,7 @@ public static readonly Dictionary<SlotSymbol, float> TwoMatchMultiplier = new()
         public static bool IsInWater(Vector2 pos) => Raylib.CheckCollisionPointRec(pos, oceanBounds);
         public static bool IsWaterAt(Vector2 pos) =>
             IsInWater(pos) || lakes.Any(l => Vector2.Distance(pos, l.Position) < 115);
-        public static Rectangle oceanBounds = new Rectangle(28000 + 200, -40000 + 100, 12000 - 150, 80000 - 200);
+        public static Rectangle oceanBounds = new Rectangle(-79800, 115200, 329600, 134600);
         static List<Vector2> coastguardStations = new();
         const int CoastguardFee = 200;
         static List<Vector2> boatSpawnPoints = new();
@@ -621,6 +621,48 @@ static List<Job> jobBoard = new()
 static bool jobBoardOpen = false;
 static int lastJobResetDay = -1;
 
+// ── SHOP OPERATING HOURS ──
+static readonly Dictionary<string, (float open, float close)> shopHours = new()
+{
+    { "SUPERMARKET",    (7f,  21f) },
+    { "WEAPONS",        (8f,  17f) },
+    { "MAGIC SHOP",     (8f,  17f) },
+    { "RANGING SHOP",   (8f,  17f) },
+    { "FARMING SHOP",   (7f,  18f) },
+    { "STORE",          (8f,  17f) },
+    { "HOBBIES STORE",  (9f,  17f) },
+    { "KiwiCuts",       (9f,  17f) },
+    { "HALLENSTEINS",   (9f,  17f) },
+    { "HOSPITAL",       (0f,  24f) },  // always open
+    { "POLICE STATION", (0f,  24f) },
+    { "GAS STATION",    (6f,  22f) },
+    { "DBar",           (17f, 2f)  },  // opens evening, closes 2 AM
+    { "Casino",         (18f, 4f)  },
+    { "BANK",           (9f,  16f) },
+    { "LIBRARY",        (8f,  18f) },
+    { "GYM",            (6f,  22f) },
+};
+
+public static bool IsShopOpen(string buildingName)
+{
+    if (!shopHours.TryGetValue(buildingName, out var hrs)) return true; // unknown = always open
+    float h = GetCurrentHour();
+    if (hrs.open < hrs.close)
+        return h >= hrs.open && h < hrs.close;
+    // wraps midnight (e.g. 17–2)
+    return h >= hrs.open || h < hrs.close;
+}
+
+static string GetShopHoursLabel(string buildingName)
+{
+    if (!shopHours.TryGetValue(buildingName, out var hrs)) return "";
+    int oh = (int)hrs.open % 12; if (oh == 0) oh = 12;
+    int ch = (int)hrs.close % 12; if (ch == 0) ch = 12;
+    string op = hrs.open >= 12 ? "PM" : "AM";
+    string cp = hrs.close >= 12 ? "PM" : "AM";
+    return $"{oh}{op}–{ch}{cp}";
+}
+
 // Tasks
 static List<SideTask> billboardTasks = new()
 {
@@ -646,24 +688,158 @@ static int  cardSpentToday = 0;
 
 static List<FriendNPC> friendNPCs = new()
 {
-    new FriendNPC{ Name="JDogg",   FavoriteGift="Fish",  Shop="SUPERMARKET", Npc=new NPC(new Vector2(300, -500),  "JDogg",  "") },
-    new FriendNPC{ Name="Jake", FavoriteGift="Logs",  Shop="FARMING SHOP", Npc=new NPC(new Vector2(-400, -750), "Jake",   "") },
-    new FriendNPC{ Name="Shack",   FavoriteGift="Bones", Shop="MAGIC SHOP", Npc=new NPC(new Vector2(700, -900),  "Shack",  "") },
-    new FriendNPC{ Name="Cride", FavoriteGift="Fur",   Shop="DBar",  Npc=new NPC(new Vector2(-150, -300), "Cride","") },
-    new FriendNPC{ Name="Traz",     FavoriteGift="Fish",  Shop="SUPERMARKET",  Npc=new NPC(new Vector2(360, -520),  "Traz",     "Kia ora!") },
-    new FriendNPC{ Name="Nola", FavoriteGift="Logs",  Shop="FARMING SHOP", Npc=new NPC(new Vector2(-400, -750), "Nola",   "") },
-    new FriendNPC{ Name="Tipene",   FavoriteGift="Bones", Shop="MAGIC SHOP", Npc=new NPC(new Vector2(700, -900),  "Tipene",  "") },
-    new FriendNPC{ Name="Joybells", FavoriteGift="Fur",   Shop="DBar",  Npc=new NPC(new Vector2(-150, -300), "Joybells","") },
-    new FriendNPC{ Name="Rala",   FavoriteGift="Fish",  Shop="SUPERMARKET", Npc=new NPC(new Vector2(300, -500),  "Rala",  "") },
-    new FriendNPC{ Name="Eden", FavoriteGift="Logs",  Shop="FARMING SHOP", Npc=new NPC(new Vector2(-400, -750), "Eden",   "") },
-    new FriendNPC{ Name="Eli",   FavoriteGift="Bones", Shop="MAGIC SHOP", Npc=new NPC(new Vector2(700, -900),  "Eli",  "") },
-    new FriendNPC{ Name="Ezra", FavoriteGift="Fur",   Shop="DBar",  Npc=new NPC(new Vector2(-150, -300), "Ezra","") },
-    new FriendNPC{ Name="Hunter",   FavoriteGift="Bones", Shop="MAGIC SHOP", Npc=new NPC(new Vector2(700, -900),  "Hunter",  "") },
-    new FriendNPC{ Name="Ava", FavoriteGift="Fur",   Shop="DBar",  Npc=new NPC(new Vector2(-150, -300), "Ava","") },
-    new FriendNPC{ Name="Leo",   FavoriteGift="Bones", Shop="MAGIC SHOP", Npc=new NPC(new Vector2(700, -900),  "Leo",  "") },
-    new FriendNPC{ Name="Alice", FavoriteGift="Fur",   Shop="DBar",  Npc=new NPC(new Vector2(-150, -300), "Alice","") },
-    new FriendNPC{ Name="Whale",   FavoriteGift="Bones", Shop="MAGIC SHOP", Npc=new NPC(new Vector2(700, -900),  "Whale",  "") },
-    new FriendNPC{ Name="Jail", FavoriteGift="Fur",   Shop="DBar",  Npc=new NPC(new Vector2(-150, -300), "Jail","") },
+    new FriendNPC {
+        Name="JDogg", FavoriteGift="Fish", Shop="SUPERMARKET",
+        Npc=new NPC(new Vector2(300, -500), "JDogg", ""),
+        Likes=new[]{"Fish","Rod","Water"}, Dislikes=new[]{"Bones","Magic"},
+        Fears=new[]{"Sharks"}, Personality="Loyal, competitive, loves the ocean",
+        FavoriteFood="Cooked Fish", Opinion="The sea gives you everything you need.",
+        Partner="Cride", Children=Array.Empty<string>()
+    },
+    new FriendNPC {
+        Name="Cride", FavoriteGift="Fur", Shop="DBar",
+        Npc=new NPC(new Vector2(-150, -300), "Cride", ""),
+        Likes=new[]{"Fur","Bow","Leather"}, Dislikes=new[]{"Loud","Fire"},
+        Fears=new[]{"Blizzards"}, Personality="Quiet, sharp, observant hunter",
+        FavoriteFood="Steak & Chips", Opinion="Actions speak louder than words.",
+        Partner="JDogg", Children=Array.Empty<string>()
+    },
+    new FriendNPC {
+        Name="Shack", FavoriteGift="Bones", Shop="MAGIC SHOP",
+        Npc=new NPC(new Vector2(700, -900), "Shack", ""),
+        Likes=new[]{"Bones","Staff","Crystal"}, Dislikes=new[]{"Iron","Sword"},
+        Fears=new[]{"Bandits"}, Personality="Fierce, protective, spiritual warrior",
+        FavoriteFood="Homemade Pizza", Opinion="Magic is in everything if you look.",
+        Partner="Jake", Children=new[]{"Hunter","Ava"}
+    },
+    new FriendNPC {
+        Name="Jake", FavoriteGift="Logs", Shop="FARMING SHOP",
+        Npc=new NPC(new Vector2(-400, -750), "Jake", ""),
+        Likes=new[]{"Logs","Axe","Wood"}, Dislikes=new[]{"Snake","Venom"},
+        Fears=new[]{"Snakes"}, Personality="Joker, lucky, always gambling",
+        FavoriteFood="Bacon & Eggs", Opinion="Life's a gamble, might as well enjoy it.",
+        Partner="Shack", Children=new[]{"Hunter","Ava"}
+    },
+    new FriendNPC {
+        Name="Traz", FavoriteGift="Fish", Shop="SUPERMARKET",
+        Npc=new NPC(new Vector2(360, -520), "Traz", "Kia ora!"),
+        Likes=new[]{"Fish","Stone","Iron"}, Dislikes=new[]{"Magic","Staff"},
+        Fears=new[]{"Heights"}, Personality="Tough, gruff, heart of gold",
+        FavoriteFood="Steak & Chips", Opinion="Hard work beats talent every time.",
+        Partner="Nola", Children=new[]{"Eli","Ezra","Eden"}
+    },
+    new FriendNPC {
+        Name="Nola", FavoriteGift="Logs", Shop="FARMING SHOP",
+        Npc=new NPC(new Vector2(-400, -750), "Nola", ""),
+        Likes=new[]{"Logs","Flower","Seed"}, Dislikes=new[]{"Bones","Violence"},
+        Fears=new[]{"Storms"}, Personality="Patient, kind, nurturing gardener",
+        FavoriteFood="Vegetable Soup", Opinion="Everything grows if you give it love.",
+        Partner="Traz", Children=new[]{"Eli","Ezra","Eden"}
+    },
+    new FriendNPC {
+        Name="Tipene", FavoriteGift="Bones", Shop="MAGIC SHOP",
+        Npc=new NPC(new Vector2(700, -900), "Tipene", ""),
+        Likes=new[]{"Bones","Crystal","Stone"}, Dislikes=new[]{"Noise","Gambling"},
+        Fears=new[]{"Losing loved ones"}, Personality="Calm, spiritual, protective guardian",
+        FavoriteFood="Roast Potato", Opinion="Strength comes from knowing who you protect.",
+        Partner="Joybells", Children=Array.Empty<string>()
+    },
+    new FriendNPC {
+        Name="Joybells", FavoriteGift="Fur", Shop="DBar",
+        Npc=new NPC(new Vector2(-150, -300), "Joybells", ""),
+        Likes=new[]{"Fur","Music","Flower"}, Dislikes=new[]{"Darkness","Dungeon"},
+        Fears=new[]{"The dark"}, Personality="Cheerful, bright, lights up every room",
+        FavoriteFood="Fruit Salad", Opinion="There's always a reason to smile!",
+        Partner="Tipene", Children=Array.Empty<string>()
+    },
+    new FriendNPC {
+        Name="Rala", FavoriteGift="Fish", Shop="SUPERMARKET",
+        Npc=new NPC(new Vector2(300, -500), "Rala", ""),
+        Likes=new[]{"Fish","Crystal","Star"}, Dislikes=new[]{"Dirt","Mud"},
+        Fears=new[]{"Being alone"}, Personality="Curious, dreamy, mysterious",
+        FavoriteFood="Pasta Meal", Opinion="The stars know more than we ever will.",
+        Partner="someone", Children=Array.Empty<string>()
+    },
+    new FriendNPC {
+        Name="Leo", FavoriteGift="Bones", Shop="MAGIC SHOP",
+        Npc=new NPC(new Vector2(700, -900), "Leo", ""),
+        Likes=new[]{"Bones","Gold","Sword"}, Dislikes=new[]{"Cowardice","Running"},
+        Fears=new[]{"Failure"}, Personality="Bold, proud, natural leader",
+        FavoriteFood="Steak & Chips", Opinion="A true king earns his crown.",
+        Partner="Alice", Children=new[]{"Jasper","Whale"}
+    },
+    new FriendNPC {
+        Name="Alice", FavoriteGift="Fur", Shop="DBar",
+        Npc=new NPC(new Vector2(-150, -300), "Alice", ""),
+        Likes=new[]{"Fur","Book","Crystal"}, Dislikes=new[]{"Rude","Fighting"},
+        Fears=new[]{"Losing her family"}, Personality="Thoughtful, poised, fiercely loving",
+        FavoriteFood="Pancakes", Opinion="Knowledge is the truest kind of power.",
+        Partner="Leo", Children=new[]{"Jasper","Whale"}
+    },
+    new FriendNPC {
+        Name="Eden", FavoriteGift="Logs", Shop="FARMING SHOP",
+        Npc=new NPC(new Vector2(-400, -750), "Eden", ""),
+        Likes=new[]{"Logs","Flower","Seed"}, Dislikes=new[]{"Fire","Smoke"},
+        Fears=new[]{"Forest fires"}, Personality="Nature-loving, gentle, adventurous",
+        FavoriteFood="Fruit Salad", Opinion="The forest talks if you listen.",
+        Partner="", Parents=new[]{"Traz","Nola"}, IsChild=true
+    },
+    new FriendNPC {
+        Name="Eli", FavoriteGift="Bones", Shop="MAGIC SHOP",
+        Npc=new NPC(new Vector2(700, -900), "Eli", ""),
+        Likes=new[]{"Bones","Iron","Copper"}, Dislikes=new[]{"Mess","Chaos"},
+        Fears=new[]{"Thunder"}, Personality="Smart, inventive, always tinkering",
+        FavoriteFood="Sandwich", Opinion="If it's broken, I can fix it.",
+        Partner="", Parents=new[]{"Traz","Nola"}, IsChild=true
+    },
+    new FriendNPC {
+        Name="Ezra", FavoriteGift="Fur", Shop="DBar",
+        Npc=new NPC(new Vector2(-150, -300), "Ezra", ""),
+        Likes=new[]{"Fur","Speed","Race"}, Dislikes=new[]{"Slow","Waiting"},
+        Fears=new[]{"Being stuck"}, Personality="Fast, restless, loves racing",
+        FavoriteFood="Bacon & Eggs", Opinion="Life's too short to walk!",
+        Partner="", Parents=new[]{"Traz","Nola"}, IsChild=true
+    },
+    new FriendNPC {
+        Name="Hunter", FavoriteGift="Bones", Shop="MAGIC SHOP",
+        Npc=new NPC(new Vector2(700, -900), "Hunter", ""),
+        Likes=new[]{"Bones","Bow","Stinger"}, Dislikes=new[]{"Sitting","Boredom"},
+        Fears=new[]{"Bears"}, Personality="Brave, scrappy, always exploring",
+        FavoriteFood="Cooked Fish", Opinion="Adventure is out there!",
+        Partner="", Parents=new[]{"Shack","Jake"}, IsChild=true
+    },
+    new FriendNPC {
+        Name="Ava", FavoriteGift="Fur", Shop="DBar",
+        Npc=new NPC(new Vector2(-150, -300), "Ava", ""),
+        Likes=new[]{"Fur","Music","Dance"}, Dislikes=new[]{"Fighting","Ugly"},
+        Fears=new[]{"Stage fright"}, Personality="Dramatic, sweet, natural performer",
+        FavoriteFood="Pancakes", Opinion="The world is a stage, darling!",
+        Partner="", Parents=new[]{"Shack","Jake"}, IsChild=true
+    },
+    new FriendNPC {
+        Name="Whale", FavoriteGift="Bones", Shop="MAGIC SHOP",
+        Npc=new NPC(new Vector2(700, -900), "Whale", ""),
+        Likes=new[]{"Bones","Fish","Ocean"}, Dislikes=new[]{"Crowds","Noise"},
+        Fears=new[]{"Loneliness"}, Personality="Gentle giant, quiet, deep thinker",
+        FavoriteFood="Cooked Fish", Opinion="The deepest waters are the calmest.",
+        Partner="", Parents=new[]{"Leo","Alice"}, IsChild=true
+    },
+    new FriendNPC {
+        Name="Jasper", FavoriteGift="Crystal", Shop="MAGIC SHOP",
+        Npc=new NPC(new Vector2(500, -800), "Jasper", ""),
+        Likes=new[]{"Crystal","Gold","Gem"}, Dislikes=new[]{"Dirt","Mess"},
+        Fears=new[]{"The dark"}, Personality="Curious collector, loves shiny things",
+        FavoriteFood="Homemade Pizza", Opinion="Every rock has a treasure inside!",
+        Partner="", Parents=new[]{"Leo","Alice"}, IsChild=true
+    },
+    new FriendNPC {
+        Name="Jail", FavoriteGift="Fur", Shop="DBar",
+        Npc=new NPC(new Vector2(-150, -300), "Jail", ""),
+        Likes=new[]{"Fur","Iron","Sword"}, Dislikes=new[]{"Magic","Crystal"},
+        Fears=new[]{"Being judged"}, Personality="Tough exterior, loyal once trusted",
+        FavoriteFood="Steak & Chips", Opinion="Trust is earned, not given.",
+        Partner="", Children=Array.Empty<string>()
+    },
 };        
 
         // Grocery / shopping bag
@@ -781,6 +957,10 @@ static List<FriendNPC> friendNPCs = new()
             (4000, 60),
         };
         static int backpackTier = 0;
+
+        // Scroll wheel
+        static float pmRelScrollY = 0f;
+        static float pmUnlScrollY = 0f;
 
         // Dungeon
         static Dungeon activeDungeon = new Dungeon();
@@ -950,6 +1130,58 @@ static readonly string[] metalPrefixes = { "Copper", "Iron", "Gold", "Crystal" }
         };
         static Dictionary<string,float> cropGrowDuration = new() {
             { "Wheat", 30f }, { "Carrot", 25f }, { "Potato", 35f }, { "Tomato", 40f },
+        };
+
+        // ── SEASONAL CONTENT ──
+        // Crops: which seasons they thrive in (southern hemisphere)
+        static Dictionary<string, string[]> cropSeasons = new()
+        {
+            { "Wheat",  new[] { "Spring", "Summer" } },
+            { "Carrot", new[] { "Autumn", "Spring" } },
+            { "Potato", new[] { "Spring", "Summer", "Autumn" } },
+            { "Tomato", new[] { "Summer" } },
+        };
+
+        static bool IsCropInSeason(string crop)
+        {
+            if (!cropSeasons.TryGetValue(crop, out var validSeasons)) return true;
+            return validSeasons.Contains(GetSeasonString());
+        }
+
+        static float GetSeasonalGrowthMultiplier(string crop)
+        {
+            if (IsCropInSeason(crop)) return 1.0f;
+            return 0.5f;  // out of season = half speed
+        }
+
+        // Fish: seasonal weight modifiers (multiplied onto base weight)
+        static Dictionary<string, string[]> fishSeasons = new()
+        {
+            { "Carp",        new[] { "Summer", "Autumn" } },
+            { "Perch",       new[] { "Spring", "Summer" } },
+            { "Bass",        new[] { "Summer" } },
+            { "Catfish",     new[] { "Summer", "Autumn" } },
+            { "Golden Carp", new[] { "Autumn" } },
+            { "Trout",       new[] { "Autumn", "Winter" } },
+            { "Salmon",      new[] { "Autumn" } },
+            { "Eel",         new[] { "Winter", "Spring" } },
+            { "Crayfish",    new[] { "Spring", "Summer" } },
+            { "Sturgeon",    new[] { "Winter" } },
+        };
+
+        static bool IsFishInSeason(string fishName)
+        {
+            if (!fishSeasons.TryGetValue(fishName, out var s)) return true;
+            return s.Contains(GetSeasonString());
+        }
+
+        // World events: season restrictions
+        static Dictionary<WorldEventType, string[]> eventSeasons = new()
+        {
+            { WorldEventType.Blizzard,          new[] { "Winter" } },
+            { WorldEventType.ForestFire,        new[] { "Summer" } },
+            { WorldEventType.HarvestFestival,   new[] { "Autumn" } },
+            { WorldEventType.FishingTournament, new[] { "Summer", "Autumn" } },
         };
         static List<FruitTree> fruitTrees = new();
         static float[] toolbarWaterCharge = new float[8];   
@@ -1156,6 +1388,560 @@ static readonly List<Rectangle> arenaObjects = new();
         static Action testTransitionCallback = null;
         static string testTransitionMessage = "Preparing your test...";
 
+        // ── SKILL MASTERY PERKS ──
+record SkillPerk(int Level, string Name, string Description);
+
+static readonly Dictionary<string, SkillPerk[]> skillPerks = new()
+{
+    ["Woodcutting"] = new SkillPerk[] {
+        new(5,  "Quick Chop",       "Trees take 1 fewer hit"),
+        new(15, "Hardwood Hands",   "10% chance of bonus log"),
+        new(25, "Lumber Efficiency","Double logs from Dead Wood"),
+        new(40, "Forest Sense",     "Trees highlight when nearby"),
+        new(50, "Master Lumberjack","All trees chop 1 hit faster"),
+        new(75, "Splinter Shield",  "+5 max HP permanently"),
+        new(100,"Living Legend",    "Triple logs from all trees"),
+    },
+    ["Fishing"] = new SkillPerk[] {
+        new(5,  "Patient Angler",   "Bite window +0.3s longer"),
+        new(15, "Keen Eye",         "Green zone 15% wider"),
+        new(25, "Double Catch",     "20% chance to catch 2 fish"),
+        new(40, "Deep Lure",        "Rare fish chance increased"),
+        new(50, "Net Master",       "Nets catch +1 extra fish"),
+        new(75, "Ocean Whisper",    "Perfect catch zone doubled"),
+        new(100,"Sea King",         "All fish worth 2x value"),
+    },
+    ["Mining"] = new SkillPerk[] {
+        new(5,  "Prospect",         "See ore type before mining"),
+        new(15, "Heavy Swing",      "10% chance for bonus ore"),
+        new(25, "Vein Finder",      "Rocks drop +1 ore"),
+        new(40, "Gem Sense",        "Crystal drop chance +5%"),
+        new(50, "Auto-Smelt",       "Copper ore auto-becomes bars"),
+        new(75, "Deep Strike",      "+2 ore from every rock"),
+        new(100,"Earth Shaper",     "All ore doubled"),
+    },
+    ["Combat"] = new SkillPerk[] {
+        new(5,  "Quick Recovery",   "Damage cooldown -20%"),
+        new(15, "Hard Hitter",      "+2 base melee damage"),
+        new(25, "Combo Fighter",    "Combo window +0.5s"),
+        new(40, "Battle Cry",       "Enemies flee 2s on kill"),
+        new(50, "Dodge Roll",       "Shift = dodge (brief invuln)"),
+        new(75, "Berserker",        "+25% damage below half HP"),
+        new(100,"Immortal Warrior", "Survive lethal hit once/day"),
+    },
+    ["Cooking"] = new SkillPerk[] {
+        new(5,  "Sous Chef",        "Meals heal +5 extra HP"),
+        new(15, "Seasoned Cook",    "10% chance to cook 2x"),
+        new(25, "Flavour Master",   "All food heals +15 HP"),
+        new(50, "Iron Stomach",     "Raw fish heals instead of nothing"),
+        new(75, "Feast Maker",      "Cook 3x meals at once"),
+        new(100,"Legendary Chef",   "Meals give temp +20 max HP"),
+    },
+    ["Farming"] = new SkillPerk[] {
+        new(5,  "Green Sprout",     "Crops grow 10% faster"),
+        new(15, "Fertile Hands",    "Watered crops grow 20% faster"),
+        new(25, "Harvest Plus",     "25% chance for double harvest"),
+        new(40, "Rain Dancer",      "Crops grow in rain without watering"),
+        new(50, "Seed Saver",       "20% chance to keep seeds on plant"),
+        new(75, "Season Master",    "Crops grow in any season"),
+        new(100,"Golden Harvest",   "All harvests tripled"),
+    },
+    ["Athletics"] = new SkillPerk[] {
+        new(10, "Light Feet",       "+10% move speed"),
+        new(25, "Marathon",         "Sprint drains no stamina"),
+        new(50, "Parkour",          "Walk speed +20%"),
+        new(75, "Wind Runner",      "+30% speed total"),
+        new(100,"Blur",             "Fastest in the world"),
+    },
+    ["Strength"] = new SkillPerk[] {
+        new(10, "Pack Mule",        "+5 backpack slots"),
+        new(25, "Power Lift",       "+10 backpack slots"),
+        new(50, "Iron Grip",        "Swing speed +20%"),
+        new(75, "Titan",            "+10 max HP permanently"),
+        new(100,"Colossus",         "+25 max HP, +20 slots"),
+    },
+    ["Ranged"] = new SkillPerk[] {
+        new(5,  "Steady Aim",       "+10% arrow accuracy"),
+        new(15, "Quick Nock",       "Faster arrow reload"),
+        new(25, "Piercing Shot",    "Arrows deal +3 damage"),
+        new(50, "Eagle Eye",        "+50% projectile range"),
+        new(75, "Multi-Shot",       "10% chance to fire 2 arrows"),
+        new(100,"Hawkeye",          "All ranged damage doubled"),
+    },
+    ["Driving"] = new SkillPerk[] {
+        new(10, "Fuel Saver",       "Vehicles use 10% less fuel"),
+        new(25, "Speed Demon",      "+15% vehicle speed"),
+        new(50, "Road King",        "+25% speed on roads"),
+        new(75, "Drift Master",     "Off-road penalty halved"),
+        new(100,"Grand Tourer",     "All vehicle speed +40%"),
+    },
+    ["Riding"] = new SkillPerk[] {
+        new(10, "Steady Rider",     "Mount stamina drains slower"),
+        new(25, "Bond",             "Mount speed +10%"),
+        new(50, "Gallop",           "Mount speed +20%"),
+        new(100,"Horse Whisperer",  "Mounts never tire"),
+    },
+    ["Swimming"] = new SkillPerk[] {
+        new(10, "Strong Stroke",    "+15% swim speed"),
+        new(25, "Deep Breath",      "Dive time +50%"),
+        new(50, "Aquatic",          "Swim speed +30%"),
+        new(100,"Poseidon",         "Swim as fast as walking"),
+    },
+    ["Gambling"] = new SkillPerk[] {
+        new(10, "Lucky Streak",     "+5% win chance"),
+        new(25, "Card Counter",     "+10% win chance"),
+        new(50, "High Roller",      "Max bets doubled"),
+        new(100,"House Edge",       "Almost never lose"),
+    },
+};
+
+// helper: check if player has a specific perk unlocked
+static bool HasPerk(string skill, int level)
+{
+    if (!skillPerks.TryGetValue(skill, out var perks)) return false;
+    int playerLevel = skill switch {
+        "Woodcutting" => player.WoodcuttingLevel, "Fishing" => player.FishingLevel,
+        "Mining" => player.MiningLevel, "Combat" => player.CombatLevel,
+        "Cooking" => player.CookingLevel, "Farming" => player.FarmingLevel,
+        "Athletics" => player.AthleticsLevel, "Strength" => player.StrengthLevel,
+        "Ranged" => player.RangedLevel, "Driving" => player.DrivingLevel,
+        "Riding" => player.RidingLevel, "Swimming" => player.SwimmingLevel,
+        "Gambling" => player.GamblingLevel, _ => 0
+    };
+    return playerLevel >= level;
+}
+
+        // ── REPUTATION / TOWN STANDING ──
+        static readonly (int threshold, string title, string perk)[] reputationTiers =
+        {
+            (0,    "Newcomer",     ""),
+            (100,  "Resident",     "5% shop discount"),
+            (250,  "Trusted",      "Job pay +20%"),
+            (500,  "Respected",    "10% shop discount"),
+            (1000, "Honoured",     "15% shop discount, better NPC gifts"),
+            (2500, "Legend",       "20% shop discount, max job pay bonus"),
+        };
+
+        static (string title, string perk) GetReputationTier(int rep)
+        {
+            for (int i = reputationTiers.Length - 1; i >= 0; i--)
+                if (rep >= reputationTiers[i].threshold) return (reputationTiers[i].title, reputationTiers[i].perk);
+            return (reputationTiers[0].title, reputationTiers[0].perk);
+        }
+
+        static (int current, int next) GetReputationProgress(int rep)
+        {
+            for (int i = reputationTiers.Length - 1; i >= 0; i--)
+                if (rep >= reputationTiers[i].threshold)
+                {
+                    int cur = reputationTiers[i].threshold;
+                    int nxt = i < reputationTiers.Length - 1 ? reputationTiers[i + 1].threshold : cur;
+                    return (cur, nxt);
+                }
+            return (0, reputationTiers[1].threshold);
+        }
+
+        static float GetReputationShopDiscount()
+        {
+            int rep = player.Reputation;
+            if (rep >= 2500) return 0.20f;
+            if (rep >= 1000) return 0.15f;
+            if (rep >= 500)  return 0.10f;
+            if (rep >= 100)  return 0.05f;
+            return 0f;
+        }
+
+        static float GetReputationJobBonus()
+        {
+            int rep = player.Reputation;
+            if (rep >= 2500) return 0.40f;
+            if (rep >= 250)  return 0.20f;
+            return 0f;
+        }
+
+        static void AddReputation(int amount, string reason)
+        {
+            if (amount <= 0) return;
+            string oldTitle = GetReputationTier(player.Reputation).title;
+            player.Reputation += amount;
+            string newTitle = GetReputationTier(player.Reputation).title;
+            if (newTitle != oldTitle)
+                ShowLevelUp($"Reputation: {newTitle}!", 0);
+            else
+                ShowNotification($"+{amount} Reputation ({reason})");
+        }
+
+        // ── NPC FAVOR SYSTEM ──
+        static readonly (string item, int minQty, int maxQty, string skill, int moneyReward, string dialogue)[] favorPool =
+        {
+            ("Fish",        3, 8,  "Fishing",     80,  "Could you catch me some fish? I'm starving!"),
+            ("Logs",        8, 15, "Woodcutting",  90,  "I need some logs for a project. Can you help?"),
+            ("Cooked Fish", 2, 5,  "Cooking",     100, "I'd love some cooked fish. I can't cook to save my life!"),
+            ("Stone",       5, 12, "Mining",       85,  "I need some stone. Could you mine some for me?"),
+            ("Iron Ore",    3, 6,  "Mining",      120, "I've been looking for iron ore. Know where to find some?"),
+            ("Copper Ore",  3, 8,  "Mining",      100, "I could really use some copper ore right now."),
+            ("Gold Ore",    2, 4,  "Mining",      180, "Gold ore is so hard to find. Any chance you have some?"),
+            ("Bones",       4, 8,  "Combat",      100, "I need bones for a ritual. Can you get some from monsters?"),
+            ("Fur",         3, 6,  "Combat",      110, "I want to make something warm. Could you bring me some fur?"),
+            ("Crystal",     1, 3,  "Mining",      200, "I've always wanted a crystal. Could you find one?"),
+            ("Oak Logs",    5, 10, "Woodcutting", 120, "I need strong oak logs. The regular ones won't do!"),
+            ("Birch Logs",  5, 10, "Woodcutting", 110, "Birch logs would be perfect for what I'm building."),
+            ("Wheat",       4, 8,  "Farming",     100, "My pantry's empty. Could you grow me some wheat?"),
+            ("Feather",     2, 5,  "Combat",      100, "I need feathers for fletching. Can you get some?"),
+            ("Wolf Claw",   2, 4,  "Combat",      150, "Wolf claws make great tools. I'll pay well for some!"),
+            ("Ember Stone",  1, 3, "Combat",      160, "Ember stones are so useful. Could you find some?"),
+            ("Cooked Meat", 2, 4,  "Cooking",     130, "I'd love a proper cooked meal. Can you make some?"),
+            ("Copper Bar",  2, 4,  "Crafting",    140, "I need copper bars. Can you smelt some for me?"),
+            ("Iron Bar",    2, 3,  "Crafting",    170, "Iron bars are hard to come by. I'll make it worth your while!"),
+        };
+
+        static Random favorRng = new Random();
+
+        static void RollNpcFavors()
+        {
+            foreach (var f in friendNPCs)
+            {
+                if (f.ActiveFavor != null) continue;            // already has one
+                if (f.Friendship < 30) continue;                // must be at least Friends
+                if (f.IsChild) continue;                        // kids don't ask favors
+                if (f.FavorCooldownDays > 0) { f.FavorCooldownDays--; continue; }
+
+                // 40% chance each eligible NPC rolls a favor on a new day
+                if (favorRng.Next(100) >= 40) continue;
+
+                // pick a favor — prefer items the NPC likes
+                var candidates = new List<int>();
+                var fallbacks = new List<int>();
+                for (int i = 0; i < favorPool.Length; i++)
+                {
+                    if (f.Likes.Any(l => favorPool[i].item.Contains(l)))
+                        candidates.Add(i);
+                    else
+                        fallbacks.Add(i);
+                }
+                if (candidates.Count == 0) candidates = fallbacks;
+                if (candidates.Count == 0) continue;
+
+                int pick = candidates[favorRng.Next(candidates.Count)];
+                var (item, minQ, maxQ, skill, money, dialogue) = favorPool[pick];
+                int qty = favorRng.Next(minQ, maxQ + 1);
+
+                // scale reward by friendship tier
+                int friendBonus = f.Friendship >= 90 ? 60 : f.Friendship >= 60 ? 30 : 0;
+                int friendshipGain = f.Friendship >= 90 ? 5 : f.Friendship >= 60 ? 8 : 10;
+
+                f.ActiveFavor = new NpcFavor
+                {
+                    Description = $"Bring {qty} {item}",
+                    ItemNeeded = item,
+                    AmountNeeded = qty,
+                    AmountDelivered = 0,
+                    RewardType = "money",
+                    RewardAmount = money + friendBonus,
+                    FriendshipGain = friendshipGain,
+                    Dialogue = dialogue,
+                    Completed = false,
+                };
+            }
+        }
+
+        static void TryDeliverFavor(FriendNPC f)
+        {
+            var fav = f.ActiveFavor;
+            if (fav == null || fav.Completed) return;
+
+            int have = GetItemCount(fav.ItemNeeded);
+            int remaining = fav.AmountNeeded - fav.AmountDelivered;
+            int toDeliver = Math.Min(have, remaining);
+            if (toDeliver <= 0)
+            {
+                ShowNotification($"You don't have any {fav.ItemNeeded} to give {f.Name}.");
+                return;
+            }
+
+            // consume items
+            for (int i = 0; i < toDeliver; i++)
+                RemoveOneItem(fav.ItemNeeded);
+            fav.AmountDelivered += toDeliver;
+
+            if (fav.AmountDelivered >= fav.AmountNeeded)
+            {
+                fav.Completed = true;
+                player.Money += fav.RewardAmount;
+                f.Friendship = Math.Min(100, f.Friendship + fav.FriendshipGain);
+                f.FavorsCompleted++;
+                AddReputation(20, $"Favor: {f.Name}");
+                ShowNotification($"{f.Name}: \"Legend, cheers!\" +${fav.RewardAmount} +{fav.FriendshipGain} friendship");
+                f.ActiveFavor = null;
+                f.FavorCooldownDays = 2 + favorRng.Next(3); // 2-4 day cooldown
+            }
+            else
+            {
+                int left = fav.AmountNeeded - fav.AmountDelivered;
+                ShowNotification($"Gave {toDeliver} {fav.ItemNeeded} to {f.Name}. {left} more needed.");
+            }
+        }
+
+        // ── SKILL SYNERGY SYSTEM ──
+        record SynergyDef(string Name, string Description, string Icon,
+            (string skill, int level)[] Requirements, Color TierColor);
+
+        static readonly SynergyDef[] synergies =
+        {
+            new("Gourmet Angler",  "Cooked fish heals +50%",          "fish",
+                new[]{ ("Fishing", 25), ("Cooking", 25) },
+                new Color((byte)80,(byte)200,(byte)220,(byte)255)),
+
+            new("Master Smith",    "Melee weapon damage +15%",        "anvil",
+                new[]{ ("Mining", 25), ("Crafting", 25) },
+                new Color((byte)180,(byte)130,(byte)60,(byte)255)),
+
+            new("Nature's Hand",   "Crops & trees grow 20% faster",   "leaf",
+                new[]{ ("Farming", 25), ("Woodcutting", 25) },
+                new Color((byte)80,(byte)180,(byte)60,(byte)255)),
+
+            new("Sharpshooter",    "Ranged damage +20%",              "bow",
+                new[]{ ("Combat", 25), ("Ranged", 25) },
+                new Color((byte)220,(byte)160,(byte)40,(byte)255)),
+
+            new("Iron Will",       "All damage taken reduced 10%",    "shield",
+                new[]{ ("Combat", 50), ("Defence", 25) },
+                new Color((byte)140,(byte)140,(byte)160,(byte)255)),
+
+            new("Sea Lord",        "Swim speed +25%",                 "wave",
+                new[]{ ("Fishing", 50), ("Swimming", 25), ("Boating", 10) },
+                new Color((byte)40,(byte)140,(byte)220,(byte)255)),
+
+            new("Trailblazer",     "Walk & ride speed +10%",          "boot",
+                new[]{ ("Athletics", 30), ("Riding", 20) },
+                new Color((byte)200,(byte)100,(byte)40,(byte)255)),
+
+            new("Arcane Warrior",  "Spell damage +25%",               "star",
+                new[]{ ("Elemental", 30), ("Combat", 30) },
+                new Color((byte)160,(byte)80,(byte)220,(byte)255)),
+
+            new("Jack of All Trades", "+5% XP to all skills",         "gem",
+                new[]{ ("Woodcutting", 25), ("Fishing", 25), ("Mining", 25), ("Combat", 25), ("Cooking", 25) },
+                new Color((byte)200,(byte)200,(byte)80,(byte)255)),
+
+            new("Renaissance",     "+10% XP to all skills",           "crown",
+                new[]{ ("Woodcutting", 25), ("Fishing", 25), ("Mining", 25), ("Combat", 25), ("Cooking", 25),
+                        ("Farming", 25), ("Crafting", 25), ("Ranged", 25), ("Athletics", 25), ("Swimming", 25) },
+                new Color((byte)255,(byte)215,(byte)0,(byte)255)),
+        };
+
+        static int GetSkillLevel(string skill) => skill switch
+        {
+            "Woodcutting" => player.WoodcuttingLevel, "Fishing" => player.FishingLevel,
+            "Mining" => player.MiningLevel, "Combat" => player.CombatLevel,
+            "Cooking" => player.CookingLevel, "Farming" => player.FarmingLevel,
+            "Athletics" => player.AthleticsLevel, "Strength" => player.StrengthLevel,
+            "Ranged" => player.RangedLevel, "Driving" => player.DrivingLevel,
+            "Riding" => player.RidingLevel, "Swimming" => player.SwimmingLevel,
+            "Gambling" => player.GamblingLevel, "Crafting" => player.CraftingLevel,
+            "Elemental" => player.ElementalLevel, "Defence" => player.DefenceLevel,
+            "Boating" => player.BoatingLevel, _ => 0
+        };
+
+        public static bool HasSynergy(string name)
+        {
+            var s = Array.Find(synergies, x => x.Name == name);
+            if (s == null) return false;
+            return s.Requirements.All(r => GetSkillLevel(r.skill) >= r.level);
+        }
+
+        public static float SynergyXPMultiplier()
+        {
+            if (HasSynergy("Renaissance")) return 1.10f;
+            if (HasSynergy("Jack of All Trades")) return 1.05f;
+            return 1.0f;
+        }
+
+        static HashSet<string> notifiedSynergies = new();
+
+        static void CheckSynergyUnlocks()
+        {
+            foreach (var s in synergies)
+            {
+                if (notifiedSynergies.Contains(s.Name)) continue;
+                if (s.Requirements.All(r => GetSkillLevel(r.skill) >= r.level))
+                {
+                    notifiedSynergies.Add(s.Name);
+                    ShowLevelUp($"Synergy Unlocked: {s.Name}!", 0);
+                }
+            }
+        }
+
+        // ── DAILY CHALLENGE BOARD ──
+        static List<DailyChallenge> dailyChallenges = new();
+        static bool dailyBonusClaimed = false;
+        static bool dailyChallengeHudOpen = false;
+        static int dailyChallengesCompletedToday = 0;
+        const int DailyChallengeCount = 3;
+        const int DailyBonusReward = 300;
+        const int DailyBonusRep = 25;
+
+        static readonly (string title, string category, Func<int> progress, int minTarget, int maxTarget, int reward)[] challengePool =
+        {
+            ("Chop Trees",       "Gathering", () => player.Logs,         5,  15, 60),
+            ("Catch Fish",       "Gathering", () => player.Fish,         3,  8,  70),
+            ("Mine Rocks",       "Gathering", () => player.StoneOre + player.CopperOre + player.IronOre + player.GoldOre, 5, 12, 65),
+            ("Kill Enemies",     "Combat",    () => wolvesKilled,        3,  8,  80),
+            ("Cook Meals",       "Cooking",   () => mealsCooked,         2,  5,  75),
+            ("Harvest Crops",    "Farming",   () => cropsHarvested,      3,  6,  70),
+            ("Talk to Friends",  "Social",    () => friendNPCs.Count(f => f.TalkedToday), 2, 4, 50),
+            ("Gift a Friend",    "Social",    () => friendNPCs.Count(f => f.GiftedToday), 1, 2, 60),
+            ("Earn Money",       "Economy",   () => player.Money,        200, 500, 50),
+            ("Gain Combat XP",   "Combat",    () => player.CombatXP + (player.CombatLevel * player.CombatLevel * 50), 20, 80, 70),
+            ("Gain Mining XP",   "Gathering", () => player.MiningXP + (player.MiningLevel * player.MiningLevel * 50), 15, 60, 65),
+            ("Gain Fishing XP",  "Gathering", () => player.FishingXP + (player.FishingLevel * player.FishingLevel * 50), 15, 50, 65),
+            ("Gain Cooking XP",  "Cooking",   () => player.CookingXP + (player.CookingLevel * player.CookingLevel * 50), 15, 50, 60),
+            ("Gain Farming XP",  "Farming",   () => player.FarmingXP + (player.FarmingLevel * player.FarmingLevel * 50), 15, 50, 60),
+            ("Collect Bones",    "Combat",    () => player.Bones,        3,  8,  55),
+            ("Collect Fur",      "Combat",    () => player.Fur,          2,  5,  60),
+            ("Chop Oak Logs",    "Gathering", () => player.OakLogs,      3,  8,  75),
+            ("Mine Iron",        "Gathering", () => player.IronOre,      2,  5,  80),
+        };
+
+        static Random challengeRng = new Random();
+
+        static void RollDailyChallenges()
+        {
+            dailyChallenges.Clear();
+            dailyBonusClaimed = false;
+            dailyChallengesCompletedToday = 0;
+
+            // pick 3 from different categories
+            var usedCategories = new HashSet<string>();
+            var indices = Enumerable.Range(0, challengePool.Length).OrderBy(_ => challengeRng.Next()).ToList();
+
+            foreach (int i in indices)
+            {
+                if (dailyChallenges.Count >= DailyChallengeCount) break;
+                var (title, category, progress, minT, maxT, reward) = challengePool[i];
+                if (usedCategories.Contains(category)) continue;
+                usedCategories.Add(category);
+
+                int target = challengeRng.Next(minT, maxT + 1);
+                dailyChallenges.Add(new DailyChallenge
+                {
+                    Title = $"{title} x{target}",
+                    Category = category,
+                    Progress = progress,
+                    Baseline = progress(),
+                    Target = target,
+                    Reward = reward,
+                    Completed = false,
+                });
+            }
+
+            // fallback: if we couldn't get 3 different categories, fill from any
+            while (dailyChallenges.Count < DailyChallengeCount)
+            {
+                int i = indices[challengeRng.Next(indices.Count)];
+                var (title, category, progress, minT, maxT, reward) = challengePool[i];
+                if (dailyChallenges.Any(c => c.Title.StartsWith(title))) continue;
+                int target = challengeRng.Next(minT, maxT + 1);
+                dailyChallenges.Add(new DailyChallenge
+                {
+                    Title = $"{title} x{target}",
+                    Category = category,
+                    Progress = progress,
+                    Baseline = progress(),
+                    Target = target,
+                    Reward = reward,
+                    Completed = false,
+                });
+            }
+        }
+
+        static void UpdateDailyChallenges()
+        {
+            if (dailyChallenges.Count == 0) return;
+
+            foreach (var c in dailyChallenges)
+            {
+                if (c.Completed) continue;
+                if (c.Current >= c.Target)
+                {
+                    c.Completed = true;
+                    dailyChallengesCompletedToday++;
+                    player.Money += c.Reward;
+                    AddReputation(8, c.Title);
+                    ShowNotification($"Challenge done: {c.Title} (+${c.Reward})");
+                }
+            }
+
+            // bonus for all 3
+            if (!dailyBonusClaimed && dailyChallenges.All(c => c.Completed))
+            {
+                dailyBonusClaimed = true;
+                player.Money += DailyBonusReward;
+                AddReputation(DailyBonusRep, "Daily Challenge Bonus");
+                ShowLevelUp($"All Daily Challenges Complete! +${DailyBonusReward}", 0);
+            }
+        }
+
+        static void DrawDailyChallengeHud()
+        {
+            int btnX = 170, btnY = 8;
+            int allDone = dailyChallenges.Count(c => c.Completed);
+            Color btnCol = dailyChallengeHudOpen ? Color.Gold : (allDone == DailyChallengeCount ? Color.Green : Color.White);
+            Raylib.DrawRectangle(btnX, btnY, 300, 30, new Color((byte)0,(byte)0,(byte)0,(byte)200));
+            Raylib.DrawRectangleLinesEx(new Rectangle(btnX, btnY, 300, 30), 1, btnCol);
+            Program.DrawTextUI($"DAILY CHALLENGES  {allDone}/{DailyChallengeCount}", btnX + 8, btnY + 6, 16, btnCol);
+
+            if (Raylib.IsMouseButtonPressed(MouseButton.Left)
+                && Raylib.CheckCollisionPointRec(Raylib.GetMousePosition(), new Rectangle(btnX, btnY, 300, 30)))
+                dailyChallengeHudOpen = !dailyChallengeHudOpen;
+
+            if (!dailyChallengeHudOpen || dailyChallenges.Count == 0) return;
+
+            // Panel
+            int px = 244, py = btnY + 36;
+            int pw = 310, ph = 190;
+            Raylib.DrawRectangle(px, py, pw, ph, new Color((byte)0,(byte)0,(byte)0,(byte)230));
+            Raylib.DrawRectangleLines(px, py, pw, ph, Color.Gold);
+            Program.DrawTextUI("TODAY'S CHALLENGES", px + 14, py + 8, 18, Color.Gold);
+
+            for (int i = 0; i < dailyChallenges.Count && i < 3; i++)
+            {
+                var c = dailyChallenges[i];
+                int ry = py + 34 + i * 48;
+                Color catCol = c.Category switch
+                {
+                    "Combat"    => new Color((byte)220,(byte)70,(byte)60,(byte)255),
+                    "Gathering" => new Color((byte)80,(byte)180,(byte)80,(byte)255),
+                    "Cooking"   => new Color((byte)220,(byte)150,(byte)40,(byte)255),
+                    "Farming"   => new Color((byte)120,(byte)200,(byte)60,(byte)255),
+                    "Social"    => new Color((byte)140,(byte)120,(byte)220,(byte)255),
+                    "Economy"   => new Color((byte)200,(byte)180,(byte)60,(byte)255),
+                    _ => Color.White,
+                };
+
+                // category dot
+                Raylib.DrawCircle(px + 16, ry + 10, 5, c.Completed ? Color.Green : catCol);
+
+                // title
+                Program.DrawTextUI(c.Title, px + 28, ry, 15, c.Completed ? Color.Green : Color.White);
+
+                // progress bar
+                float prog = Math.Clamp((float)c.Current / c.Target, 0f, 1f);
+                Raylib.DrawRectangle(px + 28, ry + 20, 200, 8, new Color((byte)40,(byte)40,(byte)40,(byte)255));
+                Raylib.DrawRectangle(px + 28, ry + 20, (int)(200 * prog), 8, c.Completed ? Color.Green : catCol);
+
+                // count + reward
+                Program.DrawTextUI($"{c.Current}/{c.Target}", px + 235, ry + 2, 13, Color.LightGray);
+                Program.DrawTextUI($"${c.Reward}", px + 235, ry + 18, 12, c.Completed ? Color.Green : Color.Gold);
+            }
+
+            // bonus row
+            int bonusY = py + 34 + 3 * 48;
+            bool allComplete = dailyChallenges.All(c => c.Completed);
+            Program.DrawTextUI($"BONUS: Complete all 3 → +${DailyBonusReward} +{DailyBonusRep} rep",
+                px + 14, bonusY, 13, allComplete ? Color.Green : new Color((byte)160,(byte)140,(byte)80,(byte)200));
+        }
+
         // Cheats
         static readonly (string name, Func<int> get, Action<int> set)[] cheatSkills = new (string, Func<int>, Action<int>)[]
         {
@@ -1186,6 +1972,9 @@ static readonly List<Rectangle> arenaObjects = new();
         };
 
         static bool skillCheatOpen = false;
+        public static bool cheatSpeedBoost = false;
+        static bool cheatNoclip = false;
+        static float cheatScrollY = 0f;
 
         // Weapons menu
         static string equipped1H = null;     // one-handed weapon
@@ -1424,6 +2213,39 @@ static float survivalHpTick = 0f;
         static string shopMessage = "";
         static float shopMessageTimer = 0f;
 
+        // ── MASTERY SHOP (Castle) ──
+static bool masteryShopOpen = false;
+static int masteryShopScroll = 0;
+
+record MasteryItem(string Skill, string Cape, string Headpiece, Color ThemeA, Color ThemeB, Func<int> GetLevel);
+
+static readonly MasteryItem[] masteryItems = {
+    new("Woodcutting",   "Lumberjack's Cloak",    "Woodsman Crown",     new Color((byte)60,(byte)120,(byte)40,(byte)255),  new Color((byte)100,(byte)70,(byte)30,(byte)255),  () => player.WoodcuttingLevel),
+    new("Fishing",       "Sea King's Cape",       "Angler's Crown",     new Color((byte)40,(byte)120,(byte)200,(byte)255), new Color((byte)180,(byte)200,(byte)220,(byte)255), () => player.FishingLevel),
+    new("Mining",        "Earthshaper's Mantle",  "Crystal Crown",      new Color((byte)130,(byte)130,(byte)140,(byte)255),new Color((byte)160,(byte)100,(byte)200,(byte)255), () => player.MiningLevel),
+    new("Combat",        "Warlord's Cape",        "Battle Crown",       new Color((byte)180,(byte)30,(byte)30,(byte)255),  new Color((byte)40,(byte)40,(byte)40,(byte)255),    () => player.CombatLevel),
+    new("Cooking",       "Chef's Royal Cape",     "Golden Chef Hat",    new Color((byte)240,(byte)240,(byte)230,(byte)255),new Color((byte)220,(byte)180,(byte)40,(byte)255),   () => player.CookingLevel),
+    new("Farming",       "Harvest Lord's Cloak",  "Wheat Crown",        new Color((byte)200,(byte)180,(byte)60,(byte)255), new Color((byte)80,(byte)140,(byte)50,(byte)255),    () => player.FarmingLevel),
+    new("Athletics",     "Windrunner's Cape",     "Laurel Wreath",      new Color((byte)120,(byte)210,(byte)140,(byte)255),new Color((byte)240,(byte)240,(byte)240,(byte)255),   () => player.AthleticsLevel),
+    new("Strength",      "Titan's Mantle",        "Iron Crown",         new Color((byte)100,(byte)40,(byte)40,(byte)255),  new Color((byte)80,(byte)80,(byte)90,(byte)255),     () => player.StrengthLevel),
+    new("Ranged",        "Hawkeye's Cloak",       "Marksman Hood",      new Color((byte)120,(byte)80,(byte)40,(byte)255),  new Color((byte)220,(byte)150,(byte)50,(byte)255),   () => player.RangedLevel),
+    new("Driving",       "Road King's Jacket",    "Racing Helmet",      new Color((byte)180,(byte)180,(byte)190,(byte)255),new Color((byte)200,(byte)50,(byte)50,(byte)255),    () => player.DrivingLevel),
+    new("Riding",        "Cavalry Cape",          "Rider's Crown",      new Color((byte)140,(byte)90,(byte)40,(byte)255),  new Color((byte)180,(byte)160,(byte)80,(byte)255),   () => player.RidingLevel),
+    new("Swimming",      "Poseidon's Cape",       "Coral Crown",        new Color((byte)40,(byte)180,(byte)200,(byte)255), new Color((byte)220,(byte)130,(byte)140,(byte)255),   () => player.SwimmingLevel),
+    new("Gambling",      "High Roller's Cape",    "Golden Top Hat",     new Color((byte)30,(byte)30,(byte)30,(byte)255),   new Color((byte)220,(byte)180,(byte)40,(byte)255),   () => player.GamblingLevel),
+    new("Crafting",      "Artisan's Cloak",       "Craftsman Crown",    new Color((byte)160,(byte)110,(byte)60,(byte)255), new Color((byte)200,(byte)160,(byte)80,(byte)255),   () => player.CraftingLevel),
+    new("1H Melee",      "Duelist's Cape",        "Fencer's Helm",      new Color((byte)100,(byte)100,(byte)160,(byte)255),new Color((byte)200,(byte)200,(byte)220,(byte)255),   () => player.OneHandMeleeLevel),
+    new("2H Melee",      "Berserker's Mantle",    "Warlord Helm",       new Color((byte)150,(byte)50,(byte)30,(byte)255),  new Color((byte)60,(byte)60,(byte)70,(byte)255),     () => player.TwoHandMeleeLevel),
+    new("Elemental",     "Archmage's Cloak",      "Elemental Crown",    new Color((byte)100,(byte)60,(byte)180,(byte)255), new Color((byte)180,(byte)120,(byte)255,(byte)255),   () => player.ElementalLevel),
+    new("Cycling",       "Velodrome Cape",        "Cyclist's Helm",     new Color((byte)220,(byte)220,(byte)40,(byte)255), new Color((byte)40,(byte)40,(byte)40,(byte)255),     () => player.CyclingLevel),
+    new("Diving",        "Abyssal Cloak",         "Deep Sea Crown",     new Color((byte)20,(byte)60,(byte)120,(byte)255),  new Color((byte)80,(byte)200,(byte)180,(byte)255),   () => player.DivingLevel),
+    new("Blacksmithing", "Forgemaster's Mantle",  "Anvil Crown",        new Color((byte)80,(byte)80,(byte)90,(byte)255),   new Color((byte)220,(byte)120,(byte)30,(byte)255),   () => player.BlacksmithLevel),
+    new("Enchanting",    "Runeweaver's Cape",     "Glyph Crown",        new Color((byte)60,(byte)180,(byte)180,(byte)255), new Color((byte)200,(byte)200,(byte)255,(byte)255),   () => player.EnchantingLevel),
+    new("Education",     "Scholar's Robe",        "Mortarboard",        new Color((byte)30,(byte)30,(byte)30,(byte)255),   new Color((byte)220,(byte)180,(byte)40,(byte)255),   () => player.EducationLevel),
+    new("Sports",        "Champion's Cape",       "Victory Crown",      new Color((byte)220,(byte)40,(byte)40,(byte)255),  new Color((byte)220,(byte)180,(byte)40,(byte)255),   () => player.SportsLevel),
+    new("Cards",         "Cardmaster's Cloak",    "Dealer's Crown",     new Color((byte)20,(byte)80,(byte)40,(byte)255),   new Color((byte)220,(byte)220,(byte)220,(byte)255),  () => player.PlayingCardsLevel),
+};
+
         // DBAR
         static bool barMenuOpen = false;
         static int barSelectedDrink = -1;
@@ -1493,14 +2315,14 @@ static float survivalHpTick = 0f;
         static float minimapScale = 0.01f;
         static float worldMapZoom = 1f;
         // FOG OF WAR
-        const int FogCellSize = 500;           // world units per cell
-        const int FogOriginX  = -65000;        // left edge of fog grid in world coords
-        const int FogOriginY  = -42000;        // top edge
-        const int FogCols     = 220;           // (45000 - -65000) / 500 = 220
-        const int FogRows     = 168;           // (42000 - -42000) / 500 = 168
+        const int FogCellSize = 1000;            
+        const int FogOriginX  = -260000;         
+        const int FogOriginY  = -260000;         
+        const int FogCols     = 520;             
+        const int FogRows     = 520;             
         static bool[] fogRevealed = new bool[FogCols * FogRows];
         static int    fogRevealedCount = 0;
-        const int     FogRevealRadius = 3; 
+        const int     FogRevealRadius = 4; 
         // ── ACHIEVEMENTS ──
         class Achievement
         {
@@ -1552,12 +2374,34 @@ static float survivalHpTick = 0f;
             A("expl_beach",         "Beach Bum",         "Visit the Beach",                    "Exploration", 30,  () => GetCurrentBiome() == "BEACH" || achievementVisited.Contains("BEACH"), expl);
             A("expl_hamiltron",     "City Slicker",      "Visit Hamiltron City",               "Exploration", 75,  () => GetCurrentBiome() == "HAMILTRON CITY" || achievementVisited.Contains("HAMILTRON CITY"), expl);
             A("expl_rotoaira",      "Small Town Vibes",  "Visit Rotoaira",                     "Exploration", 75,  () => GetCurrentBiome() == "ROTOAIRA" || achievementVisited.Contains("ROTOAIRA"), expl);
+            A("expl_tundra",      "Into the Tundra",    "Visit the Tundra",                    "Exploration", 75,  () => GetCurrentBiome() == "TUNDRA" || achievementVisited.Contains("TUNDRA"), expl);
+            A("expl_frozen_lake",  "Frozen Over",        "Visit the Frozen Lake",              "Exploration", 75,  () => GetCurrentBiome() == "FROZEN LAKE" || achievementVisited.Contains("FROZEN LAKE"), expl);
+            A("expl_ice_caves",    "Ice Explorer",       "Visit the Ice Caves",                "Exploration", 100, () => GetCurrentBiome() == "ICE CAVES" || achievementVisited.Contains("ICE CAVES"), expl);
+            A("expl_crystal",      "Crystal Seeker",     "Visit the Crystal Caves",            "Exploration", 150, () => GetCurrentBiome() == "CRYSTAL CAVES" || achievementVisited.Contains("CRYSTAL CAVES"), expl);
+            A("expl_alpine",       "Alpine Wanderer",    "Visit the Alpine Meadow",            "Exploration", 75,  () => GetCurrentBiome() == "ALPINE MEADOW" || achievementVisited.Contains("ALPINE MEADOW"), expl);
+            A("expl_cliffs",       "Cliff Hanger",       "Visit the Cliffs",                   "Exploration", 100, () => GetCurrentBiome() == "CLIFFS" || achievementVisited.Contains("CLIFFS"), expl);
+            A("expl_caldera",      "Into the Caldera",   "Visit the Caldera",                  "Exploration", 150, () => GetCurrentBiome() == "CALDERA" || achievementVisited.Contains("CALDERA"), expl);
+            A("expl_ashen",        "Ash Walker",         "Visit the Ashen Wastes",             "Exploration", 100, () => GetCurrentBiome() == "ASHEN WASTES" || achievementVisited.Contains("ASHEN WASTES"), expl);
+            A("expl_lava_fields",  "Floor is Lava",      "Visit the Lava Fields",              "Exploration", 100, () => GetCurrentBiome() == "LAVA FIELDS" || achievementVisited.Contains("LAVA FIELDS"), expl);
+            A("expl_mangrove",     "Mangrove Maze",      "Visit the Mangrove",                 "Exploration", 75,  () => GetCurrentBiome() == "MANGROVE" || achievementVisited.Contains("MANGROVE"), expl);
+            A("expl_bog",          "Bog Trudger",        "Visit the Bog",                      "Exploration", 75,  () => GetCurrentBiome() == "BOG" || achievementVisited.Contains("BOG"), expl);
+            A("expl_dead_marsh",   "Dead Marsh",         "Visit the Dead Marsh",               "Exploration", 100, () => GetCurrentBiome() == "DEAD MARSH" || achievementVisited.Contains("DEAD MARSH"), expl);
+            A("expl_oasis",        "Desert Oasis",       "Find the Oasis",                     "Exploration", 100, () => GetCurrentBiome() == "OASIS" || achievementVisited.Contains("OASIS"), expl);
+            A("expl_dunes",        "Dune Runner",        "Visit the Dunes",                    "Exploration", 75,  () => GetCurrentBiome() == "DUNES" || achievementVisited.Contains("DUNES"), expl);
+            A("expl_badlands",     "Badlands",           "Visit the Badlands",                 "Exploration", 100, () => GetCurrentBiome() == "BADLANDS" || achievementVisited.Contains("BADLANDS"), expl);
+            A("expl_dark_forest",  "Into Darkness",      "Visit the Dark Forest",              "Exploration", 100, () => GetCurrentBiome() == "DARK FOREST" || achievementVisited.Contains("DARK FOREST"), expl);
+            A("expl_enchanted",    "Enchanted",          "Visit the Enchanted Woods",          "Exploration", 100, () => GetCurrentBiome() == "ENCHANTED WOODS" || achievementVisited.Contains("ENCHANTED WOODS"), expl);
+            A("expl_mushroom",     "Shroom Seeker",      "Visit the Mushroom Grove",           "Exploration", 100, () => GetCurrentBiome() == "MUSHROOM GROVE" || achievementVisited.Contains("MUSHROOM GROVE"), expl);
+            A("expl_coral",        "Reef Diver",         "Visit the Coral Reef",               "Exploration", 100, () => GetCurrentBiome() == "CORAL REEF" || achievementVisited.Contains("CORAL REEF"), expl);
+            A("expl_deep_ocean",   "Abyss",              "Visit the Deep Ocean",               "Exploration", 150, () => GetCurrentBiome() == "DEEP OCEAN" || achievementVisited.Contains("DEEP OCEAN"), expl);
+            A("expl_islands",      "Island Hopper",      "Visit the Islands",                  "Exploration", 100, () => GetCurrentBiome() == "ISLANDS" || achievementVisited.Contains("ISLANDS"), expl);
             A("expl_10pct",         "Cartographer",      "Explore 10% of the world map",       "Exploration", 100, () => GetExplorationPercent() >= 10f, expl);
             A("expl_25pct",         "Pathfinder",        "Explore 25% of the world map",       "Exploration", 250, () => GetExplorationPercent() >= 25f, expl);
             A("expl_50pct",         "Trailblazer",       "Explore 50% of the world map",       "Exploration", 500, () => GetExplorationPercent() >= 50f, expl);
             A("expl_100pct",        "World Walker",      "Explore 100% of the world map",      "Exploration", 2000,() => GetExplorationPercent() >= 99.5f, expl);
             A("expl_collectables5", "Treasure Seeker",   "Find 5 hidden collectables",         "Exploration", 150, () => CollectablesFound >= 5, expl);
             A("expl_collectables15","Treasure Master",   "Find 15 hidden collectables",        "Exploration", 500, () => CollectablesFound >= 15, expl);
+    
 
             // ── Combat ──
             A("comb_first_kill",  "First Blood",         "Defeat your first enemy",            "Combat", 25,  () => wolvesKilled > 0 || player.CombatLevel > 1, comb);
@@ -1786,6 +2630,36 @@ static float survivalHpTick = 0f;
         static float rainInterval = 500f;
         static float rainDuration = 30f;
 
+        // ── WORLD EVENTS ──
+static WorldEvent activeWorldEvent = null;
+static float worldEventCheckTimer = 0f;
+static float worldEventCooldown = 0f;        // seconds until next event can roll
+static List<Enemy> eventEnemies = new();      // temporary enemies spawned by events
+static NPC eventNPC = null;                   // temporary NPC (merchant, lost child, etc.)
+static float eventShopDiscount = 0f;          // 0.0–0.5, applied during Harvest Festival
+static bool eventDroughtActive = false;
+static float eventScreenShake = 0f;           // earthquake shake remaining
+
+enum WorldEventType
+{
+    TravellingMerchant, TreasureGoblin, GoblinRaid, MeteorCrash,
+    BanditAttack, ForestFire, Blizzard, DragonSighting,
+    LostChild, FishingTournament, HarvestFestival,
+}
+
+class WorldEvent
+{
+    public WorldEventType Type;
+    public Vector2 Position;          // world-space epicentre
+    public float Duration;            // total seconds this event lasts
+    public float Timer;               // counts up
+    public float Radius;              // area of effect
+    public bool Completed;            // player resolved it early
+    public bool Announced;            // opening notification sent
+    public int Data;                  // generic int (kills counted, fish caught, etc.)
+    public string BiomeRequirement;   // only spawn in this biome (null = any)
+}
+
         // MUSIC
         static Music musicMainMenu;
         static Music musicForest;
@@ -1824,6 +2698,8 @@ static float survivalHpTick = 0f;
         static Sound soundStickSwing;
         static Sound soundDogHit;
         static Sound soundDogDie;
+        static Sound soundWolfHit;
+        static Sound soundWolfDie;
         public static Sound soundHorn;
 
         // MUSIC
@@ -1955,6 +2831,8 @@ static float survivalHpTick = 0f;
         public static List<Lake> lakes = new();
         static List<River> rivers = new();
         static List<NPC> npcs = new();
+        static NPC talkingToNpc = null;
+        static float npcActivityBubbleTimer = 0f;
         static List<NPC> FamilyHubNPCs = new();
         static List<Vehicle> vehicles = new();
         static List<Building> buildings = new();
@@ -2319,10 +3197,12 @@ static void AdvanceStoryQuest(StoryQuest q)
     {
         q.Completed = true;
         player.Money += q.Reward;
+        AddReputation(50, q.Title);
         ShowLevelUp($"Quest Complete: {q.Title}! +${q.Reward}", 0);
     }
     else
     {
+        AddReputation(15, $"{q.Title} stage");
         if (q.Current.Progress != null) q.Current.Baseline = q.Current.Progress();
         ShowNotification($"{q.Title} — next: {q.Current.Description}");
     }
@@ -3415,11 +4295,13 @@ static void DrawHobbiesStoreInterior()
 
 static void CompleteSideTask(string receiver)
 {
-    player.Money += activeSideTask.Pay;
+    int finalPay = activeSideTask.Pay + (int)(activeSideTask.Pay * GetReputationJobBonus());
+    player.Money += finalPay;
     activeSideTask.DoneToday = true;
     activeSideTask.Accepted = false;
     activeSideTask.ReadyToDeliver = false;
-    ShowNotification($"{receiver} thanks you! +${activeSideTask.Pay} ({activeSideTask.Title})");
+    AddReputation(15, activeSideTask.Title);
+    ShowNotification($"{receiver} thanks you! +${finalPay} ({activeSideTask.Title})");
     activeSideTask = null;
 }
 
@@ -3495,9 +4377,11 @@ static void DrawJobBoard()
         if (canTurnIn && hov && Raylib.IsMouseButtonPressed(MouseButton.Left))
         {
             SpendResource(j.Resource, j.Target);
-            player.Money += j.Pay;
+            int finalPay = j.Pay + (int)(j.Pay * GetReputationJobBonus());
+            player.Money += finalPay;
             j.CompletedToday = true;
-            ShowNotification($"Job complete: {j.Title} (+${j.Pay})");
+            AddReputation(10, j.Title);
+            ShowNotification($"Job complete: {j.Title} (+${finalPay})");
         }
     }
     Program.DrawTextUI("Q = Close", px + 260, py + 388, 18, Color.DarkGray);
@@ -4017,6 +4901,7 @@ player.Position = d.PlayerPos;
         int weaponBonus = equipped == "Sword" ? 5 : 0;
         int slotBonus   = GetWeaponDamage(armorWeapon);
         int atk         = 1 + (player.CombatLevel / 10) + weaponBonus + slotBonus;
+        if (HasPerk("Combat", 15)) atk += 2;
         enemy.Health   -= atk;
         AwardMeleeXP(equipped, Math.Max(1, atk));
 
@@ -5136,18 +6021,44 @@ static void DrawPMRelationships(int x, int y, int w)
         Program.DrawTextUI("No friends yet — talk to people around town!", x, y + 60, 20, Color.Gray);
         return;
     }
-    int ry = y + 60;
-    foreach (var f in friendNPCs)
+
+    Vector2 mouse = Raylib.GetMousePosition();
+    int contentTop = y + 56;
+    int contentH = ScreenHeight - contentTop - 40;
+    int rowH = 80;
+    int totalH = friendNPCs.Count * rowH;
+    float maxScroll = Math.Max(0, totalH - contentH);
+
+    if (Raylib.CheckCollisionPointRec(mouse, new Rectangle(x, contentTop, w - 40, contentH)))
+        pmRelScrollY = Math.Clamp(pmRelScrollY - Raylib.GetMouseWheelMove() * 40f, 0f, maxScroll);
+    pmRelScrollY = Math.Clamp(pmRelScrollY, 0f, maxScroll);
+
+    Program.DrawTextUI($"{friendNPCs.Count} friends", x + 300, y + 10, 18, Color.LightGray);
+
+    Raylib.BeginScissorMode(x, contentTop, w - 40, contentH);
+    for (int i = 0; i < friendNPCs.Count; i++)
     {
+        var f = friendNPCs[i];
+        int ry = contentTop + i * rowH - (int)pmRelScrollY;
+        if (ry + rowH < contentTop || ry > contentTop + contentH) continue;
+
         Raylib.DrawRectangle(x, ry, w - 40, 64, new Color((byte)26,(byte)30,(byte)44,(byte)255));
         Raylib.DrawRectangleLinesEx(new Rectangle(x, ry, w - 40, 64), 1, new Color((byte)60,(byte)66,(byte)90,(byte)255));
-        Program.DrawTextUI(f.Name, x + 14, ry + 8, 20, Color.White);
-        Program.DrawTextUI(f.Tier, x + 14, ry + 34, 16, Color.Gold);
+        string label = f.Name;
+        if (f.Partner != "" && f.Partner != "someone" && f.Friendship >= 30)
+            label += $" & {f.Partner}";
+        else if (f.IsChild && f.Parents.Length > 0 && f.Friendship >= 30)
+            label += $" (child of {f.Parents[0]} & {f.Parents[1]})";
+        Program.DrawTextUI(label, x + 14, ry + 8, 20, Color.White);
+        string tierLine = f.Friendship >= 30
+            ? $"{f.Tier} — {f.Personality}"
+            : f.Tier;
+        Program.DrawTextUI(tierLine, x + 14, ry + 34, 14, Color.Gold);
         Raylib.DrawRectangle(x + 260, ry + 26, 240, 10, new Color((byte)40,(byte)40,(byte)40,(byte)255));
         Raylib.DrawRectangle(x + 260, ry + 26, (int)(240 * Math.Min(1f, f.Friendship / 100f)), 10, new Color((byte)220,(byte)90,(byte)120,(byte)255));
         Program.DrawTextUI($"{f.Friendship}/100", x + 510, ry + 22, 16, Color.LightGray);
-        ry += 74;
     }
+    Raylib.EndScissorMode();
 }
 
 static void DrawPMIdentity(int x, int y, int w)
@@ -5299,6 +6210,7 @@ static void DrawPMIdentity(int x, int y, int w)
     Line("Dungeons Cleared:", dungeonsCleared.ToString());
     Line("World Explored:", $"{GetExplorationPercent():F1}%");
     Line("Achievements:", $"{achievementsUnlockedCount}/{achievements.Count}");
+    Line("Reputation:", $"{player.Reputation} ({GetReputationTier(player.Reputation).title})");
     if (timesCheated > 0)
     Line("Times Cheated:", timesCheated.ToString());
 
@@ -5420,7 +6332,25 @@ static void DrawPMStats(int x, int y, int w)
 static void DrawPMUnlocks(int x, int y, int w)
 {
     Program.DrawTextUI("LICENCES & THEORIES", x, y, 34, Color.Gold);
-    int ly = y + 60;
+
+    Vector2 mouse = Raylib.GetMousePosition();
+    int contentTop = y + 50;
+    int contentH = ScreenHeight - contentTop - 40;
+
+    // calculate total height: 10 licence rows + gap + synergy header + synergy rows
+    int licenceRows = 10;
+    int synergyHeaderH = 64;
+    int synergyRowH = 78;
+    int totalH = licenceRows * 30 + 10 + synergyHeaderH + synergies.Length * synergyRowH + 40;
+    float maxScroll = Math.Max(0, totalH - contentH);
+
+    if (Raylib.CheckCollisionPointRec(mouse, new Rectangle(x, contentTop, w - 40, contentH)))
+        pmUnlScrollY = Math.Clamp(pmUnlScrollY - Raylib.GetMouseWheelMove() * 40f, 0f, maxScroll);
+    pmUnlScrollY = Math.Clamp(pmUnlScrollY, 0f, maxScroll);
+
+    Raylib.BeginScissorMode(x, contentTop, w - 40, contentH);
+
+    int ly = contentTop - (int)pmUnlScrollY;
     void L(string label, bool have)
     {
         Program.DrawTextUI(label, x, ly, 20, Color.White);
@@ -5432,6 +6362,42 @@ static void DrawPMUnlocks(int x, int y, int w)
     ly += 10;
     L("Practical D", hasPracticalD); L("Practical C", hasPracticalC); L("Practical B", hasPracticalB);
     L("Practical A", hasPracticalA); L("Practical S", hasPracticalS);
+
+    ly += 20;
+    Program.DrawTextUI("SKILL SYNERGIES", x, ly, 34, Color.Gold);
+    int unlocked = synergies.Count(s => HasSynergy(s.Name));
+    Program.DrawTextUI($"{unlocked}/{synergies.Length} unlocked", x + 300, ly + 8, 18, Color.White);
+    ly += 44;
+
+    foreach (var s in synergies)
+    {
+        bool have = HasSynergy(s.Name);
+        Raylib.DrawRectangle(x, ly, w - 40, 70, new Color((byte)20,(byte)22,(byte)32,(byte)255));
+        Raylib.DrawRectangleLinesEx(new Rectangle(x, ly, w - 40, 70), 1,
+            have ? s.TierColor : new Color((byte)50,(byte)50,(byte)60,(byte)255));
+
+        Raylib.DrawCircle(x + 18, ly + 22, 8, have ? s.TierColor : new Color((byte)60,(byte)60,(byte)70,(byte)255));
+
+        Program.DrawTextUI(s.Name, x + 36, ly + 6, 20, have ? Color.White : Color.Gray);
+        Program.DrawTextUI(s.Description, x + 36, ly + 28, 15,
+            have ? new Color((byte)180,(byte)220,(byte)140,(byte)255) : new Color((byte)80,(byte)80,(byte)90,(byte)255));
+
+        string reqStr = string.Join(" + ", s.Requirements.Select(r =>
+        {
+            int cur = GetSkillLevel(r.skill);
+            return $"{r.skill} {cur}/{r.level}";
+        }));
+        Program.DrawTextUI(reqStr, x + 36, ly + 48, 13,
+            have ? new Color((byte)100,(byte)160,(byte)100,(byte)200) : new Color((byte)120,(byte)100,(byte)60,(byte)200));
+
+        string badge = have ? "ACTIVE" : "LOCKED";
+        Color badgeCol = have ? new Color((byte)80,(byte)200,(byte)80,(byte)255) : new Color((byte)100,(byte)100,(byte)110,(byte)255);
+        Program.DrawTextUI(badge, x + w - 120, ly + 10, 16, badgeCol);
+
+        ly += 78;
+    }
+
+    Raylib.EndScissorMode();
 }
 
 static void DrawIdentityCollectionPage(int x, int y, int w)
@@ -6358,6 +7324,36 @@ static void DrawCastleInterior()
     // exit mat
     Raylib.DrawRectangle(900, 1880, 200, 90, new Color((byte)60,(byte)45,(byte)30,(byte)255));
     Program.DrawTextUI("EXIT", 960, 1905, 20, gold);
+
+    // ── Prince & Princess near throne ──
+    // Prince (left of throne)
+    Raylib.DrawCircle(900, 230, 14, new Color((byte)240,(byte)210,(byte)170,(byte)255)); // head
+    Raylib.DrawRectangle(888, 244, 24, 32, new Color((byte)60,(byte)60,(byte)150,(byte)255)); // blue tunic
+    Raylib.DrawRectangle(893, 218, 14, 8, gold); // crown
+    Raylib.DrawRectangle(896, 212, 3, 8, gold);
+    Raylib.DrawRectangle(904, 212, 3, 8, gold);
+    Program.DrawTextUI("Prince", 876, 195, 14, gold);
+
+    // Princess (right of throne)
+    Raylib.DrawCircle(1100, 230, 14, new Color((byte)240,(byte)210,(byte)170,(byte)255));
+    Raylib.DrawRectangle(1088, 244, 24, 34, new Color((byte)180,(byte)50,(byte)80,(byte)255)); // dress
+    Raylib.DrawTriangle(new Vector2(1082, 278), new Vector2(1118, 278),
+        new Vector2(1100, 300), new Color((byte)180,(byte)50,(byte)80,(byte)255)); // skirt
+    Raylib.DrawRectangle(1093, 218, 14, 8, gold); // tiara
+    Raylib.DrawCircle(1100, 216, 4, new Color((byte)200,(byte)60,(byte)60,(byte)255)); // gem
+    Program.DrawTextUI("Princess", 1070, 195, 14, gold);
+
+    // ── Mastery Shop counter ──
+    Raylib.DrawRectangle(1600, 300, 300, 60, new Color((byte)80,(byte)50,(byte)30,(byte)255));
+    Raylib.DrawRectangleLines(1600, 300, 300, 60, gold);
+    Program.DrawTextUI("HALL OF MASTERY", 1620, 280, 18, gold);
+    Raylib.DrawRectangle(1610, 310, 280, 40, new Color((byte)50,(byte)30,(byte)18,(byte)255));
+
+    // Grandmaster NPC behind counter
+    Raylib.DrawCircle(1750, 280, 16, new Color((byte)240,(byte)210,(byte)170,(byte)255));
+    Raylib.DrawRectangle(1736, 296, 28, 36, new Color((byte)140,(byte)100,(byte)200,(byte)255));
+    Raylib.DrawRectangle(1740, 260, 20, 10, gold); // crown
+    Program.DrawTextUI("Grandmaster", 1710, 244, 14, new Color((byte)200,(byte)160,(byte)255,(byte)255));
 }
 
 static void DrawMallConcourse()
