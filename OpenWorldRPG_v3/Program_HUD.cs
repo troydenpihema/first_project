@@ -1541,6 +1541,7 @@ foreach (var s in newSkills)
     }
 
     RoadManager.DrawOnMinimap(cx, cy, minimapScale, player.Position);
+    FootpathManager.DrawOnMinimap(cx, cy, minimapScale, player.Position);
 
     // Roads drawn on top of buildings
     Color roadCol = new Color((byte)75,(byte)75,(byte)75,(byte)255);

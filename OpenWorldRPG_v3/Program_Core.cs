@@ -303,6 +303,61 @@ static void ResetGameState()
         RoadManager.Add(new Vector2(60000, -60000), new Vector2(60000, 60000));
         RoadManager.Add(new Vector2(-60000, 60000), new Vector2(60000, 60000));
 
+        // ═══════════════════════════════════════════════════════════
+        //  ROAD EXTENSIONS — reach deeper into road-accessible biomes
+        // ═══════════════════════════════════════════════════════════
+
+        // ── MOUNTAINS: extend N-S highway + branch to Ironpeak ──
+        RoadManager.Add(new Vector2(200, -60000), new Vector2(200, -165000));       // N-S highway deeper
+        RoadManager.Add(new Vector2(200, -80000), new Vector2(-10000, -80000));     // branch west at biome border
+        RoadManager.Add(new Vector2(-10000, -80000), new Vector2(-10000, -162000)); // south road to Ironpeak
+
+        // ── DESERT: extend E-W highway + branch to Sunhaven ──
+        RoadManager.Add(new Vector2(60000, 500), new Vector2(145000, 500));         // E-W highway east
+        RoadManager.Add(new Vector2(140000, 500), new Vector2(140000, 8000));       // branch south to Sunhaven
+
+        // ── SWAMP: extend E-W highway + branch to Murkwater ──
+        RoadManager.Add(new Vector2(-60000, 500), new Vector2(-145000, 500));       // E-W highway west
+        RoadManager.Add(new Vector2(-140000, 500), new Vector2(-140000, 8000));     // branch south to Murkwater
+
+        // ── BEACH: extend N-S highway + branch to Tidecrest ──
+        RoadManager.Add(new Vector2(200, 60000), new Vector2(200, 100000));         // N-S highway south
+        RoadManager.Add(new Vector2(200, 95000), new Vector2(18000, 95000));        // branch east to Tidecrest
+
+        // ═══════════════════════════════════════════════════════════
+        //  FOOTPATHS — one-way-in biomes (Snow, Volcano, Forest)
+        // ═══════════════════════════════════════════════════════════
+
+        // ── SNOW: entry from Mountains west border, single trail to Frosthold ──
+        FootpathManager.AddBiome(new Vector2(-10000, -80500), new Vector2(-80000, -80500), "SNOW", 45f);  // east-west entry trail
+        FootpathManager.AddBiome(new Vector2(-80000, -80500), new Vector2(-80000, -142000), "SNOW", 45f); // south-north to Frosthold
+        FootpathManager.AddBiome(new Vector2(-80000, -140000), new Vector2(-142000, -140000), "SNOW", 40f); // west spur to settlement
+
+        // ── VOLCANO: entry from Mountains east border, trail to Cinderfall ──
+        FootpathManager.AddBiome(new Vector2(60000, -80500), new Vector2(80000, -80500), "VOLCANO", 45f);   // short connector from road
+        FootpathManager.AddBiome(new Vector2(80000, -80500), new Vector2(80000, -152000), "VOLCANO", 45f);  // north along border
+        FootpathManager.AddBiome(new Vector2(80000, -150000), new Vector2(138000, -150000), "VOLCANO", 40f);// east spur to Cinderfall
+
+        // ── FOREST: entry from Swamp south border, trail to Eldergrove ──
+        FootpathManager.AddBiome(new Vector2(-140000, 8500), new Vector2(-140000, 80000), "FOREST", 45f);  // south from Murkwater road
+        FootpathManager.AddBiome(new Vector2(-140000, 80000), new Vector2(-140000, 138000), "FOREST", 40f);// into forest
+        FootpathManager.AddBiome(new Vector2(-142000, 138000), new Vector2(-138000, 138000), "FOREST", 40f);// short cross to Eldergrove
+
+        // ── MOUNTAIN interior trails (supplement the road) ──
+        FootpathManager.AddBiome(new Vector2(-10000, -162000), new Vector2(-10000, -182000), "MOUNTAIN", 35f);  // past Ironpeak to boss
+        FootpathManager.AddBiome(new Vector2(-10000, -165000), new Vector2(-45000, -165000), "MOUNTAIN", 35f);  // western trail
+
+        // ── SWAMP interior trails ──
+        FootpathManager.AddBiome(new Vector2(-140000, 10000), new Vector2(-162000, 10000), "SWAMP", 35f);   // west past Murkwater
+        FootpathManager.AddBiome(new Vector2(-160000, -25000), new Vector2(-160000, 10000), "SWAMP", 35f);  // north-south trail to boss area
+
+        // ── DESERT interior trails ──
+        FootpathManager.AddBiome(new Vector2(140000, 10000), new Vector2(162000, 10000), "DESERT", 35f);    // east past Sunhaven
+        FootpathManager.AddBiome(new Vector2(160000, 10000), new Vector2(160000, 22000), "DESERT", 35f);    // south to boss area
+
+        // ── BEACH coastal trail ──
+        FootpathManager.AddBiome(new Vector2(20000, 95000), new Vector2(20000, 100000), "BEACH", 35f);      // south from Tidecrest
+
         
        
         
@@ -4841,6 +4896,9 @@ Raylib.DrawRectangleLines(Math.Clamp(roL,mapX,mapX+mapW), Math.Clamp(roT,mapY,ma
     Math.Clamp(roR-roL,0,mapW), Math.Clamp(roB-roT,0,mapH), new Color((byte)180,(byte)220,(byte)120,(byte)255));
 Program.DrawTextUI("ROTOAIRA", Math.Clamp(cx+(int)(-16500*scale),mapX,mapX+mapW), Math.Clamp(cy+(int)(4400*scale),mapY,mapY+mapH), 12, new Color((byte)200,(byte)255,(byte)160,(byte)255));
 
+RoadManager.DrawOnWorldMap(cx, cy, scale, mapX, mapY, mapW, mapH);
+FootpathManager.DrawOnWorldMap(cx, cy, scale, mapX, mapY, mapW, mapH);
+
 // Biome labels (centred in each sector)
     Program.DrawTextUI("SNOW",       Math.Clamp(cx + (int)(-165000 * scale), mapX, mapX + mapW), Math.Clamp(cy + (int)(-165000 * scale), mapY, mapY + mapH), 14, new Color((byte)100,(byte)160,(byte)220,(byte)255));
     Program.DrawTextUI("MOUNTAINS",  Math.Clamp(cx + (int)(0 * scale), mapX, mapX + mapW),      Math.Clamp(cy + (int)(-165000 * scale), mapY, mapY + mapH), 14, new Color((byte)200,(byte)195,(byte)185,(byte)255));
@@ -4854,10 +4912,16 @@ Program.DrawTextUI("ROTOAIRA", Math.Clamp(cx+(int)(-16500*scale),mapX,mapX+mapW)
     Program.DrawTextUI("SAFE ZONE",  szX + 4, szY + 10, 14, new Color((byte)100,(byte)255,(byte)100,(byte)255));
     Program.DrawTextUI("FARM",       Math.Clamp(cx + (int)(-2000 * scale), mapX, mapX + mapW), Math.Clamp(cy + (int)(-8000 * scale), mapY, mapY + mapH), 14, new Color((byte)200,(byte)150,(byte)80,(byte)255));
 
-int ringTopY   = cy + (int)(-245000 * scale);
+    int ringTopY   = cy + (int)(-245000 * scale);
     int ringBotY   = cy + (int)(245000  * scale);
     int ringLeftX  = cx + (int)(-245000 * scale);
     int ringRightX = cx + (int)(244820  * scale);
+
+    // ── PLAYER POSITION ──
+    int playerMapX = Math.Clamp(cx + (int)(player.Position.X * scale), mapX + 4, mapX + mapW - 4);
+    int playerMapY = Math.Clamp(cy + (int)(player.Position.Y * scale), mapY + 4, mapY + mapH - 4);
+    Raylib.DrawCircle(playerMapX, playerMapY, 5, Color.White);
+    Raylib.DrawCircleLines(playerMapX, playerMapY, 5, Color.Black);
 
     // ── QUEST MARKERS & DISCOVERY OVERLAY ──
     DrawWorldMapQuestMarkers(cx, cy, scale, mapX, mapY, mapW, mapH);
@@ -5488,6 +5552,7 @@ Raylib.DrawRectangle(300, -1000, 700, 580, Color.DarkGray);
 // Roads draw
 RoadManager.DrawAll(camera.Target, ScreenWidth, ScreenHeight, camera.Zoom);
 CarparkManager.DrawAll(camera.Target, ScreenWidth, ScreenHeight, camera.Zoom);
+FootpathManager.DrawAll(camera.Target, ScreenWidth, ScreenHeight, camera.Zoom);
             
 DrawSplats();
 DrawDeathFx();

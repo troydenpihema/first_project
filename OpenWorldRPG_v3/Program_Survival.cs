@@ -647,7 +647,9 @@ static void DrawTutorialHUD()
             // desert vertical connectors - scoped to Y range
             if (pos.X >= 14985 && pos.X <= 15135 && (pos.Y <= 188 || pos.Y >= 333)) return true;
             if (pos.X >= 24985 && pos.X <= 25135 && (pos.Y <= 188 || pos.Y >= 333)) return true;
+            
             if (RoadManager.IsOnFootprint(pos)) return true;
+            if (FootpathManager.IsOnFootprint(pos)) return true;
 
             return false;
         }

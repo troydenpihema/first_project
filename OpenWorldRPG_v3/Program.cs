@@ -8287,8 +8287,10 @@ static void DrawSpeechBubbleScreen(int sx, int sy, string text, float alphaPct =
             if (pos.X >= -1260 - buffer && pos.X <= -1140 + buffer) return true;
             if (pos.X >= 200 - buffer && pos.X <= 320 + buffer && pos.Y <= 550 + buffer) return true;
             if (pos.X >= 500 - buffer && pos.X <= 620 + buffer && pos.Y <= 550 + buffer) return true;
+
             if (CarparkManager.IsNearCarpark(pos, buffer)) return true;
             if (RoadManager.IsNearRoad(pos, buffer)) return true;
+            if (FootpathManager.IsNearPath(pos, buffer)) return true;
             return false;
         }
 
@@ -8365,6 +8367,7 @@ static void DrawSpeechBubbleScreen(int sx, int sy, string text, float alphaPct =
     if (pos.X >= -16200 && pos.X <= -16080 && pos.Y >= 260  && pos.Y <= 3320) return true; // connector
     if (CarparkManager.IsOnCarparkSurface(pos)) return true;
     if (RoadManager.IsOnRoadSurface(pos)) return true;
+    if (FootpathManager.IsOnFootprint(pos)) return true;
     
 
     return false;

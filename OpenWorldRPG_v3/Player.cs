@@ -213,6 +213,7 @@ namespace OpenWorldRPG
         public int EducationXP = 0;
         public int BoatingLevel = 1;
         public int BoatingXP = 0;
+
         // ── REPUTATION / TOWN STANDING ──
         public int Reputation = 0;
         public int PlushPrizes = 0;
@@ -434,7 +435,8 @@ void DrawStar(int cx, int cy, float size, Color col)
     {
         Vector2 move = GetInput();
         Vector2 oldPos = Position;
-        Position += move * speed * dt;
+        float walkMult = FootpathManager.IsOnSurface(Position) ? 1.12f : 1f;
+        Position += move * speed * walkMult * dt;
 
         if (Program.inPrison)
         {
